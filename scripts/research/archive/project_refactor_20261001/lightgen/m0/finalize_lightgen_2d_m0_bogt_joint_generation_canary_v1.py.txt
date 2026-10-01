@@ -1,0 +1,502 @@
+"""Complete read-only measurements for the verified step1200 M0 endpoint."""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import time
+import traceback
+from functools import partial
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import torch
+
+import ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training as bogt
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, RESOURCE_ENVELOPE, HeartbeatWriter, PreflightReceipt, ResearchRunControl, RUN_COMPLETED, RUN_INTERRUPTED, RUN_INVALID_HARNESS, RUN_PREPARING, RUNNING, RUN_VALID_FAILED, PREFLIGHT_READY, capture_execution_source_manifest
+from ldm_project.v2.evidence import atomic_write_new_json, canonical_sha256, file_sha256, safe_torch_load
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_joint_generation_canary_v1 as canary
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1 as m0
+from scripts.research.lightgen import execute_lightgen_2d_chen_bogt_complex_ols_training_v1 as parent
+
+
+TASK_ID = canary.TASK_ID
+OUTER_GATE = canary.OUTER_GATE
+AUTHORIZATION_ID = canary.AUTHORIZATION_ID
+ATTEMPT_DIR = canary.ATTEMPT_DIR
+RECOVERY_DIR = ATTEMPT_DIR / "finalization_recovery_01"
+PREFLIGHT_PATH = canary.RUNS_DIR / "finalization_preflight_01.json"
+PREFLIGHT_SCHEMA = "m0_bogt_joint_generation_finalization_preflight.v1"
+REPORT_SCHEMA = "m0_bogt_joint_generation_finalization_report.v1"
+ENDPOINT_PATH = ATTEMPT_DIR / "scientific_step_001200.pt"
+ENDPOINT_RECOVERY_PATH = ATTEMPT_DIR / "recovery_000025_step_001200.pt"
+PARENT_STATUS_PATH = ATTEMPT_DIR / "status.json"
+PARENT_LATEST_PATH = ATTEMPT_DIR / "latest_status.json"
+PARENT_SOURCE_PATH = ATTEMPT_DIR / "source_manifest.json"
+PARENT_PREFLIGHT_PATH = ATTEMPT_DIR / "preflight.json"
+PARENT_INSTANCE_PATH = ATTEMPT_DIR / "execution_instance_01.json"
+EXPECTED_PARENT_ERROR = "RunControlError: heartbeat phase is invalid: POST_TRAIN_OLS_COLLECTION"
+PREFLIGHT_LIMIT_SECONDS = canary.PREFLIGHT_BUDGET_SECONDS
+TOTAL_LIMIT_SECONDS = canary.EXECUTION_BUDGET_SECONDS
+
+
+class FinalizationError(RuntimeError):
+    """The saved training endpoint cannot support valid final measurements."""
+
+
+def _require(condition: bool, message: str, error: type[Exception] = FinalizationError) -> None:
+    if not condition:
+        raise error(message)
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    _require(isinstance(value, dict), f"expected a JSON object: {path}")
+    return value
+
+
+def _optimizer_steps(checkpoint: Mapping[str, Any]) -> list[int]:
+    state = checkpoint.get("optimizer_state", {}).get("state")
+    _require(isinstance(state, Mapping) and len(state) == 2, "step1200 checkpoint Adam state is incomplete")
+    steps = []
+    for item in state.values():
+        value = item.get("step")
+        steps.append(int(value.item()) if torch.is_tensor(value) else int(value))
+    return sorted(steps)
+
+
+def _validate_endpoint_pair(
+    endpoint: Mapping[str, Any],
+    recovery_wrapper: Mapping[str, Any],
+    *,
+    endpoint_hash: str,
+) -> dict[str, Any]:
+    recovery = recovery_wrapper.get("payload", {}).get("scientific_state")
+    _require(isinstance(recovery, Mapping), "step1200 recovery checkpoint lacks scientific state")
+    expected_fields = (
+        "schema",
+        "task_id",
+        "outer_gate",
+        "authorization_id",
+        "parent_checkpoint_sha256",
+        "source_manifest_id",
+        "source_manifest",
+        "run_identity",
+        "step",
+        "data_identity",
+        "trainable_parameter_state",
+        "optimizer_state",
+        "optimizer_configuration",
+        "sampler_state",
+        "rng_state",
+        "frozen_runtime_state_sha256",
+        "references",
+        "weights",
+        "training_history",
+        "read_ledger",
+    )
+    _require(set(endpoint) == {*expected_fields, "cumulative_elapsed_seconds"}, "step1200 endpoint contains an unexpected or missing state field")
+    _require(set(recovery) == {*expected_fields, "cumulative_elapsed_seconds"}, "step1200 recovery state contains an unexpected or missing state field")
+    _require(all(field in endpoint and field in recovery for field in expected_fields), "endpoint/recovery state is missing required fields")
+    for field in expected_fields:
+        _require(canary._tree_equal(endpoint[field], recovery[field]), f"step1200 recovery state differs from endpoint in {field}")
+    _require(endpoint.get("schema") == canary.CHECKPOINT_SCHEMA, "endpoint checkpoint schema changed")
+    _require(endpoint.get("task_id") == TASK_ID and endpoint.get("outer_gate") == OUTER_GATE, "endpoint task/gate identity changed")
+    _require(endpoint.get("authorization_id") == AUTHORIZATION_ID, "endpoint authorization changed")
+    _require(endpoint.get("parent_checkpoint_sha256") == canary.START_CHECKPOINT_SHA256, "endpoint parent is not the accepted step600 checkpoint")
+    _require(endpoint.get("step") == canary.END_STEP, "endpoint is not global step1200")
+    _require(endpoint.get("run_identity", {}).get("scientific_attempt_id") == canary.ATTEMPT_ID, "endpoint attempt identity changed")
+    _require(endpoint.get("run_identity", {}).get("source_manifest_id") == endpoint.get("source_manifest_id"), "endpoint source identity is inconsistent")
+    _require(endpoint.get("sampler_state", {}).get("cursor") == canary.END_STEP and endpoint.get("sampler_state", {}).get("steps") == canary.END_STEP, "endpoint TRAIN cursor is not step1200")
+    _require(len(endpoint.get("training_history", [])) == canary.END_STEP, "endpoint does not contain exactly 1200 global training records")
+    _require(_optimizer_steps(endpoint) == [canary.END_STEP, canary.END_STEP], "endpoint Adam internal steps are not both 1200")
+    _require(recovery_wrapper.get("step") == canary.END_STEP and recovery_wrapper.get("source_manifest_id") == endpoint.get("source_manifest_id"), "latest recovery wrapper identity differs from endpoint")
+    _require(recovery_wrapper.get("authorization_id") == AUTHORIZATION_ID and recovery_wrapper.get("run_identity") == endpoint.get("run_identity"), "latest recovery wrapper authorization/run identity changed")
+    return {
+        "endpoint_checkpoint_sha256": endpoint_hash,
+        "endpoint_global_step": canary.END_STEP,
+        "step600_parent_sha256": canary.START_CHECKPOINT_SHA256,
+        "sampler_cursor": canary.END_STEP,
+        "training_history_records": len(endpoint["training_history"]),
+        "adam_internal_steps": _optimizer_steps(endpoint),
+        "endpoint_matches_latest_recovery_state": True,
+        "comparison_excludes_only_elapsed_counter": True,
+    }
+
+
+def _validate_parent_attempt(root: Path) -> dict[str, Any]:
+    attempt01 = root / canary.FAILED_ATTEMPT_DIR
+    preflight04_path = root / canary.PREFLIGHT_PATH
+    preflight04 = _read_json(preflight04_path)
+    _require(preflight04.get("status") == PREFLIGHT_READY, "original preflight_04 is not READY")
+    _require(preflight04.get("source_semantics_id") == _read_json(PARENT_PREFLIGHT_PATH).get("source_semantics_id"), "attempt preflight differs from source-bound preflight_04")
+    expected_attempt01_hash = preflight04.get("previous_preflight", {}).get("preserved_attempt_01", {}).get("status_sha256")
+    attempt01_status = attempt01 / "status.json"
+    _require(attempt01_status.is_file() and file_sha256(attempt01_status) == expected_attempt01_hash, "pre-science attempt_01 status changed")
+    _require(_read_json(attempt01_status).get("state") == RUN_INVALID_HARNESS, "pre-science attempt_01 is not preserved INVALID_HARNESS")
+
+    status = _read_json(PARENT_STATUS_PATH)
+    latest = _read_json(PARENT_LATEST_PATH)
+    source = _read_json(PARENT_SOURCE_PATH)
+    parent_preflight = _read_json(PARENT_PREFLIGHT_PATH)
+    manifest = _read_json(ATTEMPT_DIR / "execution_manifest.json")
+    instance = _read_json(PARENT_INSTANCE_PATH)
+    _require(status.get("state") == RUN_INVALID_HARNESS and status.get("current_step") == canary.END_STEP, "parent attempt is not the recorded post-training harness failure")
+    _require(status.get("error") == EXPECTED_PARENT_ERROR, "parent attempt failure is not the registered heartbeat-phase defect")
+    _require(latest.get("state") == RUN_INVALID_HARNESS and latest.get("phase") == RUN_INVALID_HARNESS, "parent latest status is not INVALID_HARNESS")
+    _require(latest.get("last_recovery_checkpoint") == ENDPOINT_RECOVERY_PATH.name, "latest recovery checkpoint is not step1200")
+    _require(source.get("source_manifest_id") == status.get("source_manifest_id") == manifest.get("source_manifest_id"), "parent source identity does not match execution manifest")
+    _require(parent_preflight.get("status") == PREFLIGHT_READY and parent_preflight.get("source_manifest_id") == source.get("source_manifest_id"), "parent READY preflight does not bind its source")
+    _require(manifest.get("starting_checkpoint_sha256") == canary.START_CHECKPOINT_SHA256 and manifest.get("scientific_adam_start_step") == canary.START_STEP, "parent execution manifest start authority changed")
+    canary._require_previous_process_exited(instance)
+    for name in ("report.json", "step1200_dev_measurement.json", "step1200_train_ols.pt", "generated_s1_ols_coefficients.pt", "generated_raw_cmos.pt"):
+        _require(not (ATTEMPT_DIR / name).exists(), f"parent failed before finalization but unexpected artifact exists: {name}")
+    return {
+        "attempt_01_status_sha256": expected_attempt01_hash,
+        "attempt_01_immutable_invalid_harness": True,
+        "attempt_02_status_sha256": file_sha256(PARENT_STATUS_PATH),
+        "attempt_02_state": status["state"],
+        "attempt_02_error": status["error"],
+        "attempt_02_global_step": status["current_step"],
+        "attempt_02_source_manifest_id": source["source_manifest_id"],
+        "previous_process_exited": True,
+        "final_measurements_absent_before_recovery": True,
+        "preflight_04_sha256": file_sha256(preflight04_path),
+        "parent_execution_elapsed_seconds": float(status["total_elapsed_seconds"]),
+        "parent_preflight_elapsed_seconds": float(preflight04["elapsed_seconds"]),
+    }
+
+
+def _source_paths(root: Path) -> tuple[Path, ...]:
+    paths = list(canary._source_paths(root))
+    paths.extend((Path(__file__).resolve(),))
+    return tuple(dict.fromkeys(paths))
+
+
+def _build_frozen_consumer(
+    context: m0.RuntimeContext,
+    endpoint: Mapping[str, Any],
+) -> bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer:
+    consumer = bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer(
+        device=torch.device("cuda:0"),
+        propagation_grid_size=bogt.PRODUCTION_PROPAGATION_GRID,
+    )
+    references = bogt.FrozenBogtReferences.from_payload(endpoint["references"])
+    weights = bogt.BogtLossWeights.from_payload(endpoint["weights"])
+    consumer.bind_references(references, for_scientific=True)
+    consumer.bind_weights(weights, for_scientific=True)
+    external = parent._load_references(context.root / m0.FROZEN_REFERENCES, expected_data_identity=context.data_identity)
+    _require(references.identity() == external.identity(), "step1200 BOGT reference identity changed")
+    external_weights = parent._load_weights(context.root / m0.FROZEN_WEIGHTS, expected_reference_identity=canonical_sha256(external.identity()))
+    _require(weights.identity() == external_weights.identity(), "step1200 BOGT weights identity changed")
+    consumer.load_trainable_state_dict(endpoint["trainable_parameter_state"])
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    context.training_evaluator.eval()
+    context.independent_evaluator.eval()
+    _require(consumer.frozen_state_sha256 == endpoint["frozen_runtime_state_sha256"], "step1200 frozen optical/runtime identity changed")
+    _require(all(parameter.grad is None for parameter in context.independent_evaluator.parameters()), "E_D has residual parameter gradients")
+    return consumer
+
+
+def _no_graph_probe(consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer, context: m0.RuntimeContext) -> dict[str, Any]:
+    indices = context.train_indices[:1]
+    image = context.images.index_select(0, indices).to(consumer.device)
+    with torch.no_grad():
+        result = consumer.runtime.forward_from_image(image)
+        logits = context.independent_evaluator(m0._evaluator_view(result.raw_intensity))
+        generated = consumer.generated_forward(result.z_ols.coefficients)
+        generated_logits = context.independent_evaluator(m0._evaluator_view(generated.raw_intensity))
+    _require(result.raw_intensity.shape == (1, 1, 200, 200) and generated.raw_intensity.shape == (1, 1, 200, 200), "frozen smoke image shape changed")
+    tensors = (result.raw_intensity, logits, generated.raw_intensity, generated_logits)
+    _require(all(not item.requires_grad and item.grad_fn is None for item in tensors), "finalization smoke retained an autograd graph")
+    _require(all(bool(torch.isfinite(item).all().item()) for item in tensors), "finalization smoke produced a nonfinite tensor")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "frozen optical runtime acquired a parameter gradient")
+    _require(all(parameter.grad is None for parameter in context.independent_evaluator.parameters()), "frozen E_D acquired a parameter gradient")
+    return {"status": "PASS", "rows": 1, "raw_shape": [1, 1, 200, 200], "ED_forward_only": True, "optimizer_created": False, "autograd_graphs_retained": False}
+
+
+def _validate_budget_and_device(root: Path, parent_authority: Mapping[str, Any], phases: Sequence[Mapping[str, Any]], estimate_seconds: float) -> dict[str, Any]:
+    total = float(parent_authority["parent_execution_elapsed_seconds"]) + sum(float(item.get("elapsed_seconds", 0.0)) for item in phases)
+    projected_total = float(parent_authority["parent_execution_elapsed_seconds"]) + estimate_seconds
+    max_fraction = max(float(item["global_used_fraction"]) for item in phases)
+    _require(max_fraction <= canary.MAX_DEVICE_MEMORY_FRACTION, f"finalization preflight exceeded 90% global GPU memory: {max_fraction:.4f}", canary.ResourceBudgetExceeded)
+    _require(projected_total <= TOTAL_LIMIT_SECONDS, f"remaining measurements exceed four-hour total budget: {projected_total:.1f}s", canary.ResourceBudgetExceeded)
+    free = __import__("shutil").disk_usage(root).free
+    _require(free >= 1_000_000_000, f"insufficient free disk space for immutable raw tensor/report artifacts: {free} bytes", canary.ResourceBudgetExceeded)
+    return {"already_elapsed_seconds": parent_authority["parent_execution_elapsed_seconds"], "preflight_elapsed_seconds": total - float(parent_authority["parent_execution_elapsed_seconds"]), "remaining_projection_seconds": estimate_seconds, "projected_total_seconds": projected_total, "remaining_budget_seconds": TOTAL_LIMIT_SECONDS - projected_total, "max_global_device_fraction": max_fraction, "max_allowed_global_device_fraction": canary.MAX_DEVICE_MEMORY_FRACTION, "free_disk_bytes": free, "minimum_required_disk_bytes": 1_000_000_000}
+
+
+def _preflight(root: Path, source: Mapping[str, Any], parent_authority: Mapping[str, Any], endpoint: Mapping[str, Any], endpoint_hash: str) -> dict[str, Any]:
+    phases: list[dict[str, Any]] = []
+    device = torch.device("cuda:0")
+    started = time.perf_counter()
+    context = None
+    consumer = None
+    try:
+        context, stage = canary._measure_phase(device, "finalization_load_fixed_train_dev_and_frozen_evaluators", partial(m0._load_runtime_context, root, device, m0._authority_files(root)))
+        phases.append(stage)
+        _require(context.data_identity == endpoint["data_identity"], "step1200 endpoint and current dataset identities differ")
+        _require(context.data_identity == endpoint["run_identity"]["config_identity"]["data_identity"], "endpoint run identity does not bind the active data split")
+        consumer, stage = canary._measure_phase(device, "finalization_load_frozen_step1200_parameters", partial(_build_frozen_consumer, context, endpoint))
+        phases.append(stage)
+        probe, stage = canary._measure_phase(device, "finalization_no_grad_train_ols_s1_and_ED_smoke", partial(_no_graph_probe, consumer, context))
+        phases.append(stage)
+        _require(probe["status"] == "PASS", "finalization forward-only smoke did not pass")
+        old_pref = _read_json(root / canary.PREFLIGHT_PATH)
+        projection = old_pref.get("projection", {})
+        estimate = (
+            float(projection.get("train_ols_55000_rows_seconds", 0.0))
+            + float(projection.get("s1_2000_forward_seconds", 0.0))
+            + float(projection.get("dev_step0_and_final_seconds", 0.0)) / 2.0
+            + float(projection.get("raw_artifact_write_seconds", 0.0))
+            + 120.0
+        )
+        preflight_elapsed = time.perf_counter() - started
+        _require(parent_authority["parent_preflight_elapsed_seconds"] + preflight_elapsed <= PREFLIGHT_LIMIT_SECONDS, "cumulative preflight time exceeded 600 seconds", canary.ResourceBudgetExceeded)
+        budget = _validate_budget_and_device(root, parent_authority, phases, estimate)
+        budget["preflight_elapsed_seconds"] = preflight_elapsed
+        checks = {
+            CORRECTNESS_INVARIANTS: {"status": "READY", "endpoint_step1200_and_adam": "PASS", "attempt01_and_parent_status_preserved": "PASS", "fixed_data_roles": "PASS", "forward_only_no_graph": "PASS"},
+            RESOURCE_ENVELOPE: {"status": "READY", "phases": phases, "budget": budget},
+            IMPLEMENTATION_SELECTION: {"status": "READY", "mode": "measurement-only endpoint finalization", "optimizer_created": False, "training_updates": 0},
+        }
+        receipt = PreflightReceipt(
+            source_semantics_id=str(source["execution_source_semantics_id"]),
+            authorization_id=AUTHORIZATION_ID,
+            checks=checks,
+            selected_engine="CUDA",
+            resource={"phases": phases, "budget": budget, "projection_seconds": estimate},
+            status=PREFLIGHT_READY,
+        )
+        return {
+            "schema": PREFLIGHT_SCHEMA,
+            "status": PREFLIGHT_READY,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "source_manifest": dict(source),
+            "source_semantics_id": source["execution_source_semantics_id"],
+            "source_manifest_id": source["source_manifest_id"],
+            "parent_attempt": dict(parent_authority),
+            "endpoint_state": _validate_endpoint_pair(endpoint, safe_torch_load(root / ENDPOINT_RECOVERY_PATH, map_location="cpu"), endpoint_hash=endpoint_hash),
+            "forward_only_smoke": probe,
+            "optimizer_created": False,
+            "resource": {"phases": phases, "budget": budget, "projection_seconds": estimate, "max_device_fraction": canary.MAX_DEVICE_MEMORY_FRACTION},
+            "receipt": receipt.to_dict(),
+            "data_firewall": {"train": 1, "dev": 0, "protected": 0, "official_test": 0, "sealed": 0},
+        }
+    finally:
+        del consumer, context
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+def _write_json(path: Path, payload: Mapping[str, Any], kind: str) -> None:
+    canary._write_json_or_compare(path, payload, kind)
+
+
+def _write_torch(path: Path, payload: Mapping[str, Any], kind: str) -> None:
+    canary._write_torch_or_compare(path, payload, kind)
+
+
+def _readout_ledger(endpoint: Mapping[str, Any], context: m0.RuntimeContext) -> dict[str, Any]:
+    return {"through_step1200_training_and_step600_baseline": endpoint.get("read_ledger", {}), "finalization_measurements": context.ledger.to_dict(), "forbidden_roles": {"protected": 0, "official_test": 0, "sealed": 0}}
+
+
+def _measure(root: Path, source: Mapping[str, Any], identity: Any, endpoint: Mapping[str, Any], endpoint_hash: str, preflight: Mapping[str, Any], *, resume: bool) -> dict[str, Any]:
+    prior_elapsed = float(preflight["parent_attempt"]["parent_execution_elapsed_seconds"]) + float(preflight["resource"]["budget"]["preflight_elapsed_seconds"])
+    canary._EXECUTION_STARTED = time.perf_counter() - prior_elapsed
+    receipt = PreflightReceipt.from_mapping(preflight["receipt"])
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    if resume:
+        control.interrupted()
+        control.resume_scientific_attempt(RECOVERY_DIR, canary.ATTEMPT_ID, receipt)
+    else:
+        control.open_scientific_attempt(RECOVERY_DIR, canary.ATTEMPT_ID, receipt)
+    _write_json(RECOVERY_DIR / "source_manifest.json", dict(source), "M0 finalization source manifest")
+    _write_json(RECOVERY_DIR / "preflight.json", dict(preflight), "M0 source-bound finalization READY receipt")
+    _write_json(RECOVERY_DIR / "recovery_manifest.json", {"task_id": TASK_ID, "outer_gate": OUTER_GATE, "attempt_id": canary.ATTEMPT_ID, "phase": "post_training_finalization_only", "parent_attempt_status_path": PARENT_STATUS_PATH.as_posix(), "parent_attempt_status_sha256": preflight["parent_attempt"]["attempt_02_status_sha256"], "step1200_checkpoint_path": ENDPOINT_PATH.as_posix(), "step1200_checkpoint_sha256": endpoint_hash, "source_manifest_id": source["source_manifest_id"], "optimizer_created": False, "additional_training_updates": 0, "attempt_02_status_is_preserved_invalid_harness": True}, "M0 post-training recovery manifest")
+    canary._write_execution_instance(RECOVERY_DIR)
+    heartbeat = HeartbeatWriter(RECOVERY_DIR, identity.run_id, total_steps=canary.UPDATE_COUNT)
+    heartbeat.update(state=RUN_PREPARING, phase="STATISTICS", step=canary.UPDATE_COUNT, latest_losses={"global_step": canary.END_STEP, "recovery_phase": "post_training_finalization_only"}, force=True)
+    heartbeat.update(state=RUNNING, phase="POST_TRAIN_COLLECTION", step=canary.UPDATE_COUNT, latest_losses={"global_step": canary.END_STEP}, force=True)
+
+    context = None
+    consumer = None
+    resources: list[dict[str, Any]] = []
+    try:
+        _require(file_sha256(PARENT_STATUS_PATH) == preflight["parent_attempt"]["attempt_02_status_sha256"], "immutable parent attempt status changed after preflight")
+        _require(file_sha256(ENDPOINT_PATH) == endpoint_hash, "step1200 checkpoint changed after finalization preflight")
+        context, load_stage = canary._measure_phase(torch.device("cuda:0"), "finalization_reload_fixed_train_dev_and_evaluators", partial(m0._load_runtime_context, root, torch.device("cuda:0"), m0._authority_files(root)))
+        resources.append(load_stage)
+        consumer, model_stage = canary._measure_phase(torch.device("cuda:0"), "finalization_reconstruct_frozen_step1200_runtime", partial(_build_frozen_consumer, context, endpoint))
+        resources.append(model_stage)
+        _require(context.data_identity == endpoint["data_identity"], "data identity changed after finalization READY")
+        baseline_path = ATTEMPT_DIR / "step600_dev_baseline.json"
+        baseline = _read_json(baseline_path)
+        accepted_step600 = _read_json(root / (canary.START_RUN / "dev_step_000600.json"))
+        _require(float(baseline["L_rec"]) == float(accepted_step600["L_rec"]), "persisted step600 baseline reconstruction differs from accepted source")
+        _require(abs(float(baseline["E_D"]["macro_recall"]) - 0.1318) <= 0.001, "persisted step600 baseline E_D did not reproduce 0.1318")
+        _require(baseline["rows"] == 5_000 and baseline["data_role"] == bogt.DEV_ROLE, "persisted step600 baseline DEV identity changed")
+
+        bank_call = partial(canary._collect_train_ols, consumer, context, RECOVERY_DIR, identity=identity, endpoint_checkpoint_sha256=endpoint_hash, heartbeat=heartbeat)
+        bank, bank_stage = canary._measure_phase(consumer.device, "finalization_collect_55000_TRAIN_OLS_rows", bank_call)
+        resources.append(bank_stage)
+        _write_torch(RECOVERY_DIR / "step1200_train_ols.pt", {"schema": "m0_bogt_joint_step1200_train_ols.v1", "z": bank, "data_identity": context.data_identity, "source_manifest_id": identity.source_manifest_id, "selected_checkpoint_sha256": endpoint_hash, "selected_step": canary.END_STEP, "data_role": bogt.TRAIN_ROLE}, "step1200 TRAIN OLS bank")
+
+        generated_ols, s1_metadata, _ = m0._fit_s1_and_generate_inputs(bank, context)
+        s1_metadata["selected_step"] = canary.END_STEP
+        labels = torch.tensor(s1_metadata["requested_labels"], dtype=torch.long)
+        generated_call = partial(canary._generated_forward, consumer, context, generated_ols, labels, heartbeat, resources, RECOVERY_DIR / "resource_telemetry.jsonl")
+        (raw, powers, generated_metrics), generated_stage = canary._measure_phase(consumer.device, "finalization_generate_2000_S1_raw_CMOS_and_ED", generated_call)
+        resources.append(generated_stage)
+        _write_torch(RECOVERY_DIR / "generated_s1_ols_coefficients.pt", {"schema": "m0_bogt_joint_s1_coefficients.v1", "ols_coefficients": generated_ols, "requested_labels": labels, "prediction_labels": torch.tensor(generated_metrics["E_D"].get("prediction_labels") or [], dtype=torch.long), "sample_indices": torch.tensor(s1_metadata["sample_indices"], dtype=torch.long), "seeds": torch.tensor(s1_metadata["seeds"], dtype=torch.long), "metadata": s1_metadata, "data_role": bogt.TRAIN_ROLE}, "step1200 S1 OLS coefficients")
+        _write_torch(RECOVERY_DIR / "generated_raw_cmos.pt", {"schema": "m0_bogt_joint_generated_raw_cmos.v1", "raw_cmos": raw, "requested_labels": labels, "prediction_labels": torch.tensor(generated_metrics["E_D"].get("prediction_labels") or [], dtype=torch.long), "optical_powers": powers, "source_step": canary.END_STEP, "data_role": bogt.TRAIN_ROLE, "sampler_family": "S1"}, "step1200 S1 raw CMOS bank")
+
+        fixed_path = root / canary.START_RUN / "fixed_dev_real_controls.pt"
+        accepted_fixed_ref = _read_json(root / canary.START_REPORT).get("artifacts", {}).get("fixed_dev_controls", {})
+        _require(fixed_path.is_file() and file_sha256(fixed_path) == accepted_fixed_ref.get("sha256"), "accepted step600 fixed DEV real-control input changed")
+        fixed = safe_torch_load(fixed_path, map_location="cpu")
+        expected_indices, expected_labels = m0._fixed_dev_control_indices(context)
+        _require(fixed.get("selected_step") == canary.START_STEP and fixed.get("data_role") == bogt.DEV_ROLE, "step600 fixed DEV control identity changed")
+        _require(torch.equal(fixed.get("source_indices"), expected_indices) and torch.equal(fixed.get("labels"), expected_labels), "step600 fixed DEV control row mapping changed")
+        _require(fixed.get("raw_cmos").shape == (100, 1, 200, 200), "step600 fixed DEV real control shape changed")
+        _write_json(RECOVERY_DIR / "fixed_dev_real_controls_authority.json", {"path": (canary.START_RUN / "fixed_dev_real_controls.pt").as_posix(), "sha256": accepted_fixed_ref["sha256"], "selected_step": canary.START_STEP, "data_role": bogt.DEV_ROLE, "source_indices": expected_indices.tolist(), "labels": expected_labels.tolist()}, "step600 fixed DEV control authority")
+
+        dev_call = partial(canary._dev_measurement, consumer, context)
+        dev1, dev_stage = canary._measure_phase(consumer.device, "finalization_full_step1200_DEV_E_D_confirmation", dev_call)
+        resources.append(dev_stage)
+        _write_json(RECOVERY_DIR / "step1200_dev_measurement.json", dev1, "step1200 DEV confirmation")
+        sheet_call = partial(m0._save_contact_sheets, raw, labels, fixed["raw_cmos"], fixed["labels"], RECOVERY_DIR)
+        sheets, sheet_stage = canary._measure_phase(consumer.device, "finalization_contact_sheet_render_and_write", sheet_call)
+        resources.append(sheet_stage)
+        raw_validity = m0._raw_cmos_validity(raw)
+        classification, conditions = canary._gate(baseline, dev1, generated_metrics, raw_validity)
+        terminal_state = RUN_COMPLETED if classification == canary.CLASSIFICATION_SUPPORTED else RUN_VALID_FAILED
+        selected_losses = {str(step): endpoint["training_history"][step - 1] for step in canary.FIXED_CHECKPOINT_STEPS}
+        read_ledger = _readout_ledger(endpoint, context)
+        report = {
+            "schema": REPORT_SCHEMA,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "classification": classification,
+            "measurement_validity": "COMPLETE_VALID_MEASUREMENT",
+            "finalization_only": True,
+            "parent_attempt_status": "INVALID_HARNESS",
+            "parent_attempt_error": EXPECTED_PARENT_ERROR,
+            "parent_status_sha256_preserved": preflight["parent_attempt"]["attempt_02_status_sha256"],
+            "gate_conditions": conditions,
+            "training": {"start_step": canary.START_STEP, "end_step": canary.END_STEP, "additional_updates": canary.UPDATE_COUNT, "adam_internal_step_start": canary.START_STEP, "adam_internal_step_end": canary.END_STEP, "objective": "alpha*L_dist + beta*L_rec + gamma*L_op", "weights": endpoint["weights"], "fixed_step_loss_records": selected_losses, "final_dev_reconstruction": dev1["L_rec"], "updates_during_finalization": 0},
+            "step600_baseline": baseline,
+            "step1200_dev": dev1,
+            "dev_reconstruction_delta": float(dev1["L_rec"]) - float(baseline["L_rec"]),
+            "S1": {"metadata": s1_metadata, "E_D": generated_metrics["E_D"], "raw_cmos_validity": raw_validity, "optical_power_finite": generated_metrics["optical_power_finite"], "input_coefficients_path": "generated_s1_ols_coefficients.pt", "raw_cmos_path": "generated_raw_cmos.pt"},
+            "contact_sheets": sheets,
+            "resource_phases": resources,
+            "resource_max_global_device_fraction": max(float(item["global_used_fraction"]) for item in resources),
+            "data_reads": read_ledger,
+            "forbidden_data_reads": {"protected": 0, "official_test": 0, "sealed": 0},
+            "frozen_state_checks": {"endpoint_parameters_reproduced": True, "runtime_gradients_absent": all(parameter.grad is None for parameter in consumer.runtime.parameters()), "training_evaluator_gradients_absent": all(parameter.grad is None for parameter in context.training_evaluator.parameters()), "independent_E_D_gradients_absent": all(parameter.grad is None for parameter in context.independent_evaluator.parameters()), "W_OLS_identity": torch.equal(consumer.runtime.ols.transport.detach().cpu(), torch.eye(100, dtype=torch.complex64)), "optimizer_created_during_finalization": False},
+            "endpoint_checkpoint": {"path": ENDPOINT_PATH.as_posix(), "sha256": endpoint_hash, "global_step": canary.END_STEP, "adam_internal_steps": _optimizer_steps(endpoint)},
+            "source_manifest_id": source["source_manifest_id"],
+            "total_elapsed_seconds": canary._elapsed_seconds(),
+            "automatic_next_action": "NONE",
+        }
+        artifacts = {path.name: {"sha256": file_sha256(path), "size_bytes": path.stat().st_size} for path in sorted(RECOVERY_DIR.iterdir()) if path.is_file() and path.name not in {"report.json", "status.json", "latest_status.json", "progress.jsonl"}}
+        report["artifacts"] = artifacts
+        atomic_write_new_json(RECOVERY_DIR / "report.json", report, artifact_kind="M0 joint-generation Outer Gate report recovered from exact endpoint")
+        if terminal_state == RUN_COMPLETED:
+            control.complete()
+        else:
+            control.valid_failed()
+        terminal = {"task_id": TASK_ID, "outer_gate": OUTER_GATE, "attempt_id": canary.ATTEMPT_ID, "state": terminal_state, "classification": classification, "report_sha256": file_sha256(RECOVERY_DIR / "report.json"), "source_manifest_id": source["source_manifest_id"], "global_step": canary.END_STEP, "scientific_updates": canary.UPDATE_COUNT, "adam_internal_step": canary.END_STEP, "updates_during_finalization": 0, "parent_attempt_status_remains": RUN_INVALID_HARNESS, "parent_attempt_status_sha256": preflight["parent_attempt"]["attempt_02_status_sha256"], "total_elapsed_seconds": report["total_elapsed_seconds"], "read_ledger": read_ledger}
+        atomic_write_new_json(RECOVERY_DIR / "status.json", terminal, artifact_kind="M0 post-training finalization terminal status")
+        heartbeat.update(state=terminal_state, phase=terminal_state, step=canary.UPDATE_COUNT, latest_losses={"classification": classification, "global_step": canary.END_STEP}, force=True)
+        return report
+    except KeyboardInterrupt:
+        control.interrupted()
+        heartbeat.update(state=RUN_INTERRUPTED, phase="INTERRUPTED", step=canary.UPDATE_COUNT, latest_losses={"global_step": canary.END_STEP}, force=True)
+        raise
+    except Exception as error:
+        state = RUN_INTERRUPTED if isinstance(error, canary.ResourceBudgetExceeded) else RUN_INVALID_HARNESS
+        if control.state not in {RUN_INTERRUPTED, RUN_INVALID_HARNESS}:
+            control.interrupted() if state == RUN_INTERRUPTED else control.invalid_harness()
+        latest = {"task_id": TASK_ID, "outer_gate": OUTER_GATE, "attempt_id": canary.ATTEMPT_ID, "state": state, "phase": "FINALIZATION_INTERRUPTED" if state == RUN_INTERRUPTED else RUN_INVALID_HARNESS, "source_manifest_id": source["source_manifest_id"], "error": f"{type(error).__name__}: {error}", "global_step": canary.END_STEP, "additional_training_updates": 0, "total_elapsed_seconds": canary._elapsed_seconds()}
+        if not (RECOVERY_DIR / "status.json").exists():
+            atomic_write_new_json(RECOVERY_DIR / "status.json", latest, artifact_kind="M0 finalization recovery interruption status")
+        heartbeat.update(state=state, phase="INTERRUPTED" if state == RUN_INTERRUPTED else RUN_INVALID_HARNESS, step=canary.UPDATE_COUNT, latest_losses={"error": latest["error"]}, force=True)
+        raise
+    finally:
+        del consumer, context
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--resume-finalization", action="store_true", help="resume only an interrupted post-training measurement recovery")
+    args = parser.parse_args(argv)
+    root = canary._root()
+    canary._prepare_cuda_dll_path()
+    _require(torch.cuda.is_available(), "CUDA is required to measure this production optical endpoint", canary.ResourceBudgetExceeded)
+    if not PREFLIGHT_PATH.exists():
+        _require(not RECOVERY_DIR.exists(), "a finalization output already exists without its source-bound preflight")
+    endpoint_hash = file_sha256(root / ENDPOINT_PATH)
+    endpoint = safe_torch_load(root / ENDPOINT_PATH, map_location="cpu")
+    _require(isinstance(endpoint, Mapping), "step1200 endpoint checkpoint is malformed")
+    parent_authority = _validate_parent_attempt(root)
+    endpoint_audit = _validate_endpoint_pair(endpoint, safe_torch_load(root / ENDPOINT_RECOVERY_PATH, map_location="cpu"), endpoint_hash=endpoint_hash)
+    base_checkpoint = safe_torch_load(root / canary.START_CHECKPOINT, map_location="cpu")
+    base_permutations = base_checkpoint.get("sampler_state", {}).get("permutations")
+    endpoint_permutations = endpoint.get("sampler_state", {}).get("permutations")
+    _require(isinstance(base_permutations, list) and isinstance(endpoint_permutations, list) and len(base_permutations) == len(endpoint_permutations) == 10, "step600/1200 TRAIN permutations are incomplete")
+    _require(all(torch.equal(before, after) for before, after in zip(base_permutations, endpoint_permutations, strict=True)), "step1200 changed or reshuffled accepted step600 TRAIN permutations")
+
+    config = {"mode": "post_training_measurement_only", "attempt_id": canary.ATTEMPT_ID, "parent_status_sha256": parent_authority["attempt_02_status_sha256"], "step1200_checkpoint_sha256": endpoint_hash, "step600_checkpoint_sha256": canary.START_CHECKPOINT_SHA256, "outer_gate": OUTER_GATE, "scientific_updates": 0}
+    source_probe = capture_execution_source_manifest(root, task_id=TASK_ID, semantic_authority_id=canary.SEMANTIC_AUTHORITY_ID, relevant_paths=_source_paths(root), config_identity=config)
+    source = source_probe.to_dict()
+
+    if args.resume_finalization:
+        _require(PREFLIGHT_PATH.is_file() and RECOVERY_DIR.is_dir(), "resume requires the existing finalization READY and output directory")
+        preflight = _read_json(PREFLIGHT_PATH)
+        _require(preflight.get("status") == PREFLIGHT_READY and preflight.get("source_semantics_id") == source["execution_source_semantics_id"], "finalization preflight is not READY for current source")
+        _require(_read_json(RECOVERY_DIR / "source_manifest.json") == source, "finalization source manifest changed")
+        latest = _read_json(RECOVERY_DIR / "latest_status.json")
+        _require(latest.get("state") in {RUNNING, RUN_INTERRUPTED} and not (RECOVERY_DIR / "status.json").exists(), "only an unfinished finalization without terminal status may resume")
+        instances = sorted(RECOVERY_DIR.glob("execution_instance_*.json"))
+        _require(bool(instances), "finalization recovery lacks process instance evidence")
+        canary._require_previous_process_exited(_read_json(instances[-1]))
+        identity = canary._identity(source, endpoint["data_identity"], base_checkpoint)
+        report = _measure(root, source, identity, endpoint, endpoint_hash, preflight, resume=True)
+        print(json.dumps({"status": "MEASUREMENTS_COMPLETE", "classification": report["classification"], "report": (RECOVERY_DIR / "report.json").as_posix()}, ensure_ascii=False))
+        return 0
+
+    _require(not PREFLIGHT_PATH.exists(), "finalization_preflight_01 is write-once and already exists")
+    _require(not RECOVERY_DIR.exists(), "finalization_recovery_01 already exists")
+    started = time.perf_counter()
+    try:
+        preflight = _preflight(root, source, parent_authority, endpoint, endpoint_hash)
+        preflight["step1200_checkpoint_authority"] = endpoint_audit
+        preflight["cuda_runtime_dll_path"] = {"scope": "current_process", "status": "prepared"}
+    except Exception as error:
+        PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        blocked = {"schema": PREFLIGHT_SCHEMA, "status": "PREFLIGHT_BLOCKED(resource)" if isinstance(error, canary.ResourceBudgetExceeded) else RUN_INVALID_HARNESS, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "source_manifest": source, "source_semantics_id": source["execution_source_semantics_id"], "failure": {"type": type(error).__name__, "message": str(error), "traceback": traceback.format_exc()}, "parent_attempt": parent_authority, "endpoint_state": endpoint_audit, "attempt_created": False, "elapsed_seconds": time.perf_counter() - started}
+        atomic_write_new_json(PREFLIGHT_PATH, blocked, artifact_kind="M0 finalization recovery blocked preflight")
+        print(json.dumps({"status": blocked["status"], "failure": blocked["failure"], "preflight": PREFLIGHT_PATH.as_posix()}, ensure_ascii=False))
+        return 2
+    preflight["elapsed_seconds"] = time.perf_counter() - started
+    preflight["step1200_checkpoint_authority"] = endpoint_audit
+    PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_new_json(PREFLIGHT_PATH, preflight, artifact_kind="M0 source-bound finalization READY preflight")
+    identity = canary._identity(source, endpoint["data_identity"], base_checkpoint)
+    report = _measure(root, source, identity, endpoint, endpoint_hash, preflight, resume=False)
+    print(json.dumps({"status": report["classification"], "classification": report["classification"], "report": (RECOVERY_DIR / "report.json").as_posix()}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

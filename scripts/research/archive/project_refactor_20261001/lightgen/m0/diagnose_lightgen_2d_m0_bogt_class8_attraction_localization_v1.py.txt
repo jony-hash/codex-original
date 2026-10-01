@@ -1,0 +1,932 @@
+"""Localize step600/step900 E_D class-8 errors with frozen TRAIN prototypes."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import time
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+import torch
+import torch.nn.functional as F
+
+from ldm_project.v2.application.research.shared import research_run_control as run_control
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_json,
+    atomic_write_new_json,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from scripts.research.lightgen.m0 import audit_lightgen_2d_m0_bogt_canonical_direction_evidence_v1 as audit, execute_lightgen_2d_m0_bogt_active_canonical_semantic_direction_canary_v1 as canary, execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1 as m0
+from scripts.research.lightgen import execute_lightgen_2d_establish_sic_independent_confirmation_evaluator_v1 as ed_authority, execute_lightgen_2d_three_evaluator_robust_semantic_continuation_v1 as three
+
+
+TASK_ID = "M0_BOGT_CLASS8_ATTRACTION_LOCALIZATION_V1"
+AUTHORIZATION_TOKEN = "AUTHORIZED_M0_BOGT_CLASS8_ATTRACTION_LOCALIZATION_V1"
+AUTHORIZATION_ID = f"{TASK_ID}:authorization:01"
+SEMANTIC_AUTHORITY_ID = "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION"
+RUN_ID = "m0-bogt-class8-attraction-localization-v1"
+TRAJECTORY_ID = f"{RUN_ID}:frozen-replay"
+OUTER_GATE = "M0_BOGT_CLASS8_ATTRACTION_LOCALIZATION_RESOLVED"
+CLASSIFICATION_PIXEL_AND_FEATURE = "PIXEL_AND_FEATURE_CLASS8_ALIGNMENT"
+CLASSIFICATION_FEATURE_ONLY = "FEATURE_ONLY_CLASS8_ALIGNMENT"
+CLASSIFICATION_MIXED = "MIXED_OR_UNRESOLVED"
+RUNS_ROOT = Path("outputs/20260926_m0_bogt_class8_attraction_localization_v1/runs")
+ATTEMPT_DIR = RUNS_ROOT / "attempt_01"
+ATTEMPT_ID = f"{RUN_ID}:attempt_01"
+AUDIT_REPORT = audit.RECOVERY_DIR / "report.json"
+AUDIT_VECTORS = audit.RECOVERY_DIR / "replayed_prediction_vectors.pt"
+MAX_PREFLIGHT_SECONDS = 300.0
+MAX_TOTAL_SECONDS = 1_800.0
+MAX_DEVICE_MEMORY_FRACTION = 0.90
+BOOTSTRAP_REPLICATES = 2_000
+BOOTSTRAP_SEED = 926_803
+FORWARD_BATCH_SIZE = 10
+ED_BATCH_SIZE = 512
+NON8_CLASSES = tuple(range(8)) + (9,)
+VECTOR_SCHEMA = "m0_bogt_class8_localization_vectors.v1"
+
+
+class LocalizationError(RuntimeError):
+    """Invalid lineage, evaluator, or complete measurement input."""
+
+
+class ResourceBlocked(LocalizationError):
+    """The fixed read-only measurement exceeds its resource envelope."""
+
+
+def _require(condition: bool, message: str, error_type: type[Exception] = LocalizationError) -> None:
+    if not condition:
+        raise error_type(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise LocalizationError(f"cannot read registered authority: {path}") from error
+    _require(isinstance(payload, dict), f"authority is not a JSON object: {path}")
+    return payload
+
+
+def _verify_file(root: Path, path: Path, expected: str, role: str) -> str:
+    target = root / path
+    _require(target.is_file(), f"{role} is missing: {path}")
+    actual = file_sha256(target)
+    _require(len(expected) == 64 and actual == expected, f"{role} identity changed")
+    return actual
+
+
+def _input_bundle(root: Path) -> dict[str, Any]:
+    replay = audit._load_audit_inputs(root)
+    audit_report_path = root / AUDIT_REPORT
+    audit_report = _read_json(audit_report_path)
+    _require(
+        audit_report.get("result") == run_control.RUN_COMPLETED
+        and audit_report.get("classification") == "EXISTING_DIRECTIONAL_EVIDENCE_REPRODUCED"
+        and audit_report.get("outer_gate") == audit.OUTER_GATE,
+        "step900 independent audit is not the named completed authority",
+    )
+    vector_ref = _mapping(audit_report.get("artifacts", {}).get("replayed_prediction_vectors"), "audit prediction vector reference")
+    vector_path = AUDIT_REPORT.parent / str(vector_ref.get("path", ""))
+    _verify_file(root, vector_path, str(vector_ref.get("sha256", "")), "independent audit prediction vectors")
+    vector_payload = dict(_mapping(safe_torch_load(root / vector_path, map_location="cpu"), "audit prediction vectors"))
+    _require(vector_payload.get("schema") == "m0_bogt_canonical_direction_audit_vectors.v1", "audit vector schema changed")
+
+    m0_report = _read_json(root / canary.M0_REPORT)
+    _require(m0_report.get("result") == "VALID_FAILED", "step600 M0 report identity or result changed")
+    step600_artifacts = _mapping(m0_report.get("artifacts"), "step600 M0 artifacts")
+    raw_ref = _mapping(step600_artifacts.get("raw_cmos"), "step600 S1 raw CMOS reference")
+    step600_raw_path = Path(str(raw_ref.get("path", "")))
+    _verify_file(root, step600_raw_path, str(raw_ref.get("sha256", "")), "step600 S1 raw CMOS")
+    step600_raw_payload = dict(_mapping(safe_torch_load(root / step600_raw_path, map_location="cpu"), "step600 S1 raw CMOS"))
+    step600_raw = step600_raw_payload.get("raw_cmos")
+    step600_labels = step600_raw_payload.get("requested_labels")
+    step600_saved_predictions = step600_raw_payload.get("prediction_labels")
+    _require(
+        step600_raw_payload.get("schema") == "m0_generated_raw_cmos.v1"
+        and isinstance(step600_raw, torch.Tensor)
+        and step600_raw.shape == (audit.S1_COUNT, 1, 200, 200)
+        and isinstance(step600_labels, torch.Tensor)
+        and isinstance(step600_saved_predictions, torch.Tensor)
+        and torch.equal(step600_labels.cpu().long(), replay["s1_labels_before"])
+        and torch.equal(step600_saved_predictions.cpu().long(), vector_payload["s1_step600_predictions"]),
+        "step600 S1 raw image labels or saved predictions disagree with the audited baseline",
+    )
+    _require(
+        torch.equal(vector_payload["dev_labels"].cpu().long(), replay["dev_labels"])
+        and torch.equal(vector_payload["dev_step600_predictions"].cpu().long(), replay["dev_before"])
+        and torch.equal(vector_payload["s1_step900_predictions"].cpu().long(), replay["generated_predictions"]),
+        "existing step600/step900 prediction vectors disagree across the named authorities",
+    )
+
+    qualification_path = m0.ED_QUALIFICATION
+    qualification_report = _read_json(root / qualification_path)
+    expected_qual_sha = m0.ED_QUALIFICATION_SHA256
+    _verify_file(root, qualification_path, expected_qual_sha, "E_D qualification report")
+    _verify_file(root, m0.ED_CHECKPOINT, m0.ED_CHECKPOINT_SHA256, "E_D checkpoint")
+    _verify_file(root, m0.ED_REPORT, m0.ED_REPORT_SHA256, "E_D report")
+    _verify_file(root, m0.ED_ARCHITECTURE, m0.ED_ARCHITECTURE_SHA256, "E_D architecture")
+    _verify_file(root, m0.ED_INDEPENDENCE, m0.ED_INDEPENDENCE_SHA256, "E_D independence audit")
+
+    train_fit, train_labels, qualification, qualification_labels, split = ed_authority._ed_split(root / "data" / "MNIST")
+    checkpoint_payload = _mapping(
+        safe_torch_load(root / m0.ED_CHECKPOINT, expected_sha256=m0.ED_CHECKPOINT_SHA256, map_location="cpu"),
+        "E_D checkpoint",
+    )
+    checkpoint_split_sha = checkpoint_payload.get("split_manifest_hash")
+    _require(
+        checkpoint_split_sha == split["manifest"]["manifest_hash"]
+        and train_fit.shape == (49_500, 1, 28, 28)
+        and qualification.shape == (5_500, 1, 28, 28)
+        and torch.equal(
+            torch.bincount(train_labels, minlength=10),
+            torch.tensor(split["manifest"]["selection"]["fit_counts_by_class"], dtype=torch.long),
+        )
+        and torch.equal(torch.bincount(qualification_labels, minlength=10), torch.full((10,), 550)),
+        "E_D TRAIN fit/qualification split does not match its checkpoint authority",
+    )
+    forbidden = split["manifest"].get("forbidden_roles", {})
+    _require(
+        forbidden.get("optical_dev") == forbidden.get("dev_generated_cmos") == forbidden.get("optical_outputs") == forbidden.get("s1") == forbidden.get("official_test") == forbidden.get("protected") == forbidden.get("sealed") == 0,
+        "E_D prototype source split permits a forbidden data role",
+    )
+
+    verified = {
+        "step600_report": file_sha256(root / canary.M0_REPORT),
+        "step600_checkpoint": canary.START_CHECKPOINT_SHA256,
+        "step600_s1_raw_cmos": str(raw_ref["sha256"]),
+        "step900_audit_report": file_sha256(audit_report_path),
+        "step900_audit_vectors": str(vector_ref["sha256"]),
+        **replay["verified_hashes"],
+        "E_D_qualification": expected_qual_sha,
+        "E_D_checkpoint": m0.ED_CHECKPOINT_SHA256,
+        "E_D_fit_split": str(split["manifest"]["selection"]["fit_source_indices_sha256"]),
+        "E_D_qualification_split": str(split["manifest"]["selection"]["qualification_source_indices_sha256"]),
+    }
+    return {
+        "audit": replay,
+        "audit_report": audit_report,
+        "audit_vectors": vector_payload,
+        "step600_report": m0_report,
+        "step600_raw_payload": step600_raw_payload,
+        "step600_raw_path": step600_raw_path,
+        "step600_raw_sha256": str(raw_ref["sha256"]),
+        "train_fit": train_fit,
+        "train_labels": train_labels,
+        "qualification": qualification,
+        "qualification_labels": qualification_labels,
+        "qualification_report": qualification_report,
+        "split": split,
+        "verified_hashes": verified,
+    }
+
+
+def _source_and_identity(root: Path, inputs: Mapping[str, Any]) -> tuple[Any, Any]:
+    config = {
+        "outer_gate": OUTER_GATE,
+        "input_hashes": dict(inputs["verified_hashes"]),
+        "prototype_source": "E_D original 49,500 TRAIN fit rows only; arithmetic class means",
+        "representations": ["clamped pooled 28x28 pixels", "E_D 256D penultimate features"],
+        "measurements": {"DEV": 5_000, "S1_each_step": 2_000, "E_D_qualification": 5_500},
+        "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "strata": "requested class among non-8 samples predicted as 8"},
+        "no_optimizer_backward_or_parameter_updates": True,
+    }
+    relevant = (
+        Path(__file__).resolve(),
+        Path(audit.__file__).resolve(),
+        Path(canary.__file__).resolve(),
+        Path(m0.__file__).resolve(),
+        Path(three.__file__).resolve(),
+        Path(ed_authority.__file__).resolve(),
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py",
+        root / "src/ldm_project/v2/application/research/shared/research_run_control.py",
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+        root / "src/ldm_project/v2/evidence/io.py",
+        root / "src/ldm_project/v2/student/evaluator.py",
+    )
+    source = run_control.capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        relevant_paths=relevant,
+        config_identity=config,
+    )
+    identity = run_control.ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        trajectory_id=TRAJECTORY_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role="E_D_TRAIN_FIT_E_D_QUALIFICATION_OPTICAL_DEV_FIXED_S1_READ_ONLY",
+        config_identity=config,
+        model_identity={
+            "step600_checkpoint": canary.START_CHECKPOINT_SHA256,
+            "step900_checkpoint": inputs["verified_hashes"]["step900_checkpoint"],
+            "E_D_checkpoint": m0.ED_CHECKPOINT_SHA256,
+        },
+        optimizer_identity={"optimizer": None, "backward": False, "parameter_updates": 0},
+        sampler_identity={
+            "step600_S1_raw": inputs["step600_raw_sha256"],
+            "step900_S1_raw": inputs["verified_hashes"]["raw_cmos"],
+            "E_D_fit_indices": inputs["verified_hashes"]["E_D_fit_split"],
+        },
+        execution_source_semantics_id=source.execution_source_semantics_id,
+        source_manifest_id=source.source_manifest_id,
+    )
+    return source, identity
+
+
+def _memory_snapshot(device: torch.device) -> dict[str, int]:
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    return {"free_bytes": int(free_bytes), "total_bytes": int(total_bytes), "used_bytes": int(total_bytes - free_bytes)}
+
+
+def _check_memory(device: torch.device, peak: dict[str, int]) -> dict[str, int]:
+    current = _memory_snapshot(device)
+    if current["used_bytes"] > peak["used_bytes"]:
+        peak.update(current)
+    _require(peak["used_bytes"] <= int(peak["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device memory exceeds 90 percent cap", ResourceBlocked)
+    return current
+
+
+def _ed_features(ed: torch.nn.Module, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    network = ed.network
+    flattened = network[0](images)
+    hidden = network[2](network[1](flattened))
+    features = network[4](network[3](hidden))
+    logits = network[5](features)
+    return features, logits
+
+
+def _ed_view(raw: torch.Tensor) -> torch.Tensor:
+    _require(raw.ndim == 4 and tuple(raw.shape[1:]) == (1, 200, 200), "raw CMOS geometry changed")
+    _require(bool(torch.isfinite(raw).all().item()), "raw CMOS contains nonfinite values")
+    return F.adaptive_avg_pool2d(raw.clamp(0.0, 1.0), (28, 28))
+
+
+def _accumulate_class_sums(
+    sums: torch.Tensor,
+    counts: torch.Tensor,
+    values: torch.Tensor,
+    labels: torch.Tensor,
+) -> None:
+    _require(values.ndim == 2 and labels.shape == (values.shape[0],), "class-centroid batch shape changed")
+    _require(sums.shape == (10, values.shape[1]) and counts.shape == (10,), "class-centroid accumulator shape changed")
+    labels = labels.to(device=sums.device, dtype=torch.long)
+    sums.index_add_(0, labels, values.to(device=sums.device, dtype=sums.dtype))
+    counts.add_(torch.bincount(labels, minlength=10).to(device=counts.device, dtype=counts.dtype))
+
+
+def _build_centers(
+    ed: torch.nn.Module,
+    fit_images: torch.Tensor,
+    fit_labels: torch.Tensor,
+    *,
+    device: torch.device,
+    batch_size: int = ED_BATCH_SIZE,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    _require(fit_images.shape == (49_500, 1, 28, 28) and fit_labels.shape == (49_500,), "E_D fit population changed")
+    counts = torch.zeros(10, dtype=torch.float64, device=device)
+    feature_counts = torch.zeros(10, dtype=torch.float64, device=device)
+    pixel_sums = torch.zeros((10, 784), dtype=torch.float64, device=device)
+    feature_sums = torch.zeros((10, 256), dtype=torch.float64, device=device)
+    ed.eval()
+    with torch.inference_mode():
+        for start in range(0, fit_images.shape[0], batch_size):
+            stop = min(start + batch_size, fit_images.shape[0])
+            images = fit_images[start:stop].to(device=device, dtype=torch.float32)
+            labels = fit_labels[start:stop].to(device=device, dtype=torch.long)
+            features, _ = _ed_features(ed, images)
+            _accumulate_class_sums(pixel_sums, counts, images.flatten(1).to(torch.float64), labels)
+            _accumulate_class_sums(feature_sums, feature_counts, features.to(torch.float64), labels)
+    _require(bool((counts > 0).all().item()), "E_D fit split contains an empty class")
+    _require(torch.equal(counts, feature_counts), "pixel and E_D center rows differ")
+    return (pixel_sums / counts[:, None]).to(torch.float32), (feature_sums / counts[:, None]).to(torch.float32), counts.cpu().long()
+
+
+def _evaluate_views(
+    ed: torch.nn.Module,
+    views: torch.Tensor,
+    labels: torch.Tensor,
+    pixel_centers: torch.Tensor,
+    feature_centers: torch.Tensor,
+    *,
+    device: torch.device,
+    batch_size: int = ED_BATCH_SIZE,
+) -> dict[str, torch.Tensor]:
+    _require(views.ndim == 4 and tuple(views.shape[1:]) == (1, 28, 28), "E_D view shape changed")
+    _require(labels.shape == (views.shape[0],), "requested labels do not match E_D views")
+    logits_parts: list[torch.Tensor] = []
+    feature_distance_parts: list[torch.Tensor] = []
+    pixel_distance_parts: list[torch.Tensor] = []
+    pixel_centers = pixel_centers.to(device)
+    feature_centers = feature_centers.to(device)
+    with torch.inference_mode():
+        for start in range(0, views.shape[0], batch_size):
+            stop = min(start + batch_size, views.shape[0])
+            images = views[start:stop].to(device=device, dtype=torch.float32)
+            features, logits = _ed_features(ed, images)
+            pixels = images.flatten(1)
+            pixel_distances = torch.cdist(pixels, pixel_centers).square()
+            feature_distances = torch.cdist(features, feature_centers).square()
+            logits_parts.append(logits.cpu())
+            pixel_distance_parts.append(pixel_distances.cpu())
+            feature_distance_parts.append(feature_distances.cpu())
+    logits_cpu = torch.cat(logits_parts, dim=0)
+    pixel_distance_cpu = torch.cat(pixel_distance_parts, dim=0)
+    feature_distance_cpu = torch.cat(feature_distance_parts, dim=0)
+    labels_cpu = labels.cpu().long()
+    predictions = logits_cpu.argmax(dim=1)
+    request_logits = logits_cpu.gather(1, labels_cpu[:, None]).squeeze(1)
+    return {
+        "labels": labels_cpu,
+        "predictions": predictions,
+        "logits": logits_cpu,
+        "class8_minus_requested_logit": logits_cpu[:, 8] - request_logits,
+        "pixel_nearest_class": pixel_distance_cpu.argmin(dim=1),
+        "feature_nearest_class": feature_distance_cpu.argmin(dim=1),
+        "pixel_squared_distances": pixel_distance_cpu,
+        "feature_squared_distances": feature_distance_cpu,
+    }
+
+
+def _confusion(labels: torch.Tensor, predictions: torch.Tensor) -> dict[str, Any]:
+    matrix = torch.bincount(labels.long() * 10 + predictions.long(), minlength=100).reshape(10, 10)
+    counts = matrix.sum(dim=1)
+    recall = matrix.diag().to(torch.float64) / counts.clamp_min(1)
+    return {
+        "rows": int(labels.numel()),
+        "confusion_matrix_actual_rows_predicted_columns": matrix.tolist(),
+        "per_class_recall": recall.tolist(),
+        "macro_recall": float(recall.mean()),
+        "prediction_histogram": torch.bincount(predictions.long(), minlength=10).tolist(),
+        "class8_prediction_fraction": float((predictions == 8).float().mean()),
+        "non8_to_8_fraction": float(((labels != 8) & (predictions == 8)).sum() / max(int((labels != 8).sum()), 1)),
+    }
+
+
+def _class8_bootstrap(
+    labels: torch.Tensor,
+    predictions: torch.Tensor,
+    pixel_nearest: torch.Tensor,
+    feature_nearest: torch.Tensor,
+    *,
+    replicates: int = BOOTSTRAP_REPLICATES,
+    seed: int = BOOTSTRAP_SEED,
+) -> dict[str, Any]:
+    labels = labels.cpu().long()
+    false8 = (labels != 8) & (predictions.cpu().long() == 8)
+    positions_by_class = [torch.nonzero(false8 & (labels == digit), as_tuple=False).flatten() for digit in NON8_CLASSES]
+    total = sum(int(positions.numel()) for positions in positions_by_class)
+    if total == 0:
+        return {"candidate_count": 0, "replicates": replicates, "seed": seed, "pixel_nearest8_fraction": None, "feature_nearest8_fraction": None}
+    pixel_nearest = pixel_nearest.cpu().long()
+    feature_nearest = feature_nearest.cpu().long()
+    source = torch.Generator(device="cpu").manual_seed(seed)
+    pixel_values = torch.empty(replicates, dtype=torch.float64)
+    feature_values = torch.empty(replicates, dtype=torch.float64)
+    for replicate in range(replicates):
+        sampled_parts: list[torch.Tensor] = []
+        for positions in positions_by_class:
+            if positions.numel():
+                draw = torch.randint(positions.numel(), (positions.numel(),), generator=source)
+                sampled_parts.append(positions.index_select(0, draw))
+        selected = torch.cat(sampled_parts)
+        pixel_values[replicate] = (pixel_nearest[selected] == 8).double().mean()
+        feature_values[replicate] = (feature_nearest[selected] == 8).double().mean()
+    alpha = torch.tensor([0.025, 0.975], dtype=torch.float64)
+    pixel_interval = torch.quantile(pixel_values, alpha).tolist()
+    feature_interval = torch.quantile(feature_values, alpha).tolist()
+    return {
+        "candidate_count": total,
+        "replicates": replicates,
+        "seed": seed,
+        "strata": {str(digit): int(positions.numel()) for digit, positions in zip(NON8_CLASSES, positions_by_class, strict=True)},
+        "pixel_nearest8_fraction": float((pixel_nearest[false8] == 8).double().mean()),
+        "pixel_ci95": {"lower": float(pixel_interval[0]), "upper": float(pixel_interval[1])},
+        "feature_nearest8_fraction": float((feature_nearest[false8] == 8).double().mean()),
+        "feature_ci95": {"lower": float(feature_interval[0]), "upper": float(feature_interval[1])},
+    }
+
+
+def _classify_alignment(dev: Mapping[str, Any], s1: Mapping[str, Any]) -> str:
+    pairs = (dev, s1)
+    if any(item.get("candidate_count", 0) == 0 for item in pairs):
+        return CLASSIFICATION_MIXED
+    pixel_lower = all(item["pixel_ci95"]["lower"] > 0.50 for item in pairs)
+    pixel_upper = all(item["pixel_ci95"]["upper"] < 0.50 for item in pairs)
+    feature_lower = all(item["feature_ci95"]["lower"] > 0.50 for item in pairs)
+    if pixel_lower and feature_lower:
+        return CLASSIFICATION_PIXEL_AND_FEATURE
+    if pixel_upper and feature_lower:
+        return CLASSIFICATION_FEATURE_ONLY
+    return CLASSIFICATION_MIXED
+
+
+def _evaluate_raw_bank(
+    ed: torch.nn.Module,
+    raw: torch.Tensor,
+    labels: torch.Tensor,
+    pixel_centers: torch.Tensor,
+    feature_centers: torch.Tensor,
+    *,
+    device: torch.device,
+) -> dict[str, torch.Tensor]:
+    views = F.adaptive_avg_pool2d(raw.to(torch.float32).clamp(0.0, 1.0), (28, 28))
+    return _evaluate_views(ed, views, labels, pixel_centers, feature_centers, device=device)
+
+
+def _evaluate_dev(
+    consumer: Any,
+    ed: torch.nn.Module,
+    context: Any,
+    state: Mapping[str, torch.Tensor],
+    expected_predictions: torch.Tensor,
+    pixel_centers: torch.Tensor,
+    feature_centers: torch.Tensor,
+    *,
+    device: torch.device,
+    peak: dict[str, int],
+) -> dict[str, torch.Tensor]:
+    audit._load_state(consumer, state)
+    indices = context.development_indices
+    labels = context.labels.index_select(0, indices).cpu().long()
+    output_parts: list[dict[str, torch.Tensor]] = []
+    with torch.inference_mode():
+        for start in range(0, audit.DEV_COUNT, FORWARD_BATCH_SIZE):
+            selected = indices[start : start + FORWARD_BATCH_SIZE]
+            result = consumer.runtime.forward_from_image(context.images.index_select(0, selected).to(device))
+            raw = result.raw_intensity
+            views = _ed_view(raw)
+            output_parts.append(_evaluate_views(ed, views.cpu(), labels[start : start + len(selected)], pixel_centers, feature_centers, device=device))
+            _check_memory(device, peak)
+    combined = {key: torch.cat([part[key] for part in output_parts], dim=0) for key in output_parts[0]}
+    _require(torch.equal(combined["predictions"], expected_predictions.cpu().long()), "full DEV predictions do not match the named saved vector")
+    return combined
+
+
+def _summarize_group(value: Mapping[str, torch.Tensor], *, bootstrap: bool) -> dict[str, Any]:
+    summary = _confusion(value["labels"], value["predictions"])
+    margin = value["class8_minus_requested_logit"].to(torch.float64)
+    summary["class8_minus_requested_logit"] = {
+        "mean": float(margin.mean()),
+        "median": float(margin.median()),
+        "q10": float(torch.quantile(margin, 0.10)),
+        "q90": float(torch.quantile(margin, 0.90)),
+    }
+    predicted8 = (value["labels"] != 8) & (value["predictions"] == 8)
+    summary["non8_to_8_nearest_class8_fraction"] = {
+        "pixel": float((value["pixel_nearest_class"][predicted8] == 8).float().mean()) if bool(predicted8.any()) else None,
+        "feature": float((value["feature_nearest_class"][predicted8] == 8).float().mean()) if bool(predicted8.any()) else None,
+    }
+    if bootstrap:
+        summary["class8_attraction_bootstrap"] = _class8_bootstrap(
+            value["labels"], value["predictions"], value["pixel_nearest_class"], value["feature_nearest_class"]
+        )
+    return summary
+
+
+def _preflight(root: Path, *, sequence: int = 1) -> dict[str, Any]:
+    _require(root.resolve() == Path(__file__).resolve().parents[4], "localization must run from repository root")
+    preflight_path = RUNS_ROOT / f"preflight_{sequence:02d}.json"
+    _require(not (root / preflight_path).exists(), "preflight receipt is write-once")
+    _require(not (root / ATTEMPT_DIR).exists(), "attempt_01 already exists; this diagnostic is write-once")
+    RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+    started = time.perf_counter()
+    inputs = _input_bundle(root)
+    source, identity = _source_and_identity(root, inputs)
+    control = run_control.ResearchRunControl(identity=identity, authorization_id=AUTHORIZATION_ID)
+    if not torch.cuda.is_available():
+        blocked = {
+            "schema": "m0_bogt_class8_attraction_localization_preflight.v1",
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "status": run_control.PREFLIGHT_BLOCKED,
+            "reason": "CUDA is required for frozen full-geometry DEV replay",
+            "scientific_attempt_opened": False,
+            "source_manifest": source.to_dict(),
+        }
+        atomic_write_new_json(root / preflight_path, blocked, artifact_kind="M0 class-8 localization blocked preflight")
+        return blocked
+
+    device = torch.device("cuda", torch.cuda.current_device())
+    memory_before = _memory_snapshot(device)
+    _require(memory_before["used_bytes"] <= int(memory_before["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device memory already exceeds the 90 percent cap", ResourceBlocked)
+    consumer, ed = audit._initialize_models(root, inputs["audit"], device)
+    frozen_before = canary._state_digest(canary._frozen_runtime_state(consumer))
+    evaluator_before = {name: tensor.detach().cpu().clone() for name, tensor in ed.state_dict().items()}
+    step600_state = _mapping(inputs["audit"]["authorities"]["checkpoint"].get("trainable_parameter_state"), "step600 trainable state")
+    step900_state = _mapping(inputs["audit"]["step900_checkpoint"].get("trainable_parameter_state"), "step900 trainable state")
+    expected = inputs["audit_vectors"]
+    probe_records: dict[str, Any] = {}
+    dev_probe_seconds: list[float] = []
+    for step, state, expected_key in (
+        (600, step600_state, "dev_step600_predictions"),
+        (900, step900_state, "dev_step900_predictions"),
+    ):
+        audit._load_state(consumer, state)
+        indices = inputs["audit"]["context"].development_indices[:FORWARD_BATCH_SIZE]
+        probe_started = time.perf_counter()
+        with torch.inference_mode():
+            result = consumer.runtime.forward_from_image(inputs["audit"]["context"].images.index_select(0, indices).to(device))
+            view = _ed_view(result.raw_intensity)
+            _, logits = _ed_features(ed, view)
+        torch.cuda.synchronize(device)
+        probe_seconds = time.perf_counter() - probe_started
+        dev_probe_seconds.append(probe_seconds)
+        pred = logits.argmax(1).cpu()
+        _require(torch.equal(pred, expected[expected_key][:FORWARD_BATCH_SIZE].cpu().long()), f"step{step} DEV preflight prediction mismatch")
+        probe_records[f"step{step}_dev"] = {
+            "rows": int(pred.numel()),
+            "prediction_sha256": tensor_sha256(pred),
+            "seconds": probe_seconds,
+        }
+
+    audit._load_state(consumer, step900_state)
+    trainable_before = {name: tensor.detach().cpu().clone() for name, tensor in consumer.trainable_state_dict().items()}
+    cpu_rng = torch.random.get_rng_state().clone()
+    cuda_rng = [state.clone() for state in torch.cuda.get_rng_state_all()]
+    warm_indices = inputs["audit"]["context"].development_indices[:FORWARD_BATCH_SIZE]
+    warm_started = time.perf_counter()
+    with torch.inference_mode():
+        warm_result = consumer.runtime.forward_from_image(inputs["audit"]["context"].images.index_select(0, warm_indices).to(device))
+        warm_view = _ed_view(warm_result.raw_intensity)
+        _, warm_logits = _ed_features(ed, warm_view)
+    torch.cuda.synchronize(device)
+    steady_probe_seconds = time.perf_counter() - warm_started
+    _require(
+        torch.equal(warm_logits.argmax(1).cpu(), expected["dev_step900_predictions"][:FORWARD_BATCH_SIZE].cpu().long()),
+        "warmed step900 DEV preflight prediction mismatch",
+    )
+    probe_records["steady_dev_probe_seconds"] = steady_probe_seconds
+
+    train_fit_started = time.perf_counter()
+    _, _, center_counts = _build_centers(ed, inputs["train_fit"], inputs["train_labels"], device=device)
+    torch.cuda.synchronize(device)
+    train_fit_seconds = time.perf_counter() - train_fit_started
+    _require(torch.equal(center_counts, torch.bincount(inputs["train_labels"].cpu().long(), minlength=10)), "E_D fit center counts changed during preflight")
+    probe_records["train_fit_center_seconds"] = train_fit_seconds
+    # Verify saved sample prediction vectors with the named raw inputs before any attempt opens.
+    for key, raw, labels, vector_key in (
+        ("step600_s1", inputs["step600_raw_payload"]["raw_cmos"], inputs["step600_raw_payload"]["requested_labels"], "s1_step600_predictions"),
+        ("step900_s1", inputs["audit"]["generated_raw"], inputs["audit"]["generated_labels"], "s1_step900_predictions"),
+    ):
+        with torch.inference_mode():
+            pred_parts = []
+            for start in range(0, 10, FORWARD_BATCH_SIZE):
+                view = _ed_view(raw[start : start + FORWARD_BATCH_SIZE].to(device))
+                _, logits = _ed_features(ed, view)
+                pred_parts.append(logits.argmax(1).cpu())
+            pred = torch.cat(pred_parts)
+        _require(torch.equal(pred, expected[vector_key][:10].cpu().long()), f"{key} preflight prediction mismatch")
+        probe_records[key] = {"rows": int(pred.numel()), "prediction_sha256": tensor_sha256(pred)}
+
+    # Recompute the evaluator's untouched qualification confusion matrix.
+    qualification = inputs["qualification"]
+    qualification_labels = inputs["qualification_labels"]
+    qual_predictions: list[torch.Tensor] = []
+    qualification_started = time.perf_counter()
+    with torch.inference_mode():
+        for start in range(0, qualification.shape[0], ED_BATCH_SIZE):
+            images = qualification[start : start + ED_BATCH_SIZE].to(device)
+            _, logits = _ed_features(ed, images)
+            qual_predictions.append(logits.argmax(1).cpu())
+    qual_prediction_tensor = torch.cat(qual_predictions)
+    torch.cuda.synchronize(device)
+    qualification_seconds = time.perf_counter() - qualification_started
+    probe_records["qualification_forward_seconds"] = qualification_seconds
+    qual_confusion = _confusion(qualification_labels, qual_prediction_tensor)
+    _require(
+        qual_confusion["confusion_matrix_actual_rows_predicted_columns"] == inputs["qualification_report"]["confusion_matrix"],
+        "E_D qualification confusion matrix no longer matches its authority",
+    )
+    torch.cuda.synchronize(device)
+    elapsed = time.perf_counter() - started
+    peak = _memory_snapshot(device)
+    _require(elapsed <= MAX_PREFLIGHT_SECONDS, "localization preflight exceeded five-minute limit", ResourceBlocked)
+    _require(peak["used_bytes"] <= int(peak["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "localization preflight exceeded device memory cap", ResourceBlocked)
+    _require(
+        canary._state_digest(canary._frozen_runtime_state(consumer)) == frozen_before
+        and all(torch.equal(evaluator_before[name], value.detach().cpu()) for name, value in ed.state_dict().items())
+        and all(parameter.grad is None and not parameter.requires_grad for parameter in ed.parameters())
+        and all(torch.equal(trainable_before[name], value.detach().cpu()) for name, value in consumer.trainable_state_dict().items())
+        and all(parameter.grad is None for parameter in consumer.parameters())
+        and torch.equal(cpu_rng, torch.random.get_rng_state())
+        and all(torch.equal(left, right) for left, right in zip(cuda_rng, torch.cuda.get_rng_state_all(), strict=True)),
+        "preflight changed frozen state, E_D, RNG, or gradients",
+    )
+    dev_batches = 2 * math.ceil(audit.DEV_COUNT / FORWARD_BATCH_SIZE)
+    s1_ed_batches = 2 * math.ceil(audit.S1_COUNT / ED_BATCH_SIZE)
+    qualification_batches = math.ceil(qualification.shape[0] / ED_BATCH_SIZE)
+    s1_seconds = qualification_seconds / max(qualification_batches, 1) * s1_ed_batches
+    estimated_seconds = max(steady_probe_seconds * dev_batches, max(dev_probe_seconds)) + train_fit_seconds + s1_seconds + 300.0
+    _require(elapsed + estimated_seconds <= MAX_TOTAL_SECONDS, "preflight projected total exceeds 30 minutes", ResourceBlocked)
+    checks = {
+        run_control.CORRECTNESS_INVARIANTS: {
+            "status": "PASS",
+            "input_hashes_and_split_authorities_valid": True,
+            "step600_step900_saved_predictions_match_preflight": True,
+            "E_D_qualification_confusion_matches_authority": True,
+            "frozen_state_evaluator_rng_unchanged": True,
+            "optimizer_backward_parameter_updates": 0,
+            "protected_test_sealed_reads": 0,
+        },
+        run_control.RESOURCE_ENVELOPE: {
+            "status": "PASS",
+            "max_preflight_seconds": MAX_PREFLIGHT_SECONDS,
+            "max_total_seconds": MAX_TOTAL_SECONDS,
+            "max_device_memory_fraction": MAX_DEVICE_MEMORY_FRACTION,
+            "projected_total_seconds": elapsed + estimated_seconds,
+            "peak_used_bytes": peak["used_bytes"],
+            "total_device_bytes": peak["total_bytes"],
+        },
+        run_control.IMPLEMENTATION_SELECTION: {
+            "status": "PASS",
+            "selected_engine": "CUDA frozen optical/E_D inference; batch 10 optical, batch 512 E_D",
+            "prototype_fit_rows": int(inputs["train_fit"].shape[0]),
+            "qualification_rows": int(qualification.shape[0]),
+            "saved_s1_rows_per_step": audit.S1_COUNT,
+        },
+    }
+    receipt = run_control.PreflightReceipt(
+        source_semantics_id=source.execution_source_semantics_id,
+        authorization_id=AUTHORIZATION_ID,
+        checks=checks,
+        selected_engine="cuda-frozen-optical-and-E_D-inference",
+        resource=peak,
+    )
+    control.mark_preflight_ready(receipt)
+    result = {
+        "schema": "m0_bogt_class8_attraction_localization_preflight.v1",
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "status": run_control.PREFLIGHT_READY,
+        "source_manifest": source.to_dict(),
+        "run_identity": identity.to_dict(),
+        "receipt": receipt.to_dict(),
+        "checks": checks,
+        "probes": probe_records,
+        "qualification_confusion": qual_confusion,
+        "elapsed_seconds": elapsed,
+        "estimated_execution_seconds": estimated_seconds,
+        "scientific_attempt_opened": False,
+    }
+    atomic_write_new_json(root / preflight_path, result, artifact_kind="M0 class-8 localization READY preflight")
+    return result
+
+
+def _status(target: Path, state: str, phase: str, *, detail: Mapping[str, Any] | None = None) -> None:
+    atomic_write_json(target / "status.json", {
+        "schema": "m0_bogt_class8_attraction_localization_status.v1",
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "state": state,
+        "phase": phase,
+        "updated_at": time.time(),
+        "detail": dict(detail or {}),
+    })
+
+
+def _terminalize_invalid(target: Path, control: Any, error: BaseException) -> None:
+    if control.state in {run_control.RUN_SCIENTIFIC_ACTIVE, run_control.RUNNING, run_control.RUN_PREPARING}:
+        control.invalid_harness()
+    failure = {
+        "schema": "m0_bogt_class8_attraction_localization_failure.v1",
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "state": run_control.RUN_INVALID_HARNESS,
+        "error_type": type(error).__name__,
+        "error": str(error),
+        "optimizer_created": False,
+        "backward_passes": 0,
+        "parameter_updates": 0,
+        "automatic_recovery_permitted": False,
+    }
+    atomic_write_new_json(target / "failure_report.json", failure, artifact_kind="M0 class-8 localization invalid-harness record")
+    _status(target, run_control.RUN_INVALID_HARNESS, run_control.RUN_INVALID_HARNESS, detail={"error": failure["error"]})
+
+
+def _terminalize_result(target: Path, control: Any, report: dict[str, Any], *, passed: bool) -> dict[str, Any]:
+    state = run_control.RUN_COMPLETED if passed else run_control.RUN_VALID_FAILED
+    report["result"] = state
+    report["classification"] = report["localization_classification"] if passed else CLASSIFICATION_MIXED
+    report["outer_gate"] = OUTER_GATE
+    report["outer_gate_passed"] = passed
+    report["terminal_artifact"] = "report.json"
+    control.complete() if passed else control.valid_failed()
+    atomic_write_json(target / "latest_status.json", {"task_id": TASK_ID, "state": state, "phase": state, "updated_at": time.time()})
+    _status(target, state, state, detail={"classification": report["classification"], "outer_gate_passed": passed})
+    atomic_write_new_json(target / "report.json", report, artifact_kind="M0 class-8 attraction localization report")
+    return report
+
+
+def _execute(root: Path, *, sequence: int = 1) -> dict[str, Any]:
+    preflight_path = RUNS_ROOT / f"preflight_{sequence:02d}.json"
+    preflight = _read_json(root / preflight_path)
+    _require(preflight.get("task_id") == TASK_ID and preflight.get("status") == run_control.PREFLIGHT_READY, "matching source-bound READY receipt is required")
+    inputs = _input_bundle(root)
+    source, identity = _source_and_identity(root, inputs)
+    _require(
+        source.execution_source_semantics_id == preflight.get("source_manifest", {}).get("execution_source_semantics_id")
+        and source.source_manifest_id == preflight.get("source_manifest", {}).get("source_manifest_id"),
+        "current source differs from the READY receipt",
+    )
+    receipt = run_control.PreflightReceipt.from_mapping(_mapping(preflight.get("receipt"), "READY receipt"))
+    control = run_control.ResearchRunControl(identity=identity, authorization_id=AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    effective_identity = control.open_scientific_attempt(root / ATTEMPT_DIR, ATTEMPT_ID, receipt)
+    target = root / ATTEMPT_DIR
+    started = time.perf_counter()
+    try:
+        source_manifest = source.to_dict()
+        atomic_write_new_json(target / "source_manifest.json", source_manifest, artifact_kind="M0 class-8 localization source manifest")
+        atomic_write_new_json(target / "execution_manifest.json", {
+            "schema": "m0_bogt_class8_attraction_localization_execution.v1",
+            "task_id": TASK_ID,
+            "authorization_id": AUTHORIZATION_ID,
+            "run_identity": effective_identity.to_dict(),
+            "source_manifest": source_manifest,
+            "input_hashes": inputs["verified_hashes"],
+            "optimizer_created": False,
+            "backward_passes": 0,
+            "parameter_updates": 0,
+        }, artifact_kind="M0 class-8 localization execution manifest")
+        _status(target, run_control.RUN_SCIENTIFIC_ACTIVE, "INITIALIZING")
+
+        device = torch.device("cuda", torch.cuda.current_device())
+        peak = _memory_snapshot(device)
+        _require(peak["used_bytes"] <= int(peak["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device memory already exceeds the 90 percent cap", ResourceBlocked)
+        consumer, ed = audit._initialize_models(root, inputs["audit"], device)
+        step900_state = _mapping(inputs["audit"]["step900_checkpoint"].get("trainable_parameter_state"), "step900 state")
+        audit._load_state(consumer, step900_state)
+        ed_initial = {name: tensor.detach().cpu().clone() for name, tensor in ed.state_dict().items()}
+        frozen_initial = canary._state_digest(canary._frozen_runtime_state(consumer))
+        trainable_initial = {name: tensor.detach().cpu().clone() for name, tensor in consumer.trainable_state_dict().items()}
+        cpu_rng = torch.random.get_rng_state().clone()
+        cuda_rng = [state.clone() for state in torch.cuda.get_rng_state_all()]
+
+        _status(target, run_control.RUN_SCIENTIFIC_ACTIVE, "TRAIN_CENTERS")
+        pixel_centers, feature_centers, center_counts = _build_centers(ed, inputs["train_fit"], inputs["train_labels"], device=device)
+        _require(torch.equal(center_counts, torch.bincount(inputs["train_labels"].cpu().long(), minlength=10)), "prototype source class counts changed")
+        _check_memory(device, peak)
+
+        _status(target, run_control.RUN_SCIENTIFIC_ACTIVE, "DEV_REPLAY")
+        context = inputs["audit"]["context"]
+        step600_state = _mapping(inputs["audit"]["authorities"]["checkpoint"].get("trainable_parameter_state"), "step600 state")
+        vectors = inputs["audit_vectors"]
+        dev600 = _evaluate_dev(consumer, ed, context, step600_state, vectors["dev_step600_predictions"], pixel_centers, feature_centers, device=device, peak=peak)
+        dev900 = _evaluate_dev(consumer, ed, context, step900_state, vectors["dev_step900_predictions"], pixel_centers, feature_centers, device=device, peak=peak)
+
+        _status(target, run_control.RUN_SCIENTIFIC_ACTIVE, "S1_REPLAY")
+        s1600 = _evaluate_raw_bank(
+            ed, inputs["step600_raw_payload"]["raw_cmos"], inputs["step600_raw_payload"]["requested_labels"], pixel_centers, feature_centers, device=device
+        )
+        s1900 = _evaluate_raw_bank(
+            ed, inputs["audit"]["generated_raw"], inputs["audit"]["generated_labels"], pixel_centers, feature_centers, device=device
+        )
+        _require(torch.equal(s1600["predictions"], vectors["s1_step600_predictions"].cpu().long()), "step600 S1 replay predictions changed")
+        _require(torch.equal(s1900["predictions"], vectors["s1_step900_predictions"].cpu().long()), "step900 S1 replay predictions changed")
+        _check_memory(device, peak)
+
+        _status(target, run_control.RUN_SCIENTIFIC_ACTIVE, "FINALIZING")
+        torch.cuda.synchronize(device)
+        _require(
+            canary._state_digest(canary._frozen_runtime_state(consumer)) == frozen_initial
+            and all(torch.equal(ed_initial[name], value.detach().cpu()) for name, value in ed.state_dict().items())
+            and all(parameter.grad is None and not parameter.requires_grad for parameter in ed.parameters())
+            and all(parameter.grad is None for parameter in consumer.parameters())
+            and all(torch.equal(trainable_initial[name], value.detach().cpu()) for name, value in consumer.trainable_state_dict().items())
+            and torch.equal(cpu_rng, torch.random.get_rng_state())
+            and all(torch.equal(left, right) for left, right in zip(cuda_rng, torch.cuda.get_rng_state_all(), strict=True)),
+            "frozen or trainable state, gradients, or RNG changed during read-only analysis",
+        )
+        dev900_bootstrap = _class8_bootstrap(dev900["labels"], dev900["predictions"], dev900["pixel_nearest_class"], dev900["feature_nearest_class"])
+        s1900_bootstrap = _class8_bootstrap(s1900["labels"], s1900["predictions"], s1900["pixel_nearest_class"], s1900["feature_nearest_class"])
+        localization_classification = _classify_alignment(dev900_bootstrap, s1900_bootstrap)
+        measured = {
+            "step600_DEV": _summarize_group(dev600, bootstrap=False),
+            "step900_DEV": _summarize_group(dev900, bootstrap=True),
+            "step600_S1": _summarize_group(s1600, bootstrap=True),
+            "step900_S1": _summarize_group(s1900, bootstrap=True),
+            "step600_vs_step900_DEV_paired": {
+                "class8_prediction_fraction_delta": _confusion(dev900["labels"], dev900["predictions"])["class8_prediction_fraction"] - _confusion(dev600["labels"], dev600["predictions"])["class8_prediction_fraction"],
+                "same_row_count": int(dev600["labels"].numel()),
+            },
+            "step600_vs_step900_S1_comparison": "independent sampled banks; no row-wise pairing",
+        }
+        vectors_path = target / "localization_vectors.pt"
+        vector_fields = ("labels", "predictions", "logits", "class8_minus_requested_logit", "pixel_nearest_class", "feature_nearest_class", "pixel_squared_distances", "feature_squared_distances")
+        atomic_torch_save_new(vectors_path, {
+            "schema": VECTOR_SCHEMA,
+            "step600_DEV": {name: dev600[name] for name in vector_fields},
+            "step900_DEV": {name: dev900[name] for name in vector_fields},
+            "step600_S1": {name: s1600[name] for name in vector_fields},
+            "step900_S1": {name: s1900[name] for name in vector_fields},
+        }, artifact_kind="M0 class-8 localization compact vectors")
+        elapsed = time.perf_counter() - started
+        _require(elapsed + float(preflight.get("elapsed_seconds", 0.0)) <= MAX_TOTAL_SECONDS, "total diagnostic exceeded 30-minute wall-clock limit", ResourceBlocked)
+        report = {
+            "schema": "m0_bogt_class8_attraction_localization_report.v1",
+            "task_id": TASK_ID,
+            "authorization_id": AUTHORIZATION_ID,
+            "outer_gate": OUTER_GATE,
+            "localization_classification": localization_classification,
+            "claim_boundary": {
+                "interpretation": "descriptive alignment of E_D errors with fixed TRAIN class means only; not a causal mechanism claim",
+                "step900_training_gate_retroactively_accepted": False,
+                "training_or_sampler_authorized": False,
+                "S1_is_train_neighborhood_interpolation": True,
+            },
+            "prototype_definition": {
+                "source_role": "E_D original TRAIN fit split only",
+                "rows": int(inputs["train_fit"].shape[0]),
+                "counts_by_class": center_counts.tolist(),
+                "pixel_center": "arithmetic class mean of clamped and pooled 28x28 images",
+                "feature_center": "arithmetic class mean of E_D 256D features before classifier head",
+                "distance": "squared Euclidean distance to unstandardized arithmetic class means",
+                "qualification_DEV_and_S1_excluded_from_centers": True,
+            },
+            "qualification_negative_control": {
+                "rows": int(inputs["qualification"].shape[0]),
+                "confusion_matrix": inputs["qualification_report"]["confusion_matrix"],
+                "accuracy": inputs["qualification_report"]["accuracy"],
+            },
+            "measurements": measured,
+            "resources": {
+                "elapsed_seconds": elapsed,
+                "preflight_seconds": float(preflight.get("elapsed_seconds", 0.0)),
+                "max_total_seconds": MAX_TOTAL_SECONDS,
+                "max_device_memory_fraction": MAX_DEVICE_MEMORY_FRACTION,
+                "peak_device_memory": peak,
+            },
+            "data_reads": {
+                "E_D_fit_train": 49_500,
+                "E_D_qualification": 5_500,
+                "DEV_forward_rows": 10_000,
+                "S1_saved_raw_rows": 4_000,
+                "protected": 0,
+                "test": 0,
+                "sealed": 0,
+            },
+            "execution_invariants": {
+                "optimizer_created": False,
+                "backward_passes": 0,
+                "parameter_updates": 0,
+                "frozen_optics_evaluator_rng_unchanged": True,
+                "saved_step600_step900_prediction_vectors_match": True,
+            },
+            "input_hashes": inputs["verified_hashes"],
+            "artifacts": {
+                "localization_vectors": {
+                    "path": vectors_path.name,
+                    "sha256": file_sha256(vectors_path),
+                    "size_bytes": vectors_path.stat().st_size,
+                },
+            },
+            "source_manifest": source_manifest,
+            "run_identity": effective_identity.to_dict(),
+            "preflight": {"sequence": sequence, "status": preflight["status"], "receipt": receipt.to_dict()},
+            "output_dir": ATTEMPT_DIR.as_posix(),
+        }
+        return _terminalize_result(target, control, report, passed=localization_classification != CLASSIFICATION_MIXED)
+    except KeyboardInterrupt:
+        control.interrupted()
+        _status(target, run_control.RUN_INTERRUPTED, run_control.RUN_INTERRUPTED)
+        raise
+    except BaseException as error:
+        _terminalize_invalid(target, control, error)
+        raise
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=("preflight", "execute"), required=True)
+    parser.add_argument("--authorization-token", default="")
+    parser.add_argument("--preflight-sequence", type=int, default=1)
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[4]
+    if args.mode == "preflight":
+        result = _preflight(root, sequence=args.preflight_sequence)
+        print(json.dumps(result, sort_keys=True, allow_nan=False))
+        return 0 if result.get("status") == run_control.PREFLIGHT_READY else 2
+    _require(args.authorization_token == AUTHORIZATION_TOKEN, "localization authorization token mismatch")
+    report = _execute(root, sequence=args.preflight_sequence)
+    print(json.dumps({"result": report["result"], "classification": report["classification"], "output_dir": report["output_dir"]}, sort_keys=True))
+    return 0 if report["result"] == run_control.RUN_COMPLETED else 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

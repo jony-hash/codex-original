@@ -1,0 +1,557 @@
+"""Freeze the N3 q-compatibility guardrail calibration contract.
+
+This definition-only consumer binds the current V2 development authorities, the
+completed V1 self-null calibration, and the two already-frozen producer
+implementations.  It does not load q values, fit a producer, sample a bank, or
+read sealed confirmation values.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+from scripts.research.lightgen.n3 import execute_n3_development_bank_v2_empirical_ceiling as v2_ceiling
+
+
+TASK_ID = "CALIBRATE_N3_Q_COMPATIBILITY_GUARDRAIL_GATE_V1"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_q_compatibility_guardrail_gate_contract.v1"
+READY_CLASSIFICATION = "DEFINE_N3_Q_COMPATIBILITY_GUARDRAIL_GATE_V1_READY"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+OUTPUT_DIR = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_compatibility_guardrail_gate_contract_v1_attempt_01"
+)
+CONTRACT_NAME = "n3_q_compatibility_guardrail_gate_contract.v1.json"
+
+SOURCE_MANIFEST = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_source_manifest_v1_attempt_01/"
+    "n3_development_bank_v2_source_manifest.v1.json"
+)
+Q_ARTIFACT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_q_materialization_v1_attempt_01/"
+    "n3_development_bank_v2_q.v1.pt"
+)
+FOLD_MANIFEST = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_five_fold_protocol_v1_attempt_01/"
+    "n3_development_bank_v2_fold_manifest.v1.json"
+)
+CEILING_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_empirical_ceiling_v1_attempt_01/"
+    "n3_development_bank_v2_empirical_ceiling_report.v1.json"
+)
+N4_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_comparison_report.v1.json"
+)
+GAUSSIAN_IMPLEMENTATION = Path(
+    "scripts/research/lightgen/n3/execute_n3_empirical_marginal_gaussian_copula_producer_v1.py"
+)
+GAUSSIAN_CONTRACT = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract.v1.json"
+)
+GAUSSIAN_REPORT = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_report.v1.json"
+)
+STUDENT_IMPLEMENTATION = Path(
+    "scripts/research/lightgen/n3/execute_n3_empirical_marginal_fixed_r_student_t_copula_v1.py"
+)
+STUDENT_CONTRACT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_empirical_marginal_fixed_r_student_t_copula_contract_v1_attempt_01/"
+    "n3_empirical_marginal_fixed_r_student_t_copula_contract.v1.json"
+)
+STUDENT_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_empirical_marginal_fixed_r_student_t_copula_producer_v1_attempt_01/"
+    "n3_empirical_marginal_fixed_r_student_t_copula_producer_report.v1.json"
+)
+SELF_NULL_IMPLEMENTATION = Path(
+    "scripts/research/lightgen/n3/execute_n3_q_producer_compatibility_self_null_calibration_v1.py"
+)
+SELF_NULL_CONTRACT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_producer_compatibility_self_null_calibration_contract_v1_attempt_01/"
+    "n3_q_producer_compatibility_self_null_calibration_contract.v1.json"
+)
+SELF_NULL_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_producer_compatibility_self_null_calibration_v1_attempt_01/"
+    "n3_q_producer_compatibility_self_null_calibration_report.v1.json"
+)
+CURRENT_STATUS = Path("docs/CURRENT_STATUS.md")
+CURRENT_HANDOFF = Path("docs/status/current_handoff.md")
+GOVERNANCE_STATE = Path("docs/status/research_governance_state.json")
+CONSUMER_IMPLEMENTATION = Path(
+    "scripts/research/lightgen/n3/execute_n3_q_compatibility_guardrail_gate_v1.py"
+)
+
+EXPECTED_ARTIFACT_SHA256 = {
+    SOURCE_MANIFEST.as_posix(): "4bc251af91b3a6cd0235fe113117443d871a564bd05634fa9e61b5ab0b36f812",
+    Q_ARTIFACT.as_posix(): "fe48c8fdb9bb2bf732076fabdf475288baa6f7d628ca10039a83bbda54fcfcbf",
+    FOLD_MANIFEST.as_posix(): "4898a0e477d583b9a9e60c83238e6d8524d43967efe24277a952089e8adc447e",
+    CEILING_REPORT.as_posix(): "731cf826dc081e7cc5629790ba2fb74946f7cc41f1a7f0035bf3a3ca96a31826",
+    N4_REPORT.as_posix(): "393d84617ec7b1e6c60b8c654b859dc3afe822f5dee207ca93816e232fea78be",
+    GAUSSIAN_CONTRACT.as_posix(): "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4",
+    GAUSSIAN_REPORT.as_posix(): "78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d",
+    STUDENT_CONTRACT.as_posix(): "0f18dccf35758e590255fac07436eb968c866ddc11a3e19df7b02e25770be1d7",
+    STUDENT_REPORT.as_posix(): "4a938b883d1a0cf3386b7e2a5f4c900a236cfed031364c4a1273ea3ebe6d77dd",
+    SELF_NULL_CONTRACT.as_posix(): "32ba12a8f09a850f0126bf528741928a247d957cf0a2105bd4329d102a97662c",
+    SELF_NULL_REPORT.as_posix(): "0e69db97c52cb6e72383d2cd24227a0e9937b4aafb88413af6a9216ce93860fb",
+}
+
+CLASS_COUNT = 10
+DIMENSION = 100
+POOL_COUNT = 5000
+ROWS_PER_CLASS = 500
+FOLD_COUNT = 5
+FIT_COUNT_PER_FOLD = 4000
+HELDOUT_COUNT_PER_FOLD = 1000
+FIT_PER_CLASS_PER_FOLD = 400
+HELDOUT_PER_CLASS_PER_FOLD = 100
+PSEUDO_DATA_SAMPLE_COUNT = 1000
+MODEL_SAMPLE_COUNT = 200
+DATA_VS_MODEL_REPLICATES = 4
+MODEL_VS_MODEL_REPLICATES = 8
+MODEL_REFERENCE_PAIRS = ((0, 1), (2, 3), (4, 5), (6, 7))
+TRIAL_COUNT_PER_PRODUCER_FOLD = 200
+COMPATIBILITY_Q = 0.95
+
+PRODUCER_IDS = (
+    "EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1",
+    "EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1",
+)
+SCALAR_METRICS = (
+    "energy_distance",
+    "covariance_relative_frobenius",
+    "norm_energy_distance",
+    "squared_norm_energy_distance",
+    "marginal_mean_l2",
+    "marginal_std_l2",
+    "marginal_energy_distance_mean",
+    "marginal_energy_distance_max",
+)
+PRIMARY_METRIC = "energy_distance"
+NON_PRIMARY_METRICS = SCALAR_METRICS[1:]
+RNG_NAMESPACE = "N3_Q_COMPATIBILITY_GUARDRAIL_GATE_V1_CPU"
+RNG_SEED_RULE = (
+    "seed=int.from_bytes(sha256(namespace|producer|fold|trial|role|bank)[:8], 'big') "
+    "& ((1<<63)-1)"
+)
+FALSE_FAIL_UPPER_BOUND = 0.01
+CONFIDENCE_LEVEL = 0.95
+ALPHA = 1.0 - CONFIDENCE_LEVEL
+FIVE_FOLD_RELIABILITY_TARGET = 0.80
+
+FINITE_SAMPLE_LIMITATIONS = [
+    "V2 5/5 means only that the current development contract passed; it does not establish overall stationarity.",
+    "DATA-vs-MODEL uses 1000 vs 200 rows while MODEL-vs-MODEL reference uses 200 vs 200 rows.",
+    "The biased empirical ED therefore has different finite-sample expectation scales in the two roles.",
+    "The frozen reference q95 is an empirical development threshold, not a calibrated 95% confidence guarantee.",
+    "The comparison evaluates only q-distribution compatibility.",
+]
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _read_json(repo_root: Path, path: Path, expected_sha256: str, name: str) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    value = json.loads(target.read_text(encoding="utf-8"))
+    return dict(_mapping(value, name))
+
+
+def _authority_ref(repo_root: Path, path: Path, role: str, expected_sha256: str | None = None) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"authority is missing: {target}")
+    actual = file_sha256(target)
+    if expected_sha256 is not None:
+        _require(actual == expected_sha256, f"authority hash changed: {target}")
+    return {"path": _relative(repo_root, target), "sha256": actual, "role": role}
+
+
+def _validate_current_state(repo_root: Path) -> dict[str, Any]:
+    state_path = repo_root / GOVERNANCE_STATE
+    state = _read_json(repo_root, GOVERNANCE_STATE, file_sha256(state_path), "current governance state")
+    _require(state.get("active_objective") == "N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED", "current active objective changed")
+    _require(state.get("hard_blocker") == "N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED", "current hard blocker changed")
+    _require(state.get("authorization_tier") == "R0", "authorization tier changed")
+    aliases = _mapping(state.get("evidence_aliases"), "governance evidence aliases")
+    prior = _mapping(aliases.get("N3_Q_PRODUCER_COMPATIBILITY_SELF_NULL_CALIBRATION_V1"), "V1 self-null alias")
+    _require(prior.get("sha256") == EXPECTED_ARTIFACT_SHA256[SELF_NULL_REPORT.as_posix()], "V1 self-null alias changed")
+    _require(prior.get("classification") == "N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED", "V1 self-null result changed")
+    for name in (
+        "N4_Q_PRODUCER_DEVELOPMENT_COMPARISON",
+        "N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_PRODUCER",
+        "N3_DEVELOPMENT_BANK_V2_Q",
+    ):
+        item = _mapping(aliases.get(name), name)
+        _require(item.get("selected_producer") is None, f"{name} selected a producer")
+        _require(item.get("training_authorized") is False, f"{name} opened training")
+        _require(item.get("formal_promotion") is False, f"{name} opened promotion")
+        _require(item.get("generation_readiness") == "not_ready", f"{name} opened generation")
+        sealed_consumed = item.get("sealed_confirmation_consumed", item.get("sealed_confirmation_values_loaded", False))
+        _require(sealed_consumed is False, f"{name} consumed sealed confirmation")
+    status_text = (repo_root / CURRENT_STATUS).read_text(encoding="utf-8")
+    handoff_text = (repo_root / CURRENT_HANDOFF).read_text(encoding="utf-8")
+    for name, value in (("CURRENT_STATUS", status_text), ("current_handoff", handoff_text)):
+        _require("N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED" in value, f"{name} does not expose current V1 boundary")
+        _require("training_authorized=false" in value and "generation_readiness=not_ready" in value, f"{name} governance boundary changed")
+    return {
+        "governance": _authority_ref(repo_root, GOVERNANCE_STATE, "current governance snapshot"),
+        "current_status": _authority_ref(repo_root, CURRENT_STATUS, "current status snapshot"),
+        "current_handoff": _authority_ref(repo_root, CURRENT_HANDOFF, "current handoff snapshot"),
+        "active_objective": state["active_objective"],
+        "hard_blocker": state["hard_blocker"],
+        "authorization_tier": state["authorization_tier"],
+    }
+
+
+def _validate_prior_evidence(repo_root: Path) -> dict[str, Any]:
+    n4 = _read_json(repo_root, N4_REPORT, EXPECTED_ARTIFACT_SHA256[N4_REPORT.as_posix()], "N4 report")
+    _require(n4.get("status") == "valid_completed" and n4.get("result") == "VALID_COMPLETED", "N4 report is incomplete")
+    _require(n4.get("classification") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "N4 classification changed")
+    _require(n4.get("development_supported_candidates") == [], "N4 selected a candidate")
+    n4_governance = _mapping(n4.get("governance"), "N4 governance")
+    _require(n4_governance.get("selected_producer") is None and n4_governance.get("training_authorized") is False, "N4 governance changed")
+
+    self_null_contract = _read_json(repo_root, SELF_NULL_CONTRACT, EXPECTED_ARTIFACT_SHA256[SELF_NULL_CONTRACT.as_posix()], "V1 self-null contract")
+    _require(self_null_contract.get("status") == "valid_completed" and self_null_contract.get("result") == "READY", "V1 self-null contract is incomplete")
+    self_null_report = _read_json(repo_root, SELF_NULL_REPORT, EXPECTED_ARTIFACT_SHA256[SELF_NULL_REPORT.as_posix()], "V1 self-null report")
+    _require(self_null_report.get("status") == "valid_completed" and self_null_report.get("result") == "VALID_COMPLETED", "V1 self-null report is incomplete")
+    _require(self_null_report.get("classification") == "N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED", "V1 self-null classification changed")
+    _require(self_null_report.get("execution_settings", {}).get("trials_per_producer_fold") == 20, "V1 self-null trial count changed")
+    _require(self_null_report.get("execution_settings", {}).get("total_trials") == 200, "V1 self-null total trial count changed")
+    _require(self_null_report.get("firewalls", {}).get("heldout_q_values_used_for_metric") is False, "V1 self-null used heldout q")
+    _require(self_null_report.get("firewalls", {}).get("sealed_confirmation_values_loaded") is False, "V1 self-null loaded sealed values")
+
+    gaussian_contract = _read_json(repo_root, GAUSSIAN_CONTRACT, EXPECTED_ARTIFACT_SHA256[GAUSSIAN_CONTRACT.as_posix()], "Gaussian contract")
+    gaussian_report = _read_json(repo_root, GAUSSIAN_REPORT, EXPECTED_ARTIFACT_SHA256[GAUSSIAN_REPORT.as_posix()], "Gaussian report")
+    _require(gaussian_contract.get("status") == "valid_completed", "Gaussian contract is incomplete")
+    _require(gaussian_report.get("classification") == "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED", "Gaussian result changed")
+    student_contract = _read_json(repo_root, STUDENT_CONTRACT, EXPECTED_ARTIFACT_SHA256[STUDENT_CONTRACT.as_posix()], "Student-t contract")
+    student_report = _read_json(repo_root, STUDENT_REPORT, EXPECTED_ARTIFACT_SHA256[STUDENT_REPORT.as_posix()], "Student-t report")
+    _require(student_contract.get("status") == "valid_completed", "Student-t contract is incomplete")
+    _require(student_report.get("classification") == "N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED", "Student-t result changed")
+    return {
+        "n4_report": _authority_ref(repo_root, N4_REPORT, "immutable historical N4 evaluator semantics", EXPECTED_ARTIFACT_SHA256[N4_REPORT.as_posix()]),
+        "self_null_contract": _authority_ref(repo_root, SELF_NULL_CONTRACT, "completed V1 self-null calibration contract", EXPECTED_ARTIFACT_SHA256[SELF_NULL_CONTRACT.as_posix()]),
+        "self_null_report": _authority_ref(repo_root, SELF_NULL_REPORT, "completed V1 self-null calibration report", EXPECTED_ARTIFACT_SHA256[SELF_NULL_REPORT.as_posix()]),
+        "gaussian_contract": _authority_ref(repo_root, GAUSSIAN_CONTRACT, "frozen Gaussian producer contract", EXPECTED_ARTIFACT_SHA256[GAUSSIAN_CONTRACT.as_posix()]),
+        "gaussian_report": _authority_ref(repo_root, GAUSSIAN_REPORT, "historical Gaussian producer result", EXPECTED_ARTIFACT_SHA256[GAUSSIAN_REPORT.as_posix()]),
+        "student_contract": _authority_ref(repo_root, STUDENT_CONTRACT, "frozen Student-t producer contract", EXPECTED_ARTIFACT_SHA256[STUDENT_CONTRACT.as_posix()]),
+        "student_report": _authority_ref(repo_root, STUDENT_REPORT, "historical Student-t producer result", EXPECTED_ARTIFACT_SHA256[STUDENT_REPORT.as_posix()]),
+        "historical_results_immutable": True,
+    }
+
+
+def _validate_v2_authority(repo_root: Path) -> dict[str, Any]:
+    source, fold, rows, fold_ids, q_meta = v2_ceiling._validate_source_and_fold(repo_root)
+    _require(q_meta.get("values_loaded") is False, "V2 q values were loaded during definition")
+    _require(len(rows) == POOL_COUNT, "V2 source row count changed")
+    _require(source["identity"]["class_counts"] == [ROWS_PER_CLASS] * CLASS_COUNT, "V2 class counts changed")
+    _require(fold["protocol"]["fold_count"] == FOLD_COUNT, "V2 fold count changed")
+    _require(fold["protocol"]["fit_count_per_fold"] == FIT_COUNT_PER_FOLD, "V2 fit count changed")
+    _require(fold["protocol"]["heldout_count_per_fold"] == HELDOUT_COUNT_PER_FOLD, "V2 heldout count changed")
+    _require(tuple(int(value) for value in fold_ids.unique(sorted=True).tolist()) == tuple(range(FOLD_COUNT)), "V2 fold domain changed")
+    ceiling = _read_json(repo_root, CEILING_REPORT, EXPECTED_ARTIFACT_SHA256[CEILING_REPORT.as_posix()], "V2 ceiling report")
+    _require(ceiling.get("classification") == "N3_DEVELOPMENT_BANK_V2_VALIDATED", "V2 ceiling classification changed")
+    settings = _mapping(ceiling.get("execution_settings"), "V2 ceiling settings")
+    for key, expected in {
+        "generated_bank_size": MODEL_SAMPLE_COUNT,
+        "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+        "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+        "model_reference_pairs": [list(pair) for pair in MODEL_REFERENCE_PAIRS],
+        "compatibility_q": COMPATIBILITY_Q,
+        "guardrails": list(SCALAR_METRICS),
+        "raw_q_energy_distance": True,
+    }.items():
+        _require(settings.get(key) == expected, f"V2 evaluator setting changed: {key}")
+    return {
+        "source_manifest": _authority_ref(repo_root, SOURCE_MANIFEST, "frozen V2 development source manifest", EXPECTED_ARTIFACT_SHA256[SOURCE_MANIFEST.as_posix()]),
+        "q_artifact": _authority_ref(repo_root, Q_ARTIFACT, "frozen V2 development q artifact", EXPECTED_ARTIFACT_SHA256[Q_ARTIFACT.as_posix()]),
+        "fold_manifest": _authority_ref(repo_root, FOLD_MANIFEST, "frozen V2 five-fold fitting identities", EXPECTED_ARTIFACT_SHA256[FOLD_MANIFEST.as_posix()]),
+        "ceiling_report": _authority_ref(repo_root, CEILING_REPORT, "frozen V2 raw-q evaluator semantics", EXPECTED_ARTIFACT_SHA256[CEILING_REPORT.as_posix()]),
+        "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+        "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+        "q_values_loaded": False,
+    }
+
+
+def _run_contract_totality_checks() -> dict[str, Any]:
+    _require(len(PRODUCER_IDS) == 2 and len(set(PRODUCER_IDS)) == 2, "producer set is not exactly two and unique")
+    _require(TRIAL_COUNT_PER_PRODUCER_FOLD == 200, "trial count is not the permitted CPU fallback")
+    _require(PSEUDO_DATA_SAMPLE_COUNT == 1000 and MODEL_SAMPLE_COUNT == 200, "sample sizes changed")
+    _require(DATA_VS_MODEL_REPLICATES == 4 and MODEL_VS_MODEL_REPLICATES == 8, "replicate counts changed")
+    _require(MODEL_REFERENCE_PAIRS == ((0, 1), (2, 3), (4, 5), (6, 7)), "reference pairs changed")
+    _require(len(SCALAR_METRICS) == 8 and SCALAR_METRICS[0] == PRIMARY_METRIC, "metric vector changed")
+    _require(tuple(NON_PRIMARY_METRICS) == SCALAR_METRICS[1:], "primary/non-primary partition changed")
+    _require(0.0 < COMPATIBILITY_Q < 1.0, "compatibility quantile is invalid")
+    _require(0.0 < ALPHA < 1.0 and CONFIDENCE_LEVEL == 0.95, "interval confidence is invalid")
+    _require(FALSE_FAIL_UPPER_BOUND == 0.01, "false-fail bound changed")
+    _require(FIVE_FOLD_RELIABILITY_TARGET == 0.80, "five-fold reliability target changed")
+    _require(all("|" not in value for value in PRODUCER_IDS), "producer namespace is ambiguous")
+    return {
+        "producer_count": len(PRODUCER_IDS),
+        "fold_count": FOLD_COUNT,
+        "trial_count_per_producer_fold": TRIAL_COUNT_PER_PRODUCER_FOLD,
+        "total_trials": len(PRODUCER_IDS) * FOLD_COUNT * TRIAL_COUNT_PER_PRODUCER_FOLD,
+        "metric_count": len(SCALAR_METRICS),
+        "non_primary_guardrail_count": len(NON_PRIMARY_METRICS),
+        "contract_totality": "passed",
+    }
+
+
+def _build_payload(repo_root: Path, git: Mapping[str, Any], current: Mapping[str, Any], prior: Mapping[str, Any], v2: Mapping[str, Any], totality: Mapping[str, Any]) -> dict[str, Any]:
+    authority_candidates = {
+        **dict(current),
+        **dict(prior),
+        **dict(v2),
+        "metric_implementation": _authority_ref(repo_root, Path("scripts/research/lightgen/n3/execute_n3_development_bank_v2_empirical_ceiling.py"), "current V2 raw-q metric implementation", "18b8f9defd83c2591dc055a97621ef6a1717783f7656da75994881e02bffda14"),
+        "gaussian_implementation": _authority_ref(repo_root, GAUSSIAN_IMPLEMENTATION, "Gaussian fitting and sampling implementation", "5f1fa3fa6be35e96f345c3b7f7c6cce5ca0b45fe4619b1ead4455e86dcae538a"),
+        "student_t_implementation": _authority_ref(repo_root, STUDENT_IMPLEMENTATION, "fixed-R Student-t fitting and sampling implementation", "259f45e9c71ed86cf10c5793e84bcc391e68542213281d3de8fff70c0e7e02c7"),
+        "self_null_implementation": _authority_ref(repo_root, SELF_NULL_IMPLEMENTATION, "V1 self-null sampling/evaluator harness", None),
+        "consumer_implementation": _authority_ref(repo_root, CONSUMER_IMPLEMENTATION, "this calibration consumer", None),
+    }
+    authority_refs = {
+        name: value
+        for name, value in authority_candidates.items()
+        if isinstance(value, Mapping) and "path" in value and "sha256" in value
+    }
+    return {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "definition_only": True,
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "git": dict(git),
+        "authorities": authority_refs,
+        "producer_set": {
+            "identities": list(PRODUCER_IDS),
+            "count": len(PRODUCER_IDS),
+            "fit_rule": "fit each producer/fold exactly once from that fold's 4000 frozen fitting q rows only",
+            "heldout_q_metric_evaluation": False,
+            "heldout_q_used_for_fit_or_sampling": False,
+            "new_producer_family": False,
+        },
+        "folds": {
+            "count": FOLD_COUNT,
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+            "fitting_identity_source": "frozen V2 fold manifest and q source-row identities",
+        },
+        "simulation": {
+            "device": "cpu",
+            "dtype": "float64",
+            "trials_per_producer_fold": TRIAL_COUNT_PER_PRODUCER_FOLD,
+            "total_trials": totality["total_trials"],
+            "preferred_trial_count_per_producer_fold": 500,
+            "trial_count_decision": "Use the explicitly permitted 200 fallback because the exact evaluator performs 100 coordinate-level marginal ED computations per pair; 500 per cell is outside this bounded CPU envelope.",
+            "no_early_stop": True,
+            "no_retry": True,
+            "best_of_n": False,
+            "sample_size_asymmetry": {
+                "pseudo_data_vs_model": [PSEUDO_DATA_SAMPLE_COUNT, MODEL_SAMPLE_COUNT],
+                "model_vs_model_reference": [MODEL_SAMPLE_COUNT, MODEL_SAMPLE_COUNT],
+            },
+            "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+            "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+            "model_reference_pairs": [list(pair) for pair in MODEL_REFERENCE_PAIRS],
+            "rng_namespace": RNG_NAMESPACE,
+            "rng_seed_rule": RNG_SEED_RULE,
+            "trial_pairing": "For each producer, trial index t is paired across all five folds only for the direct all-five-fold reliability estimate; fold-specific namespaces remain disjoint.",
+        },
+        "evaluator": {
+            "metric_implementation_path": "scripts/research/lightgen/n3/execute_n3_development_bank_v2_empirical_ceiling.py",
+            "pair_metric_function": "v2_ceiling._pair_metrics_raw_q",
+            "aggregation_implementation_path": "scripts/research/lightgen/n3/execute_n3_empirical_marginal_gaussian_copula_producer_v1.py",
+            "aggregation_functions": ["gaussian._mean_metrics", "gaussian._q95_metrics"],
+            "compatibility_q": COMPATIBILITY_Q,
+            "metrics": list(SCALAR_METRICS),
+            "primary_metric": PRIMARY_METRIC,
+            "primary_energy_distance_unchanged": True,
+            "same_biased_empirical_energy_distance": True,
+            "per_coordinate_vector_computed_but_not_a_scalar_gate": True,
+            "new_evaluator_created": False,
+        },
+        "hard_guardrail_eligibility": {
+            "non_primary_metrics": list(NON_PRIMARY_METRICS),
+            "interval": {
+                "method": "exact one-sided Clopper-Pearson binomial upper confidence bound",
+                "confidence_level": CONFIDENCE_LEVEL,
+                "alpha": ALPHA,
+                "lower_bound": 0.0,
+                "upper_bound_used_for_eligibility": True,
+            },
+            "rate_unit": "one producer-by-fold self-null cell",
+            "guardrail_level_upper_bound": "maximum of the ten producer-by-fold upper bounds",
+            "pooled_rate_and_bound_reported": True,
+            "pooled_bound_used_for_eligibility": False,
+            "criterion": {
+                "worst_cell_upper_bound_at_most": FALSE_FAIL_UPPER_BOUND,
+                "include_all_independently_eligible_non_primary_guardrails": True,
+                "no_arbitrary_subset_search": True,
+            },
+            "interaction_rule": "If the complete Gate with primary energy_distance and every independently eligible guardrail fails the direct reliability target, return NOT_RESOLVED; do not optimize a subset post hoc.",
+        },
+        "five_fold_reliability": {
+            "target": FIVE_FOLD_RELIABILITY_TARGET,
+            "estimate": "direct empirical mean over paired trial indices t of all five fold pass indicators",
+            "product_of_fold_rates": "reported only as a diagnostic and never used as the acceptance estimate",
+            "required_for_both_producers": True,
+        },
+        "aggregate_mapping": {
+            "ready": "both producer-specific direct calibrated all-five-fold pass rates are at least 0.80, all non-primary roles are determined by the frozen eligibility rule, and no interaction is unresolved",
+            "not_resolved": "the complete calibrated Gate misses the frozen target for either producer or a simultaneous eligibility interaction is unresolved",
+            "blocked": "any hard stop condition or incomplete/invalid measurement before a complete result",
+        },
+        "v3_output": {
+            "schema": "n3_q_compatibility_evaluator_v3.v1",
+            "primary_energy_distance": "unchanged HARD primary statistic",
+            "metric_formulas": "unchanged V2 formulas and aggregation",
+            "sample_size_semantics": "unchanged 1000-vs-200 DATA-vs-MODEL and 200-vs-200 reference",
+            "development_and_heldout_authorities": "unchanged; fit-only development q and no heldout/sealed consumption",
+            "finite_sample_limitations_unchanged": list(FINITE_SAMPLE_LIMITATIONS),
+        },
+        "firewalls": {
+            "heldout_q_scientific_evaluation": False,
+            "heldout_q_used_for_fit_or_sampling": False,
+            "historical_gaussian_rerun": False,
+            "historical_student_t_rerun": False,
+            "new_producer_family": False,
+            "arbitrary_guardrail_subset_search": False,
+            "post_simulation_threshold_tuning": False,
+            "sealed_confirmation_values_loaded": False,
+            "n4_semantic_selector": False,
+            "optical_or_image_evaluation": False,
+            "cuda_or_training": False,
+            "selected_producer": None,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+        },
+        "governance": {
+            "selected_producer": None,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "sealed_confirmation_consumed": False,
+            "selection_scope": "DEVELOPMENT_ONLY",
+        },
+        "contract_totality": dict(totality),
+    }
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once calibration contract: {output_dir}")
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "current HEAD is not the frozen authority base")
+    _run_contract_totality_checks()
+    current = _validate_current_state(repo_root)
+    prior = _validate_prior_evidence(repo_root)
+    v2 = _validate_v2_authority(repo_root)
+    payload = _build_payload(repo_root, git, current, prior, v2, _run_contract_totality_checks())
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(temporary / CONTRACT_NAME, payload, artifact_kind="N3 q compatibility guardrail calibration contract")
+        if output_dir.exists():
+            raise FileExistsError(f"calibration contract appeared during definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    path = output_dir / CONTRACT_NAME
+    return {
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "contract": _relative(repo_root, path),
+        "contract_sha256": file_sha256(path),
+        "trial_count_per_producer_fold": TRIAL_COUNT_PER_PRODUCER_FOLD,
+        "total_trials": len(PRODUCER_IDS) * FOLD_COUNT * TRIAL_COUNT_PER_PRODUCER_FOLD,
+        "selected_producer": None,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "sealed_confirmation_consumed": False,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parents[4]
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

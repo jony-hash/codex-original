@@ -1,0 +1,86 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_reconstruction_manifold_failure_review.v1",
+  "hypothesis": "H-LOMA-CBOGT-S3-RMFA",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_scaled_chen_reconstruction_manifold_failure_attribution",
+  "approved_contract": {
+    "parent_trba": {
+      "config": "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_task_relevant_bottleneck_v1.yaml",
+      "config_sha256": "23029689416358b5003974bfb74817cebf3791e03764b5124f1644e4f22d5095",
+      "review_contract": "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_task_relevant_bottleneck_review_v1.json",
+      "review_sha256": "934e52354968db04aa1305d946138ae8958afab06e6f2d5f844d07cb731f3351",
+      "validation": "outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/validation.json",
+      "validation_sha256": "3bec36f315c872a05bcb3381929987d8fff57914351a2d5bef4ff1eebda0c659",
+      "audit": "outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/audit.json",
+      "audit_sha256": "b6be2c6f97dbdcb1d02ad0f2395eca438ebeb619196758a57eb8cc26f31745c0",
+      "compact_report": "outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/compact_report.json",
+      "compact_report_sha256": "a6015a3fa594515fc24ac1af6cb684d3aa70cd703ae22ae9e8ab3924c86f633a",
+      "panel": "outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/panel.pt",
+      "panel_sha256": "ec76f0760a743ef8fd845b6b93969fac727619e439b4f03109fb40218cc46319",
+      "implementation_commit": "7c1c0f8dcfb878049260043441a117456e5ebe6a",
+      "status_commit": "0ec8b664935050ca27bc4944ccc66680461510b7",
+      "audit_status": "valid_failed",
+      "audit_classification": "task_relevant_bottleneck_not_supported",
+      "generation_readiness": "not_ready"
+    },
+    "references": {
+      "primary_checkpoint": "scaled_chen_step_5000",
+      "checkpoint_sha256": "ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de",
+      "report_only_identity_sha256": "56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f"
+    },
+    "fit_panel": {
+      "source": "mnist_train_indices_0_54999",
+      "count": 1000,
+      "per_label": 100,
+      "construction": "first_100_sorted_per_label_after_excluding_calibration_confirmation_plan3_plan4",
+      "indices_sha256": "532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d"
+    },
+    "evaluation_panels": {
+      "selection": "mnist_test_indices_5000_9999",
+      "confirmation": "horizon_heldout_train_indices_55000_59999",
+      "candidate_prefix_consumed": false
+    },
+    "probe": {
+      "family": "moore_penrose_minimum_norm_linear_readout",
+      "solver": "torch.linalg.pinv",
+      "rcond": 1.0e-12,
+      "adaptive_rank": false,
+      "nonlinear": false,
+      "refit_selection": false,
+      "refit_confirmation": false
+    },
+    "gates": {
+      "material_relative_improvement": 0.05,
+      "strict_template_crossing": true,
+      "instance_sensitive_control": true,
+      "bootstrap_replicates": 2000,
+      "bootstrap_confidence": 0.95,
+      "physical_baseline_tolerance": 1.0e-6
+    },
+    "r1": "reconstruction_mapping_misalignment_supported",
+    "r2": "bounded_reconstruction_recoverability_not_supported",
+    "r3": "reconstruction_failure_attribution_underdetermined",
+    "no_update": true
+  },
+  "no_update_diagnostic_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "mechanism_evidence_only": true,
+  "prohibited": [
+    "optimizer",
+    "backward",
+    "checkpoint_write",
+    "prior_sampling",
+    "generation",
+    "evaluator",
+    "fmf",
+    "training",
+    "promotion",
+    "physical_forward_modification",
+    "new_samples",
+    "second_probe",
+    "hyperparameter_sweep",
+    "nonlinear_probe"
+  ]
+}

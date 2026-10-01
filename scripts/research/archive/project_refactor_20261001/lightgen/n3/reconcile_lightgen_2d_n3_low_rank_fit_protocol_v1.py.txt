@@ -1,0 +1,230 @@
+"""Supersede the conflicting N3 FIT protocol without changing its contract."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import git_identity
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+
+
+OUTPUT_ROOT = Path("outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1")
+RUNS_ROOT = OUTPUT_ROOT / "runs"
+CONTRACT_PATH = RUNS_ROOT / "contract_definition_01/lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract.v1.json"
+CONTRACT_SHA256 = "a5c7c3ab6528871f33b58a965a6d89870749a4e3bf1028e27d062ac78c53ae16"
+OLD_PROTOCOL_PATH = RUNS_ROOT / "protocol_definition_01/lightgen_2d_n3_low_rank_fit_protocol.v1.json"
+OLD_PROTOCOL_SHA256 = "69405fb30e43cb56a47b387a9e7b0231146f0839f7e35444d8a14bb21a81d747"
+READINESS_FAILURE_PATH = RUNS_ROOT / "readiness_failure_01/n3_model_order_fit_protocol_undefined.v1.json"
+READINESS_FAILURE_SHA256 = "bc96f1ebb870f88bbce9f30407af1b81c790ae41f8e7332c00893a2f9601b30c"
+OUTPUT_DIR = RUNS_ROOT / "protocol_definition_02"
+PROTOCOL_NAME = "lightgen_2d_n3_low_rank_fit_protocol.v2.json"
+SEMANTIC_AUTHORITY_ID = "N3_LOW_RANK_FIT_PROTOCOL_CANONICAL_BASIS_RECONCILED_V2"
+CLASSIFICATION = "N3_LOW_RANK_FIT_PROTOCOL_RECONCILED"
+REQUIRED_AUTHORIZATION = "AUTHORIZED_EXECUTE_LIGHTGEN_2D_N3_LOW_RANK_CLASS_CONDITIONED_STRUCTURAL_MODEL_ORDER_V1"
+OLD_B_FORMULA = "B[j,k] = (-1)**((j >> k) & 1) / sqrt(20000)"
+CANONICAL_B_FORMULA = "B[j,k] = 1.0 if j == k else 0.0"
+
+OVERLAP_AUDIT = [
+    {"field": "model_family", "classification": "IDENTICAL"},
+    {"field": "rank_domain", "classification": "IDENTICAL"},
+    {"field": "correction_shape_layout", "classification": "IDENTICAL"},
+    {"field": "B_initialization", "classification": "IDENTICAL"},
+    {"field": "A_initialization", "classification": "IDENTICAL"},
+    {"field": "class_index_rank_index_order", "classification": "IDENTICAL"},
+    {"field": "class_lookup_injection", "classification": "IDENTICAL"},
+    {"field": "FIT_objective", "classification": "IDENTICAL"},
+    {"field": "optimizer_semantics", "classification": "PROTOCOL_REFINES_UNDEFINED_DETAIL"},
+    {"field": "FIT_sampler", "classification": "IDENTICAL"},
+    {"field": "FIT_budget", "classification": "IDENTICAL"},
+    {"field": "physical_validity_injection", "classification": "IDENTICAL"},
+    {"field": "SELECT_boundary", "classification": "IDENTICAL"},
+    {"field": "CONFIRM_boundary", "classification": "IDENTICAL"},
+    {"field": "RNG_determinism_and_recovery", "classification": "PROTOCOL_REFINES_UNDEFINED_DETAIL"},
+]
+
+
+class ReconciliationError(RuntimeError):
+    """Raised when the immutable authority pair cannot be reconciled safely."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconciliationError(message)
+
+
+def _load_exact(root: Path, relative: Path, digest: str, name: str) -> dict[str, Any]:
+    path = root / relative
+    _require(path.is_file(), f"{name} is missing: {path}")
+    _require(file_sha256(path).lower() == digest, f"{name} hash changed")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    _require(isinstance(payload, Mapping), f"{name} must be a JSON object")
+    return dict(payload)
+
+
+def _audit_pair(contract: Mapping[str, Any], protocol: Mapping[str, Any]) -> None:
+    _require(contract.get("classification") == "N3_LOW_RANK_MODEL_ORDER_CONTRACT_DEFINED", "contract authority changed")
+    _require(contract.get("result") == "READY" and contract.get("status") == "valid_completed", "contract is not valid completed")
+    _require(contract.get("candidate_domain", {}).get("ranks") == [0, 1, 2], "contract rank domain changed")
+    _require(protocol.get("classification") == "N3_LOW_RANK_FIT_PROTOCOL_DEFINED", "original protocol authority changed")
+    _require(protocol.get("result") == "READY" and protocol.get("status") == "valid_completed", "original protocol is not valid completed")
+    _require(protocol.get("contract_authority", {}).get("sha256") == CONTRACT_SHA256, "original protocol contract binding changed")
+    _require(protocol.get("execution_boundary", {}).get("required_execution_authorization") == REQUIRED_AUTHORIZATION, "execution authorization changed")
+    _require(protocol.get("execution_boundary", {}).get("authorization_consumed") is False, "authorization was already consumed")
+
+    family = contract["model_family"]
+    binding = protocol["model_family_binding"]
+    _require(family["parameter_shape"] == {"A": [10, "r"], "B": [20000, "r"], "theta_shared": [2, 1, 100, 100]}, "contract model geometry changed")
+    _require(family["correction"] == "Delta_theta_c = reshape(B @ a_c, (2,1,100,100))", "contract correction formula changed")
+    _require(binding["correction"] == "Delta_theta_c = reshape(B @ A[c,:].T, (2,1,100,100))", "protocol correction formula changed")
+    _require(binding["parameter_dimension"] == 20000 and binding["phase_shape"] == family["parameter_shape"]["theta_shared"], "model geometry is inconsistent")
+    _require(binding["rank_domain"] == contract["candidate_domain"]["ranks"], "protocol rank domain conflicts with contract")
+    _require(binding["stored_counts"] == {"0": 0, "1": 20010, "2": 40020}, "stored parameter counts changed")
+
+    contract_init = contract["candidate_fit_procedure"]["initialization"]
+    _require(contract_init["B"] == "first r canonical row-major unit vectors in R^20000", "contract B semantics changed")
+    _require(protocol["initialization"]["B"]["element_formula"] == OLD_B_FORMULA, "original B conflict is not the expected one")
+    _require(protocol["initialization"]["B"]["shape"] == [20000, "r"], "original B shape changed")
+    _require(protocol["initialization"]["B"]["rank_order"] == "k=0..r-1", "original B rank order changed")
+    _require(protocol["initialization"]["flattening"] == "row-major over (2,1,100,100), j=0..19999", "original flattening changed")
+    _require(protocol["initialization"]["parameter_dtype"] == "torch.float32", "protocol parameter dtype changed")
+    _require(protocol["initialization"]["device"] == "cuda:0", "protocol device binding changed")
+
+    _require(contract_init["A"] == "centered +/-1e-6 checkerboard by class/rank coordinate", "contract A semantics changed")
+    _require(protocol["initialization"]["A"]["element_formula"] == "A[c,k] = 1e-6 * (-1)**bit_count(c & (1 << k))", "protocol A semantics changed")
+    _require(protocol["initialization"]["A"]["class_order"] == "c=0..9" and protocol["initialization"]["A"]["rank_order"] == "k=0..r-1", "A class/rank ordering changed")
+    _require(protocol["initialization"]["A"]["shape"] == [10, "r"], "A shape changed")
+    _require("class order 0..9" in contract["candidate_fit_procedure"]["batch_schedule"], "contract class order changed")
+    _require(protocol["class_lookup_and_injection"]["class_mapping"] == "label c maps to A[c,:] with class order 0..9 and row-major phase axes", "protocol class mapping changed")
+    _require(protocol["class_lookup_and_injection"]["labels"]["legal_range"] == [0, 9], "protocol label range changed")
+    _require(protocol["class_lookup_and_injection"]["correction_operation"] == "flat_delta = coeff @ B.T", "protocol correction operation changed")
+    _require(protocol["class_lookup_and_injection"]["reshape"] == "flat_delta.reshape(N,2,1,100,100)", "protocol reshape changed")
+    _require("immediately before" in family["control_path"] and "immediately before" in protocol["class_lookup_and_injection"]["injection"], "phase injection boundary changed")
+
+    fit = contract["candidate_fit_procedure"]
+    objective = protocol["fit_objective"]
+    _require(fit["objective"] == "mean frozen differentiable L_struct on N3_FIT only; L_S/L_I/L_C are not fused into a new weighted utility", "contract FIT objective changed")
+    _require(objective["fit_terms"] == ["L_struct"] and {"L_S", "L_I", "L_C"}.issubset(objective["excluded_fit_terms"]), "protocol FIT objective changed")
+    _require(objective["authority"]["source_sha256"] == "c8b2af36df70d7c0fedaaec7a089234e1833da0e2c4a85d47b6504bdaf6e2eeb", "frozen structural objective changed")
+
+    optimizer = fit["optimizer"]
+    protocol_optimizer = protocol["optimizer"]
+    for key in ("name", "learning_rate", "betas", "eps", "weight_decay", "amsgrad"):
+        _require(optimizer[key] == protocol_optimizer[key], f"optimizer {key} conflicts with contract")
+    _require(optimizer["reset_from_step9000"] is True and protocol_optimizer["reset_from_step9000"]["value"] is True, "candidate optimizer reset changed")
+    _require(protocol_optimizer["state_initialization"].startswith("fresh zero"), "candidate Adam state is not fresh")
+    _require(protocol_optimizer["scheduler"] is None and protocol_optimizer["gradient_clipping"] is None and protocol_optimizer["projection"] is None, "protocol optimizer refinement changed")
+
+    fit_role = contract["data_roles"]["roles"]["N3_FIT"]
+    sampler = protocol["sampler"]
+    _require(fit_role["data_role"] == sampler["data_role"] == "TRAIN", "FIT role changed")
+    _require(fit_role["indices_by_class"] == sampler["indices_by_class"], "protocol class banks conflict with contract")
+    _require(fit_role["indices_sha256"] == sampler["indices_sha256"] and fit_role["count"] == sampler["count"] == 2560, "FIT sample identity changed")
+    _require(sampler["batch_rule"] == "indices_by_class[c][cursor % 256] for c=0..9, in class order", "FIT sampler order changed")
+    _require(sampler["initial_cursor"] == 0 and sampler["rows_per_class"] == 256, "FIT sampler cursor/budget changed")
+
+    budget = protocol["fit_budget"]
+    _require(fit["updates"] == budget["max_updates"] == 300, "FIT update budget changed")
+    _require(budget["rank_0"]["updates"] == 0 and budget["rank_1"]["updates"] == 300 and budget["rank_2"]["updates"] == 300, "per-rank FIT budget changed")
+    _require(budget["early_stopping"] is False and budget["selection_during_fit"] is False, "selection boundary changed")
+    _require(protocol["checkpoint_and_recovery"]["recovery_interval_updates"] == 25 and protocol["checkpoint_and_recovery"]["checkpoint_selection"] == "none; final endpoint only, and N3_SELECT is run once", "recovery/final endpoint semantics changed")
+
+    physical = protocol["physical_validity"]
+    _require(physical["phase"] == "real finite theta_c; existing transfer exp(i*theta_c) remains unit modulus", "phase validity changed")
+    _require(physical["amplitude"] == "unchanged existing positive intensity/amplitude path", "amplitude path changed")
+    _require(all(physical[key] is False for key in ("clip", "wrap", "projection", "reparameterization")), "physical correction behavior changed")
+    _require("FiniteCropPhaseStack" in contract["physical_validity"]["constraints"][1], "contract propagation boundary changed")
+
+    _require(contract["semantic_feasibility"]["domain"] == "N3_SELECT", "contract SELECT domain changed")
+    _require("N3_SELECT" in budget["selection_input"] and budget["selection_during_fit"] is False, "protocol SELECT boundary changed")
+    _require(contract["confirmation"]["domain"] == "N3_CONFIRM", "contract CONFIRM domain changed")
+    _require("N3_CONFIRM" in protocol["checkpoint_and_recovery"]["confirmation_endpoint"], "protocol CONFIRM boundary changed")
+    _require("337D hard structural authority" in contract["confirmation"]["primary"], "contract confirmation authority changed")
+
+
+def build_corrected_protocol(root: Path) -> dict[str, Any]:
+    root = root.resolve()
+    _require(not (root / (RUNS_ROOT / "preflight_01")).exists(), "N3 preflight already exists; reconciliation is no longer pre-execution")
+    _require(not (root / (RUNS_ROOT / "attempt_01")).exists(), "N3 attempt_01 already exists; reconciliation is no longer pre-execution")
+    contract = _load_exact(root, CONTRACT_PATH, CONTRACT_SHA256, "immutable N3 contract")
+    original = _load_exact(root, OLD_PROTOCOL_PATH, OLD_PROTOCOL_SHA256, "immutable original FIT protocol")
+    failure = _load_exact(root, READINESS_FAILURE_PATH, READINESS_FAILURE_SHA256, "immutable readiness failure")
+    _require(failure.get("classification") == "N3_MODEL_ORDER_FIT_PROTOCOL_UNDEFINED" and failure.get("execution_boundary", {}).get("scientific_attempt_created") is False, "prior readiness-failure authority changed")
+    _require(failure.get("authorization") == REQUIRED_AUTHORIZATION, "prior readiness-failure authorization changed")
+    _audit_pair(contract, original)
+
+    payload = json.loads(json.dumps(original))
+    payload["schema"] = "lightgen_2d_n3_low_rank_fit_protocol.v2"
+    payload["version"] = 2
+    payload["task_id"] = "RECONCILE_LIGHTGEN_2D_N3_LOW_RANK_FIT_PROTOCOL_V1"
+    payload["classification"] = CLASSIFICATION
+    payload["semantic_authority_id"] = SEMANTIC_AUTHORITY_ID
+    payload["created_at_utc"] = datetime.now(timezone.utc).isoformat()
+    payload["supersedes_protocol_sha256"] = OLD_PROTOCOL_SHA256
+    payload["supersession_reason"] = "CONFLICT_WITH_IMMUTABLE_N3_CONTRACT_B_INITIALIZATION"
+    payload["original_definition_entrypoint"] = payload["definition_entrypoint"]
+    entrypoint = Path(__file__).resolve()
+    payload["definition_entrypoint"] = {
+        "path": entrypoint.relative_to(root).as_posix(),
+        "sha256": file_sha256(entrypoint),
+    }
+    payload["initialization"]["B"]["element_formula"] = CANONICAL_B_FORMULA
+    payload["initialization"]["B"]["tensor_layout"] = (
+        "contiguous torch.float32 matrix; j indexes row-major phase flattening and k indexes rank columns"
+    )
+    payload["authority_reconciliation"] = {
+        "classification": "N3_AUTHORITY_PAIR_RECONCILED",
+        "semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+        "active_for_execution": True,
+        "contract_sha256": CONTRACT_SHA256,
+        "supersedes_protocol_sha256": OLD_PROTOCOL_SHA256,
+        "supersession_reason": "CONFLICT_WITH_IMMUTABLE_N3_CONTRACT_B_INITIALIZATION",
+        "superseded_protocol_active_for_execution": False,
+        "resolved_original_conflict": {
+            "field": "initialization.B.element_formula",
+            "old_formula": OLD_B_FORMULA,
+            "contract_normal_form": "B[:,k] = e_k for k=0..r-1 under row-major flattening",
+            "active_formula": CANONICAL_B_FORMULA,
+        },
+        "overlap_audit": OVERLAP_AUDIT,
+    }
+    git = git_identity(root)
+    payload["reconciliation_provenance"] = {
+        "git": {key: git[key] for key in ("branch", "head", "worktree_dirty")},
+        "cuda_executed": False,
+        "candidate_fit_executed": False,
+        "rank_selection_executed": False,
+        "confirmation_executed": False,
+        "authorization_consumed": False,
+    }
+    _require(payload["execution_boundary"]["authorization_consumed"] is False, "reconciliation consumed execution authorization")
+    return payload
+
+
+def write_corrected_protocol(root: Path, output_dir: str | Path = OUTPUT_DIR) -> Path:
+    root = root.resolve()
+    target = (root / output_dir if not Path(output_dir).is_absolute() else Path(output_dir)).resolve()
+    outputs_root = (root / "outputs").resolve()
+    _require(outputs_root in target.parents, "corrected protocol must be a distinct child under outputs")
+    _require(not target.exists(), f"refusing to overwrite corrected protocol directory: {target}")
+    payload = build_corrected_protocol(root)
+    target.mkdir(parents=True, exist_ok=False)
+    path = target / PROTOCOL_NAME
+    atomic_write_new_json(path, payload, artifact_kind="reconciled N3 FIT protocol")
+    return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    path = write_corrected_protocol(args.repo_root, args.output_dir)
+    print(json.dumps({"result": "READY", "classification": CLASSIFICATION, "semantic_authority_id": SEMANTIC_AUTHORITY_ID, "protocol": path.as_posix(), "cuda_executed": False, "candidate_fit_executed": False}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

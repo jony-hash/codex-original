@@ -1,0 +1,2567 @@
+"""Read-only step1200 M0 measurements and fixed-batch BOGT gradient analysis."""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import math
+import tempfile
+import time
+import traceback
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import torch
+from PIL import Image, ImageDraw
+
+import ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training as bogt
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PREFLIGHT_READY, RESOURCE_ENVELOPE, HeartbeatWriter, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INTERRUPTED, RUN_INVALID_HARNESS, RUN_PREPARING, RUN_SCIENTIFIC_ACTIVE, RUN_VALID_FAILED, RUNNING, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from scripts.research.lightgen import execute_lightgen_2d_chen_bogt_complex_ols_training_v1 as parent
+from scripts.research.lightgen import execute_lightgen_2d_establish_sic_independent_confirmation_evaluator_v1 as ed_authority
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_joint_generation_canary_v1 as canary
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1 as m0
+from scripts.research.lightgen import execute_lightgen_2d_semantically_conditioned_ols_sampler_v1 as s1
+from scripts.research.lightgen.m0 import finalize_lightgen_2d_m0_bogt_joint_generation_canary_v1 as finalizer
+
+
+TASK_ID = "M0_BOGT_STEP1200_EVIDENCE_AND_GRADIENT_BALANCE_CHARACTERIZATION_V1"
+AUTHORIZATION_ID = f"{TASK_ID}:authorization:01"
+AUTHORIZATION_TOKEN = "AUTHORIZED_EXECUTE_M0_BOGT_STEP1200_EVIDENCE_AND_GRADIENT_BALANCE_CHARACTERIZATION_V1"
+OUTER_GATE = "M0_BOGT_TUNING_DIRECTION_RESOLVED"
+RUN_ID = "m0-bogt-step1200-evidence-gradient-balance-v1"
+TRAJECTORY_ID = "m0-bogt-step1200-readonly-trajectory-v1"
+ATTEMPT_ID = f"{RUN_ID}:attempt_02"
+RUNS_DIR = Path("outputs/20260929_m0_bogt_step1200_evidence_gradient_balance_v1/runs")
+PREVIOUS_PREFLIGHT_PATHS = (RUNS_DIR / "preflight_01.json", RUNS_DIR / "preflight_02.json", RUNS_DIR / "preflight_03.json")
+PREFLIGHT_PATH = RUNS_DIR / "preflight_04.json"
+PREVIOUS_ATTEMPT_DIR = RUNS_DIR / "attempt_01"
+ATTEMPT_DIR = RUNS_DIR / "attempt_02"
+REPORT_SCHEMA = "m0_bogt_step1200_evidence_gradient_balance_report.v1"
+PREFLIGHT_SCHEMA = "m0_bogt_step1200_evidence_gradient_balance_preflight.v1"
+GRADIENT_SCHEMA = "m0_bogt_step1200_fixed_batch_gradient_analysis.v1"
+BANK_SCHEMA = "m0_bogt_step1200_train_ols.v1"
+RAW_SCHEMA = "m0_bogt_step1200_s1_raw_cmos.v1"
+START_CHECKPOINT = canary.START_CHECKPOINT
+START_REPORT = canary.START_REPORT
+START_CHECKPOINT_SHA256 = canary.START_CHECKPOINT_SHA256
+START_REPORT_SHA256 = canary.START_REPORT_SHA256
+ENDPOINT_PATH = finalizer.ENDPOINT_PATH
+ENDPOINT_RECOVERY_PATH = finalizer.ENDPOINT_RECOVERY_PATH
+PARENT_STATUS_PATH = finalizer.PARENT_STATUS_PATH
+RESOURCE_STOP_PATH = Path(
+    "outputs/20260928_m0_bogt_joint_generation_canary_v1/runs/attempt_02/"
+    "finalization_recovery_01/resource_stop_observation.json"
+)
+OLD_FINALIZATION_STATUS_PATH = Path(
+    "outputs/20260928_m0_bogt_joint_generation_canary_v1/runs/attempt_02/"
+    "finalization_recovery_01/status.json"
+)
+STEP600_S1_RAW_PATH = canary.START_RUN / "generated_raw_cmos.pt"
+STEP600_S1_OLS_PATH = canary.START_RUN / "generated_s1_ols_coefficients.pt"
+STEP600_TRAIN_OLS_PATH = canary.START_RUN / "step600_train_ols.pt"
+STEP600_DEV_BASELINE_PATH = canary.ATTEMPT_DIR / "step600_dev_baseline.json"
+TRAIN_ROWS = 55_000
+DEV_ROWS = 5_000
+TRAIN_BATCH_SIZE = 10
+OLS_CHUNK_ROWS = 1_000
+S1_ROWS = 2_000
+S1_RAW_CHUNK_ROWS = 100
+GRADIENT_BATCH_START = 1_200
+GRADIENT_BATCH_COUNT = 20
+PREFLIGHT_LIMIT_SECONDS = 600.0
+TOTAL_LIMIT_SECONDS = 7_200.0
+DEVICE_HARD_LIMIT = 0.90
+PREFLIGHT_ADMISSION_LIMIT = 0.85
+GRADIENT_DOMINANCE_RATIO = 2.0
+GRADIENT_CONFLICT_COSINE = 0.0
+GRADIENT_CONSISTENCY_COUNT = 16
+REPORT_GENERATION_MACRO = 0.50
+REPORT_GENERATION_CLASS = 0.10
+DEV_RECONSTRUCTION_TOLERANCE = 0.005
+CLASSIFICATION_A = "KL_TO_RECON_GRADIENT_IMBALANCE_SUPPORTED"
+CLASSIFICATION_B = "RECONSTRUCTION_UNDERWEIGHT_SUPPORTED"
+CLASSIFICATION_C = "OPTICAL_POWER_REGULARIZATION_IMBALANCE_SUPPORTED"
+CLASSIFICATION_D = "NO_SINGLE_WEIGHT_CHANGE_JUSTIFIED"
+CLASSIFICATION_E = "M0_BOGT_GRADIENT_BALANCE_MIXED"
+
+
+class EvidenceError(RuntimeError):
+    """Input lineage or read-only measurement contract is invalid."""
+
+
+class ResourceBudgetExceeded(RuntimeError):
+    """The frozen global device resource envelope was exceeded."""
+
+    def __init__(self, message: str, *, resource_records: Sequence[Mapping[str, Any]] = ()) -> None:
+        super().__init__(message)
+        self.resource_records = [dict(record) for record in resource_records]
+
+
+class ModelNumericalInvalidity(RuntimeError):
+    """A valid model forward produced numerically unusable output."""
+
+
+def _require(condition: bool, message: str, error: type[Exception] = EvidenceError) -> None:
+    if not condition:
+        raise error(message)
+
+
+def _root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    _require(isinstance(value, dict), f"expected JSON object: {path}")
+    return value
+
+
+def _load_previous_preflight_history(root: Path) -> dict[str, Any]:
+    expected_failures = (
+        ("KeyError", "'frozen_runtime_state_sha256'", "step600_checkpoint_missing_frozen_runtime_state_sha256"),
+        ("EvidenceError", "E_D comparison population is missing one or more classes", "preflight_evaluator_probe_required_full_class_population"),
+    )
+    records: list[dict[str, Any]] = []
+    previous_elapsed = 0.0
+    for index, relative_path in enumerate(PREVIOUS_PREFLIGHT_PATHS):
+        path = root / relative_path
+        _require(path.is_file(), f"the preserved {relative_path.name} failure is missing")
+        payload = _read_json(path)
+        _require(payload.get("task_id") == TASK_ID and payload.get("outer_gate") == OUTER_GATE and payload.get("authorization_id") == AUTHORIZATION_ID, f"{relative_path.name} task/gate identity changed")
+        if index < 2:
+            expected_type, expected_message, signature = expected_failures[index]
+            _require(payload.get("status") == RUN_INVALID_HARNESS and payload.get("attempt_created") is False, f"{relative_path.name} is not the preserved no-attempt harness failure")
+            failure = payload.get("failure", {})
+            _require(failure.get("type") == expected_type and failure.get("message") == expected_message, f"{relative_path.name} failure is not the reviewed execution-chain defect")
+        else:
+            signature = "source_bound_ready_preflight_consumed_by_invalid_attempt_01"
+            _require(payload.get("status") == PREFLIGHT_READY and payload.get("attempt_created") is False, "preflight_03 is not the preserved source-bound READY receipt")
+            receipt = PreflightReceipt.from_mapping(payload["receipt"])
+            _require(receipt.status == PREFLIGHT_READY and receipt.source_semantics_id == payload.get("source_semantics_id"), "preflight_03 receipt does not bind its source")
+        elapsed = float(payload.get("elapsed_seconds", -1.0))
+        _require(
+            math.isfinite(elapsed) and previous_elapsed <= elapsed < PREFLIGHT_LIMIT_SECONDS,
+            f"{relative_path.name} cumulative preflight time is invalid",
+        )
+        manifest = payload.get("source_manifest")
+        _require(
+            isinstance(manifest, Mapping)
+            and payload.get("source_semantics_id") == manifest.get("execution_source_semantics_id"),
+            f"{relative_path.name} source identity is incomplete",
+        )
+        digest = file_sha256(path)
+        if index > 0:
+            prior_binding = payload.get("previous_preflight_history", {})
+            if index == 1:
+                _require(prior_binding.get("sha256") == records[-1]["sha256"] and float(prior_binding.get("elapsed_seconds", -1.0)) == previous_elapsed, f"{relative_path.name} does not preserve the preceding preflight receipt and cumulative time")
+            else:
+                prior_records = prior_binding.get("records", [])
+                _require(
+                    len(prior_records) == len(records)
+                    and all(
+                        prior_records[item].get("sha256") == records[item]["sha256"]
+                        and prior_records[item].get("path") == records[item]["path"]
+                        for item in range(len(records))
+                    )
+                    and float(prior_binding.get("elapsed_seconds", -1.0)) == previous_elapsed,
+                    "preflight_03 does not preserve both preceding preflight receipts and cumulative time",
+                )
+        records.append(
+            {
+                "path": relative_path.as_posix(),
+                "sha256": digest,
+                "status": payload["status"],
+                "failure_signature": signature,
+                "elapsed_seconds": elapsed,
+                "resource_phase_records_count": len(payload.get("resource_phase_records", payload.get("resources", {}).get("phases", []))),
+                "attempt_created": False,
+            }
+        )
+        previous_elapsed = elapsed
+    _require(previous_elapsed < PREFLIGHT_LIMIT_SECONDS, "cumulative previous preflight time exhausted the 600-second budget")
+    return {"records": records, "elapsed_seconds": previous_elapsed, "attempt_created": False}
+
+
+def _load_previous_invalid_attempt(root: Path, authorities: Mapping[str, Any]) -> dict[str, Any]:
+    attempt = root / PREVIOUS_ATTEMPT_DIR
+    status_path = attempt / "status.json"
+    status = _read_json(status_path)
+    _require(
+        status.get("state") == RUN_INVALID_HARNESS
+        and status.get("task_id") == TASK_ID
+        and status.get("outer_gate") == OUTER_GATE
+        and status.get("authorization_id") == AUTHORIZATION_ID
+        and status.get("attempt_id") == f"{RUN_ID}:attempt_01"
+        and status.get("optimizer_created") is False
+        and status.get("parameter_updates") == 0,
+        "attempt_01 is not the preserved read-only INVALID_HARNESS result",
+    )
+    failure = status.get("failure", {})
+    _require(
+        failure.get("type") == "EvidenceError"
+        and failure.get("message") == "step600 and step1200 S1 neighbor_positions do not refer to the same fixed requests",
+        "attempt_01 failure is not the reviewed S1 neighbor-position overconstraint",
+    )
+    source = _read_json(attempt / "source_manifest.json")
+    ready = _read_json(attempt / "preflight.json")
+    _require(
+        source.get("source_manifest_id") == status.get("source_manifest_id")
+        and ready.get("status") == PREFLIGHT_READY
+        and ready.get("source_manifest_id") == source.get("source_manifest_id")
+        and source.get("execution_source_semantics_id") == ready.get("source_semantics_id"),
+        "attempt_01 source-bound READY lineage changed",
+    )
+    _require(not (attempt / "report.json").exists() and not (attempt / "generated_s1_ols_coefficients.pt").exists() and not (attempt / "generated_raw_cmos.pt").exists(), "attempt_01 unexpectedly contains S1 measurements or a Gate report")
+    bank_path = attempt / "step1200_train_ols.pt"
+    bank = safe_torch_load(bank_path, map_location="cpu")
+    endpoint = authorities["step1200"]
+    _require(
+        isinstance(bank, Mapping)
+        and bank.get("schema") == BANK_SCHEMA
+        and bank.get("selected_step") == canary.END_STEP
+        and bank.get("selected_checkpoint_sha256") == authorities["endpoint_hash"]
+        and bank.get("data_identity") == endpoint.get("data_identity")
+        and bank.get("source_manifest_id") == source.get("source_manifest_id")
+        and bank.get("data_role") == bogt.TRAIN_ROLE
+        and tuple(bank.get("z", torch.empty(0)).shape) == (TRAIN_ROWS, 100)
+        and torch.is_complex(bank["z"])
+        and bool(torch.isfinite(bank["z"].real).all().item())
+        and bool(torch.isfinite(bank["z"].imag).all().item()),
+        "attempt_01 completed OLS bank is not the exact step1200 TRAIN artifact",
+    )
+    chunks, rows = _load_train_ols_chunks(
+        attempt,
+        source_manifest_id=str(source["source_manifest_id"]),
+        endpoint_hash=str(authorities["endpoint_hash"]),
+        data_identity=endpoint["data_identity"],
+    )
+    _require(rows == TRAIN_ROWS and torch.equal(torch.cat(chunks, 0), bank["z"]), "attempt_01 completed OLS bank differs from its contiguous recovery chunks")
+    return {
+        "path": PREVIOUS_ATTEMPT_DIR.as_posix(),
+        "attempt_id": status["attempt_id"],
+        "status_sha256": file_sha256(status_path),
+        "state": status["state"],
+        "failure_signature": "s1_neighbor_positions_recomputed_for_step1200_bank_but_rejected_as_fixed_request_identity",
+        "source_manifest_id": source["source_manifest_id"],
+        "completed_train_ols_sha256": file_sha256(bank_path),
+        "validated_train_ols_rows": rows,
+        "attempt_elapsed_seconds": float(_read_json(attempt / "latest_status.json").get("wall_time", 0.0)),
+        "parameter_updates": 0,
+        "optimizer_created": False,
+        "gate_report_written": False,
+    }
+
+
+def _tree_equal(left: Any, right: Any) -> bool:
+    return canary._tree_equal(left, right)
+
+
+def _optimizer_steps(checkpoint: Mapping[str, Any]) -> list[int]:
+    state = checkpoint.get("optimizer_state", {}).get("state")
+    _require(isinstance(state, Mapping) and len(state) == 2, "checkpoint Adam state is incomplete")
+    result: list[int] = []
+    for item in state.values():
+        value = item.get("step")
+        result.append(int(value.item()) if torch.is_tensor(value) else int(value))
+    return sorted(result)
+
+
+def build_gradient_batches(
+    permutations: Sequence[torch.Tensor],
+    *,
+    cursor: int = GRADIENT_BATCH_START,
+    count: int = GRADIENT_BATCH_COUNT,
+) -> list[torch.Tensor]:
+    """Take same-cursor class-balanced rows from the accepted saved permutation."""
+    _require(len(permutations) == 10, "saved TRAIN sampler must contain ten class permutations")
+    _require(cursor >= 0 and count > 0, "gradient cursor/count is invalid")
+    normalized = [value.detach().to(device="cpu", dtype=torch.long).reshape(-1) for value in permutations]
+    _require(all(value.numel() >= cursor + count for value in normalized), "saved permutation does not cover gradient cursors")
+    batches = [torch.stack([value[position] for value in normalized]) for position in range(cursor, cursor + count)]
+    all_rows = torch.cat(batches)
+    _require(torch.unique(all_rows).numel() == count * 10, "fixed gradient batches contain repeated TRAIN rows")
+    return batches
+
+
+def _source_paths(root: Path) -> tuple[Path, ...]:
+    candidates = (
+        Path(__file__).resolve(),
+        Path(finalizer.__file__).resolve(),
+        Path(canary.__file__).resolve(),
+        Path(m0.__file__).resolve(),
+        Path(parent.__file__).resolve(),
+        Path(s1.__file__).resolve(),
+        Path(bogt.__file__).resolve(),
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+        root / "src/ldm_project/v2/application/research/shared/research_run_control.py",
+        root / "src/ldm_project/v2/student/evaluator.py",
+        root / m0.ED_IMPLEMENTATION,
+        root / "src/ldm_project/v2/evidence/io.py",
+    )
+    return tuple(dict.fromkeys(path.resolve() for path in candidates))
+
+
+def _verify_frozen_runtime_identity(
+    checkpoint: Mapping[str, Any],
+    *,
+    expected_sha256: str,
+    observed_sha256: str,
+) -> None:
+    saved_sha256 = checkpoint.get("frozen_runtime_state_sha256")
+    _require(
+        saved_sha256 is None or saved_sha256 == expected_sha256,
+        "checkpoint frozen optical runtime identity conflicts with step1200 authority",
+    )
+    _require(
+        observed_sha256 == expected_sha256,
+        "loaded frozen optical runtime identity differs from step1200 authority",
+    )
+
+
+def _validate_step600(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    _require(file_sha256(root / START_CHECKPOINT) == START_CHECKPOINT_SHA256, "accepted step600 checkpoint SHA changed")
+    _require(file_sha256(root / START_REPORT) == START_REPORT_SHA256, "accepted step600 report SHA changed")
+    checkpoint = safe_torch_load(root / START_CHECKPOINT, map_location="cpu")
+    report = _read_json(root / START_REPORT)
+    _require(isinstance(checkpoint, Mapping), "accepted step600 checkpoint is malformed")
+    _require(
+        checkpoint.get("schema") == "m0_bogt_semantic_generation_checkpoint.v1"
+        and checkpoint.get("artifact_kind") == "M0_SCIENTIFIC_CHECKPOINT"
+        and checkpoint.get("selected_checkpoint") is True
+        and checkpoint.get("step") == canary.START_STEP
+        and checkpoint.get("sampler_state", {}).get("cursor") == canary.START_STEP
+        and checkpoint.get("sampler_state", {}).get("steps") == canary.START_STEP,
+        "accepted starting checkpoint is not the registered step600 state",
+    )
+    _require(_optimizer_steps(checkpoint) == [canary.START_STEP, canary.START_STEP], "step600 Adam steps are not both 600")
+    _require(len(checkpoint.get("training_history", [])) == canary.START_STEP, "step600 training history length changed")
+    _require(
+        report.get("result") == RUN_VALID_FAILED
+        and report.get("outer_gate") == m0.OUTER_GATE
+        and report.get("training", {}).get("selected_step") == canary.START_STEP
+        and report.get("training", {}).get("optimizer_state_step") == canary.START_STEP
+        and report.get("training", {}).get("additional_updates") == canary.UPDATE_COUNT // 2,
+        "step600 producer report is not the accepted training authority",
+    )
+    latest = _read_json(root / canary.START_LATEST_STATUS)
+    _require(latest.get("step") == canary.START_STEP and latest.get("state") == RUN_VALID_FAILED, "step600 producer status is not terminal at step600")
+    _require(
+        checkpoint.get("data_identity") == checkpoint.get("run_identity", {}).get("config_identity", {}).get("data_identity")
+        and checkpoint.get("data_identity") == checkpoint.get("references", {}).get("data_identity"),
+        "step600 data identity is inconsistent",
+    )
+    return dict(checkpoint), report, latest
+
+
+def _validate_step600_saved_outputs(root: Path, report: Mapping[str, Any], data_identity: Mapping[str, Any]) -> dict[str, Any]:
+    raw_path = root / STEP600_S1_RAW_PATH
+    ols_path = root / STEP600_S1_OLS_PATH
+    bank_path = root / STEP600_TRAIN_OLS_PATH
+    raw_record = report.get("artifacts", {}).get("raw_cmos", {})
+    s1_record = report.get("artifacts", {}).get("s1_coefficients", {})
+    _require(raw_record.get("path") == STEP600_S1_RAW_PATH.as_posix() and raw_record.get("sha256") == file_sha256(raw_path), "step600 S1 raw CMOS is not bound by its accepted report")
+    _require(s1_record.get("path") == STEP600_S1_OLS_PATH.as_posix() and s1_record.get("sha256") == file_sha256(ols_path), "step600 S1 coefficient bank is not bound by its accepted report")
+    raw = safe_torch_load(raw_path, map_location="cpu")
+    coeff = safe_torch_load(ols_path, map_location="cpu")
+    train_bank = safe_torch_load(bank_path, map_location="cpu")
+    _require(
+        isinstance(raw, Mapping)
+        and raw.get("source_step") == canary.START_STEP
+        and raw.get("data_role") == bogt.TRAIN_ROLE
+        and raw.get("sampler_family") == "S1"
+        and tuple(raw.get("raw_cmos", torch.empty(0)).shape) == (S1_ROWS, 1, 200, 200)
+        and tuple(raw.get("requested_labels", torch.empty(0)).shape) == (S1_ROWS,)
+        and tuple(raw.get("prediction_labels", torch.empty(0)).shape) == (S1_ROWS,),
+        "step600 saved S1 raw CMOS identity/shape changed",
+    )
+    _require(
+        isinstance(coeff, Mapping)
+        and coeff.get("source_step") == canary.START_STEP
+        and coeff.get("data_role") == bogt.TRAIN_ROLE
+        and coeff.get("sampler_family") == "S1"
+        and tuple(coeff.get("z", torch.empty(0)).shape) == (S1_ROWS, 100)
+        and torch.is_complex(coeff["z"]),
+        "step600 saved S1 coefficient identity/shape changed",
+    )
+    _require(torch.equal(raw["requested_labels"], coeff["requested_labels"]), "step600 S1 raw and coefficient labels differ")
+    _require(
+        isinstance(train_bank, Mapping)
+        and train_bank.get("schema") == "m0_step600_train_ols.v1"
+        and train_bank.get("selected_step") == canary.START_STEP
+        and train_bank.get("selected_checkpoint_sha256") == START_CHECKPOINT_SHA256
+        and train_bank.get("data_identity") == dict(data_identity)
+        and tuple(train_bank.get("z", torch.empty(0)).shape) == (TRAIN_ROWS, 100)
+        and torch.is_complex(train_bank["z"])
+        and coeff.get("source_train_ols_sha256") == file_sha256(bank_path),
+        "step600 S1 source bank identity/schema changed",
+    )
+    return {
+        "step600_s1_raw_cmos": {"path": STEP600_S1_RAW_PATH.as_posix(), "sha256": file_sha256(raw_path), "size_bytes": raw_path.stat().st_size},
+        "step600_s1_coefficients": {"path": STEP600_S1_OLS_PATH.as_posix(), "sha256": file_sha256(ols_path), "size_bytes": ols_path.stat().st_size},
+        "step600_train_ols": {"path": STEP600_TRAIN_OLS_PATH.as_posix(), "sha256": file_sha256(bank_path), "size_bytes": bank_path.stat().st_size},
+    }
+
+
+def _validate_authorities(root: Path) -> dict[str, Any]:
+    parent_authority = finalizer._validate_parent_attempt(root)
+    endpoint_hash = file_sha256(root / ENDPOINT_PATH)
+    endpoint = safe_torch_load(root / ENDPOINT_PATH, map_location="cpu")
+    recovery = safe_torch_load(root / ENDPOINT_RECOVERY_PATH, map_location="cpu")
+    _require(isinstance(endpoint, Mapping) and isinstance(recovery, Mapping), "step1200 endpoint/recovery is malformed")
+    endpoint_state = finalizer._validate_endpoint_pair(endpoint, recovery, endpoint_hash=endpoint_hash)
+    start, start_report, start_latest = _validate_step600(root)
+    _require(endpoint.get("parent_checkpoint_sha256") == START_CHECKPOINT_SHA256, "step1200 endpoint is not descended from accepted step600")
+    _require(endpoint.get("data_identity") == start.get("data_identity"), "step600 and step1200 dataset identities differ")
+    _require(_optimizer_steps(endpoint) == [canary.END_STEP, canary.END_STEP], "step1200 Adam internal steps are not both 1200")
+    _require(
+        _tree_equal(start.get("references"), endpoint.get("references"))
+        and _tree_equal(start.get("weights"), endpoint.get("weights")),
+        "BOGT references or weights changed between accepted step600 and step1200",
+    )
+    _require(
+        all(torch.equal(left, right) for left, right in zip(
+            start["sampler_state"]["permutations"],
+            endpoint["sampler_state"]["permutations"],
+            strict=True,
+        )),
+        "accepted TRAIN class permutations changed during step600-to-step1200 training",
+    )
+    endpoint_optimizer_names = endpoint.get("optimizer_configuration", {}).get("parameter_names")
+    _require(endpoint_optimizer_names == ["encoder.phase", "generator.phase"], "step1200 saved optimizer scope changed")
+    parent_status_hash = file_sha256(root / PARENT_STATUS_PATH)
+    resource_stop = _read_json(root / RESOURCE_STOP_PATH)
+    recovery_status = _read_json(root / OLD_FINALIZATION_STATUS_PATH)
+    _require(
+        resource_stop.get("measurement_validity") == "INCOMPLETE_RESOURCE_STOP"
+        and resource_stop.get("partial_train_ols_bank", {}).get("validated_contiguous_rows") == 22_000
+        and resource_stop.get("partial_train_ols_bank", {}).get("eligible_for_S1_or_scientific_gate") is False
+        and recovery_status.get("state") == RUN_INTERRUPTED,
+        "historical step1200 finalization stop authority changed",
+    )
+    output_identities = _validate_step600_saved_outputs(root, start_report, start["data_identity"])
+    authorities = {
+        "step600_checkpoint": {"path": START_CHECKPOINT.as_posix(), "sha256": START_CHECKPOINT_SHA256},
+        "step600_report": {"path": START_REPORT.as_posix(), "sha256": START_REPORT_SHA256},
+        "step600_latest_status": {"path": canary.START_LATEST_STATUS.as_posix(), "sha256": file_sha256(root / canary.START_LATEST_STATUS)},
+        "step1200_checkpoint": {"path": ENDPOINT_PATH.as_posix(), "sha256": endpoint_hash},
+        "step1200_latest_recovery": {"path": ENDPOINT_RECOVERY_PATH.as_posix(), "sha256": file_sha256(root / ENDPOINT_RECOVERY_PATH)},
+        "training_attempt_02_status": {"path": PARENT_STATUS_PATH.as_posix(), "sha256": parent_status_hash, "state": RUN_INVALID_HARNESS},
+        "historical_finalization_stop": {"path": RESOURCE_STOP_PATH.as_posix(), "sha256": file_sha256(root / RESOURCE_STOP_PATH)},
+        "historical_finalization_status": {"path": OLD_FINALIZATION_STATUS_PATH.as_posix(), "sha256": file_sha256(root / OLD_FINALIZATION_STATUS_PATH)},
+        "frozen_bogt_references": {"path": m0.FROZEN_REFERENCES.as_posix(), "sha256": m0.FROZEN_REFERENCES_SHA256},
+        "frozen_bogt_weights": {"path": m0.FROZEN_WEIGHTS.as_posix(), "sha256": m0.FROZEN_WEIGHTS_SHA256},
+        "independent_ed_checkpoint": {"path": m0.ED_CHECKPOINT.as_posix(), "sha256": m0.ED_CHECKPOINT_SHA256},
+        "independent_ed_qualification": {"path": m0.ED_QUALIFICATION.as_posix(), "sha256": m0.ED_QUALIFICATION_SHA256},
+        **output_identities,
+    }
+    return {
+        "root": root,
+        "step600": start,
+        "step600_report": start_report,
+        "step600_latest": start_latest,
+        "step1200": dict(endpoint),
+        "endpoint_hash": endpoint_hash,
+        "endpoint_state": endpoint_state,
+        "parent_attempt": parent_authority,
+        "parent_status_hash": parent_status_hash,
+        "authorities": authorities,
+        "old_resource_stop": resource_stop,
+    }
+
+
+def _verify_authority_bytes(root: Path, authority_identities: Mapping[str, Any]) -> None:
+    for name, record in authority_identities.items():
+        _require(isinstance(record, Mapping) and isinstance(record.get("path"), str) and isinstance(record.get("sha256"), str), f"authority record is incomplete: {name}")
+        path = root / record["path"]
+        _require(path.is_file(), f"bound input authority is missing: {name} ({path})")
+        _require(file_sha256(path) == record["sha256"], f"bound input authority changed after resolution: {name}")
+
+
+def _identity(source: Mapping[str, Any], data_identity: Mapping[str, Any], checkpoint: Mapping[str, Any]) -> ResearchRunIdentity:
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        trajectory_id=TRAJECTORY_ID,
+        semantic_authority_id=canary.SEMANTIC_AUTHORITY_ID,
+        data_role=bogt.TRAIN_ROLE,
+        config_identity={
+            "scientific_attempt_id": ATTEMPT_ID,
+            "step600_checkpoint_sha256": START_CHECKPOINT_SHA256,
+            "step1200_checkpoint_sha256": file_sha256(_root() / ENDPOINT_PATH),
+            "data_identity": dict(data_identity),
+            "mode": "read_only_step1200_full_measurement_plus_fixed_batch_gradient_characterization",
+            "weights": dict(checkpoint["weights"]),
+            "updates": 0,
+            "optimizer_created": False,
+            "train_ols_rows": TRAIN_ROWS,
+            "s1": {"family": "S1", "neighbors": 16, "per_class": canary.PER_CLASS_GENERATION, "seed": s1.BANK_SEED},
+            "gradient_batches": {"cursor_start": GRADIENT_BATCH_START, "count": GRADIENT_BATCH_COUNT, "rows_per_batch": 10},
+            "budget": {
+                "total_seconds": TOTAL_LIMIT_SECONDS,
+                "preflight_seconds": PREFLIGHT_LIMIT_SECONDS,
+                "device_global_fraction": DEVICE_HARD_LIMIT,
+                "preflight_admission_fraction": PREFLIGHT_ADMISSION_LIMIT,
+            },
+        },
+        model_identity={
+            "runtime": "LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1",
+            "read_only": True,
+            "independent_evaluator": ed_authority.SEMANTIC_AUTHORITY_ID,
+        },
+        optimizer_identity={"created": False, "reason": "read-only evidence and autograd.grad characterization"},
+        sampler_identity={"accepted_saved_per_class_train_permutations": True, "gradient_cursor_start": GRADIENT_BATCH_START, "batch_count": GRADIENT_BATCH_COUNT},
+        execution_source_semantics_id=str(source["execution_source_semantics_id"]),
+        source_manifest_id=str(source["source_manifest_id"]),
+        scientific_attempt_id=ATTEMPT_ID,
+    )
+
+
+@dataclass
+class ResourceRecorder:
+    device: torch.device
+    hard_limit: float
+    phase_limit: float
+    telemetry_path: Path | None = None
+    entries: list[dict[str, Any]] = field(default_factory=list)
+
+    def sample(self, phase: str, *, progress: Mapping[str, Any] | None = None, started: float | None = None) -> dict[str, Any]:
+        metrics = canary._resource(self.device)
+        record = {
+            **metrics,
+            "phase": phase,
+            "progress": dict(progress or {}),
+            "elapsed_seconds": 0.0 if started is None else max(0.0, time.perf_counter() - started),
+            "allocator_peak_scope": "since_previous_resource_sample",
+        }
+        self.entries.append(record)
+        if self.telemetry_path is not None:
+            self.telemetry_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.telemetry_path.open("a", encoding="utf-8", newline="\n") as stream:
+                stream.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
+                stream.flush()
+        fraction = float(record["global_used_fraction"])
+        if self.device.type == "cuda" and torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats(self.device)
+        if fraction > self.hard_limit:
+            raise ResourceBudgetExceeded(
+                f"{phase} exceeded hard global GPU limit {self.hard_limit:.0%}: {fraction:.4%}",
+                resource_records=self.entries,
+            )
+        if fraction > self.phase_limit:
+            raise ResourceBudgetExceeded(
+                f"{phase} exceeded admission GPU limit {self.phase_limit:.0%}: {fraction:.4%}",
+                resource_records=self.entries,
+            )
+        return record
+
+
+def _build_consumer(
+    checkpoint: Mapping[str, Any],
+    *,
+    device: torch.device,
+    expected_data_identity: Mapping[str, Any],
+    external_references: Any,
+    external_weights: Any,
+    expected_frozen_runtime_state_sha256: str | None = None,
+) -> bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer:
+    consumer = bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer(
+        device=device,
+        propagation_grid_size=bogt.PRODUCTION_PROPAGATION_GRID,
+    )
+    references = bogt.FrozenBogtReferences.from_payload(checkpoint["references"])
+    weights = bogt.BogtLossWeights.from_payload(checkpoint["weights"])
+    _require(references.data_identity == dict(expected_data_identity) and references.data_role == bogt.TRAIN_ROLE and references.count == TRAIN_ROWS, "checkpoint BOGT references are not the fixed TRAIN authority")
+    _require(references.identity() == external_references.identity(), "checkpoint BOGT reference identity differs from frozen authority")
+    _require(weights.identity() == external_weights.identity(), "checkpoint BOGT weights differ from frozen authority")
+    consumer.bind_references(references, for_scientific=True)
+    consumer.bind_weights(weights, for_scientific=True)
+    consumer.load_trainable_state_dict(checkpoint["trainable_parameter_state"])
+    if expected_frozen_runtime_state_sha256 is None:
+        expected_frozen_runtime_state_sha256 = checkpoint.get("frozen_runtime_state_sha256")
+    _require(isinstance(expected_frozen_runtime_state_sha256, str), "frozen optical runtime identity has no bound authority")
+    _verify_frozen_runtime_identity(
+        checkpoint,
+        expected_sha256=expected_frozen_runtime_state_sha256,
+        observed_sha256=consumer.frozen_state_sha256,
+    )
+    _require(consumer.runtime.config.propagation_grid_size == bogt.PRODUCTION_PROPAGATION_GRID, "production propagation grid changed")
+    _require(tuple(name for name, _ in consumer.runtime.named_parameters()) == ("encoder.phase", "generator.phase"), "runtime trainable parameter surface changed")
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    consumer.runtime.eval()
+    return consumer
+
+
+def _load_cpu_context(root: Path, expected_data_identity: Mapping[str, Any]) -> m0.RuntimeContext:
+    context = m0._load_runtime_context(root, torch.device("cpu"), m0._authority_files(root))
+    _require(context.data_identity == dict(expected_data_identity), "current TRAIN/DEV data split differs from both checkpoint authorities")
+    _require(all(parameter.grad is None and not parameter.requires_grad for parameter in context.independent_evaluator.parameters()), "E_D is not frozen before measurement")
+    context.independent_evaluator.eval()
+    for parameter in context.training_evaluator.parameters():
+        _require(parameter.grad is None and not parameter.requires_grad, "frozen training evaluator acquired gradients")
+    return context
+
+
+def _step600_external_weights(root: Path, data_identity: Mapping[str, Any]) -> tuple[Any, Any]:
+    references = parent._load_references(root / m0.FROZEN_REFERENCES, expected_data_identity=data_identity)
+    weights = parent._load_weights(
+        root / m0.FROZEN_WEIGHTS,
+        expected_reference_identity=canonical_sha256(references.identity()),
+    )
+    return references, weights
+
+
+def _encode_batch(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    context: m0.RuntimeContext,
+    indices: torch.Tensor,
+) -> torch.Tensor:
+    images = context.images.index_select(0, indices).to(consumer.device)
+    context.ledger.record(bogt.TRAIN_ROLE, int(indices.numel()))
+    with torch.no_grad():
+        result = consumer.runtime.forward_from_image(images)
+        coefficients = result.z_ols.coefficients.detach().to(torch.complex64).cpu().contiguous()
+    _require(coefficients.shape == (indices.numel(), 100) and torch.is_complex(coefficients), "TRAIN OLS forward returned the wrong shape")
+    _require(bool(torch.isfinite(coefficients.real).all().item()) and bool(torch.isfinite(coefficients.imag).all().item()), "TRAIN OLS forward returned nonfinite coefficients", ModelNumericalInvalidity)
+    _require(not coefficients.requires_grad and coefficients.grad_fn is None, "TRAIN OLS collection retained an autograd graph")
+    return coefficients
+
+
+def _preflight_gradient_probe(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    context: m0.RuntimeContext,
+    indices: torch.Tensor,
+) -> dict[str, Any]:
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(True)
+        parameter.grad = None
+    images = context.images.index_select(0, indices).to(consumer.device)
+    context.ledger.record(bogt.TRAIN_ROLE, int(indices.numel()))
+    loss = consumer.forward_loss(images, data_role=bogt.TRAIN_ROLE)
+    names = ("encoder.phase", "generator.phase")
+    parameters = [dict(consumer.runtime.named_parameters())[name] for name in names]
+    terms = {
+        "alpha_L_dist": consumer.weights.alpha * loss.l_dist,
+        "beta_L_rec": consumer.weights.beta * loss.l_rec,
+        "gamma_L_op": consumer.weights.gamma * loss.l_op,
+    }
+    norms: dict[str, dict[str, float]] = {}
+    for term_index, (term_name, term) in enumerate(terms.items()):
+        gradients = torch.autograd.grad(term, parameters, retain_graph=term_index < len(terms) - 1, allow_unused=True)
+        norms[term_name] = {
+            name: 0.0 if gradient is None else float(gradient.detach().to(torch.float64).norm().cpu())
+            for name, gradient in zip(names, gradients, strict=True)
+        }
+    _require(all(math.isfinite(value) for item in norms.values() for value in item.values()), "preflight BOGT gradient is nonfinite", ModelNumericalInvalidity)
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "autograd.grad accumulated parameter .grad in preflight")
+    _require(norms["alpha_L_dist"]["generator.phase"] == 0.0, "L_dist has a nonzero structural Generator gradient")
+    result = {
+        "weighted_component_gradient_norms": norms,
+        "L_dist_generator_structural_zero": True,
+        "optimizer_created": False,
+        "parameters_updated": False,
+        "parameter_grad_fields_accumulated": False,
+    }
+    del images, loss, terms, parameters
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    return result
+
+
+def _preflight(
+    root: Path,
+    authorities: Mapping[str, Any],
+    source: Mapping[str, Any],
+    *,
+    task_started: float,
+    preflight_started: float,
+) -> tuple[dict[str, Any], PreflightReceipt]:
+    _require(time.perf_counter() - preflight_started <= PREFLIGHT_LIMIT_SECONDS, "cumulative source resolution exceeded the 600-second preflight budget", ResourceBudgetExceeded)
+    device = torch.device("cuda:0")
+    _require(torch.cuda.is_available(), "CUDA is required for the accepted production optical forward path", ResourceBudgetExceeded)
+    recorder = ResourceRecorder(device, DEVICE_HARD_LIMIT, PREFLIGHT_ADMISSION_LIMIT)
+    context: m0.RuntimeContext | None = None
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer | None = None
+    phases: dict[str, Any] = {}
+    model_load_seconds = 0.0
+    ols_seconds = 0.0
+    gradient_seconds: dict[str, float] = {}
+    forward_batch_seconds = 0.0
+    evaluator_batch_seconds = 0.0
+    disk_probe_seconds = 0.0
+    try:
+        phase_start = time.perf_counter()
+        context = _load_cpu_context(root, authorities["step1200"]["data_identity"])
+        refs, weights = _step600_external_weights(root, context.data_identity)
+        phases["load_data_evaluators_and_bindings"] = {"elapsed_seconds": time.perf_counter() - phase_start, "data_identity": context.data_identity}
+        recorder.sample("preflight_load_data_cpu_evaluators_cpu")
+        phase_start = time.perf_counter()
+        consumer = _build_consumer(
+            authorities["step1200"],
+            device=device,
+            expected_data_identity=context.data_identity,
+            external_references=refs,
+            external_weights=weights,
+            expected_frozen_runtime_state_sha256=authorities["step1200"]["frozen_runtime_state_sha256"],
+        )
+        model_load_seconds = time.perf_counter() - phase_start
+        phases["load_step1200_frozen_optical_runtime"] = {"elapsed_seconds": model_load_seconds, "frozen_runtime_state_sha256": consumer.frozen_state_sha256}
+        recorder.sample("preflight_load_step1200_runtime")
+
+        phase_start = time.perf_counter()
+        for start_row in range(0, 8_000, 100):
+            row_start = start_row
+            rows = min(100, 8_000 - row_start)
+            pieces: list[torch.Tensor] = []
+            for offset in range(row_start, row_start + rows, TRAIN_BATCH_SIZE):
+                indices = context.train_indices[offset : offset + TRAIN_BATCH_SIZE]
+                pieces.append(_encode_batch(consumer, context, indices))
+            probe_bank = torch.cat(pieces, 0)
+            _require(probe_bank.shape == (rows, 100), "preflight TRAIN OLS block shape changed")
+            del pieces, probe_bank
+            completed_rows = row_start + rows
+            _require(time.perf_counter() - preflight_started <= PREFLIGHT_LIMIT_SECONDS, "cumulative preflight exceeded 600 seconds during TRAIN OLS qualification", ResourceBudgetExceeded)
+            recorder.sample(
+                "preflight_rolling_8k_train_ols",
+                progress={"completed_rows": completed_rows, "target_rows": 8_000},
+                started=phase_start,
+            )
+            if completed_rows % OLS_CHUNK_ROWS == 0:
+                gc.collect()
+                torch.cuda.empty_cache()
+        ols_seconds = time.perf_counter() - phase_start
+        phases["rolling_8k_train_ols"] = {"rows": 8_000, "elapsed_seconds": ols_seconds, "graph_retained": False}
+
+        gradient_indices = build_gradient_batches(authorities["step600"]["sampler_state"]["permutations"])[0]
+        for name, checkpoint in (("step600", authorities["step600"]), ("step1200", authorities["step1200"])):
+            phase_start = time.perf_counter()
+            consumer = _build_consumer(
+                checkpoint,
+                device=device,
+                expected_data_identity=context.data_identity,
+                external_references=refs,
+                external_weights=weights,
+                expected_frozen_runtime_state_sha256=authorities["step1200"]["frozen_runtime_state_sha256"],
+            )
+            before = consumer.trainable_state_dict()
+            probe = _preflight_gradient_probe(consumer, context, gradient_indices)
+            _require(_tree_equal(before, consumer.trainable_state_dict()), f"{name} preflight gradient probe updated model parameters")
+            _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), f"{name} preflight left parameter gradients")
+            gradient_seconds[name] = time.perf_counter() - phase_start
+            phases[f"{name}_one_batch_autograd_grad"] = probe
+            recorder.sample(f"preflight_{name}_gradient_probe", progress={"cursor": GRADIENT_BATCH_START, "rows": 10}, started=phase_start)
+            del consumer
+            consumer = None
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        phase_start = time.perf_counter()
+        consumer = _build_consumer(
+            authorities["step1200"],
+            device=device,
+            expected_data_identity=context.data_identity,
+            external_references=refs,
+            external_weights=weights,
+            expected_frozen_runtime_state_sha256=authorities["step1200"]["frozen_runtime_state_sha256"],
+        )
+        old_s1 = safe_torch_load(root / STEP600_S1_OLS_PATH, map_location="cpu")
+        probe_ols = old_s1["z"][:TRAIN_BATCH_SIZE].to(device)
+        probe_labels = old_s1["requested_labels"][:TRAIN_BATCH_SIZE].detach().cpu().to(torch.long)
+        with torch.no_grad():
+            generated = consumer.generated_forward(probe_ols)
+            probe_raw = generated.raw_intensity.detach().cpu().contiguous()
+        forward_batch_seconds = time.perf_counter() - phase_start
+        _require(probe_raw.shape == (TRAIN_BATCH_SIZE, 1, 200, 200) and bool(torch.isfinite(probe_raw).all().item()), "preflight generated raw CMOS is invalid", ModelNumericalInvalidity)
+        _require(not probe_raw.requires_grad and probe_raw.grad_fn is None, "preflight generated output retained an autograd graph")
+        recorder.sample("preflight_s1_generator_forward", progress={"rows": TRAIN_BATCH_SIZE}, started=phase_start)
+        phase_start = time.perf_counter()
+        probe_indices = context.train_indices[20_000 : 20_000 + TRAIN_BATCH_SIZE]
+        context.ledger.record(bogt.TRAIN_ROLE, TRAIN_BATCH_SIZE)
+        with torch.no_grad():
+            train_probe = consumer.runtime.forward_from_image(context.images.index_select(0, probe_indices).to(device))
+            train_probe_raw = train_probe.raw_intensity.detach().cpu().contiguous()
+        train_dev_batch_seconds = time.perf_counter() - phase_start
+        _require(train_probe_raw.shape == (TRAIN_BATCH_SIZE, 1, 200, 200), "preflight TRAIN image optical output shape changed")
+        _require(bool(torch.isfinite(train_probe_raw).all().item()), "preflight TRAIN-shaped readout probe produced nonfinite CMOS", ModelNumericalInvalidity)
+        _require(not train_probe_raw.requires_grad and train_probe_raw.grad_fn is None, "preflight TRAIN image readout retained an autograd graph")
+        recorder.sample("preflight_train_image_optical_forward", progress={"rows": TRAIN_BATCH_SIZE, "data_role": bogt.TRAIN_ROLE}, started=phase_start)
+        del train_probe, train_probe_raw, consumer, generated, probe_ols
+        consumer = None
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        evaluator = context.independent_evaluator
+        phase_start = time.perf_counter()
+        evaluator.to(device)
+        evaluator.eval()
+        evaluator_views = m0._evaluator_view(probe_raw).to(device)
+        with torch.no_grad():
+            ed_logits = evaluator(evaluator_views)
+        evaluator_batch_seconds = time.perf_counter() - phase_start
+        _require(tuple(ed_logits.shape) == (TRAIN_BATCH_SIZE, 10), "preflight frozen E_D output shape changed")
+        _require(bool(torch.isfinite(ed_logits).all().item()), "preflight frozen E_D produced nonfinite logits", ModelNumericalInvalidity)
+        _require(not ed_logits.requires_grad and ed_logits.grad_fn is None, "preflight frozen E_D output retained an autograd graph")
+        _require(all(parameter.grad is None and not parameter.requires_grad for parameter in evaluator.parameters()), "preflight E_D acquired gradients")
+        recorder.sample("preflight_small_frozen_ed_forward", progress={"rows": TRAIN_BATCH_SIZE, "data_role": bogt.TRAIN_ROLE}, started=phase_start)
+        phases["small_frozen_ed_forward"] = {
+            "rows": TRAIN_BATCH_SIZE,
+            "logits_shape": list(ed_logits.shape),
+            "finite": True,
+            "device": "cuda:0 after optical runtime release",
+            "elapsed_seconds": evaluator_batch_seconds,
+            "no_graph": True,
+        }
+        evaluator.to(torch.device("cpu"))
+        del ed_logits, evaluator_views, probe_labels, probe_raw, old_s1
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        phase_start = time.perf_counter()
+        with tempfile.TemporaryDirectory(prefix="m0-step1200-readout-") as directory:
+            probe_path = Path(directory) / "write_probe.pt"
+            torch.save({"raw": torch.zeros((TRAIN_BATCH_SIZE, 1, 200, 200), dtype=torch.float32)}, probe_path)
+            disk_probe_seconds = time.perf_counter() - phase_start
+        phases["artifact_write_probe"] = {"bytes": TRAIN_BATCH_SIZE * 200 * 200 * 4, "elapsed_seconds": disk_probe_seconds, "outside_repository": True}
+        recorder.sample("preflight_measurement_write_probe")
+        elapsed = time.perf_counter() - preflight_started
+        _require(elapsed <= PREFLIGHT_LIMIT_SECONDS, f"cumulative preflight exceeded 600 seconds: {elapsed:.2f}", ResourceBudgetExceeded)
+        task_elapsed = time.perf_counter() - task_started
+        max_global = max(float(item["global_used_fraction"]) for item in recorder.entries)
+        per_row_collect = ols_seconds / 8_000
+        projection = {
+            "step1200_train_ols_55000_seconds": per_row_collect * TRAIN_ROWS * 1.25,
+            "step600_and_step1200_s1_2000_raw_forward_seconds": forward_batch_seconds * (2 * S1_ROWS / TRAIN_BATCH_SIZE) * 1.5,
+            "dev_10000_optical_forward_seconds": train_dev_batch_seconds * ((2 * DEV_ROWS) / TRAIN_BATCH_SIZE) * 1.5,
+            "gradient_40_batches_seconds": sum(gradient_seconds.values()) * GRADIENT_BATCH_COUNT * 1.25,
+            "s1_and_dev_evaluator_seconds": evaluator_batch_seconds * ((2 * S1_ROWS + 2 * DEV_ROWS) / TRAIN_BATCH_SIZE) * 1.25,
+            "raw_artifact_write_seconds": disk_probe_seconds * (S1_ROWS / TRAIN_BATCH_SIZE) * 1.5,
+        }
+        projection["measurement_and_report_overhead_seconds"] = 180.0
+        projected_execution = sum(projection.values()) + model_load_seconds * 4.0
+        budget = {
+            "preflight_elapsed_seconds": elapsed,
+            "task_elapsed_before_science_seconds": task_elapsed,
+            "preflight_limit_seconds": PREFLIGHT_LIMIT_SECONDS,
+            "total_limit_seconds": TOTAL_LIMIT_SECONDS,
+            "projected_execution_seconds": projected_execution,
+            "projected_total_seconds": task_elapsed + projected_execution,
+            "global_device_peak_fraction": max_global,
+            "preflight_admission_limit_fraction": PREFLIGHT_ADMISSION_LIMIT,
+            "hard_global_device_limit_fraction": DEVICE_HARD_LIMIT,
+            "resource_accounting_note": "global device use and process PyTorch allocator counters are reported separately and are not summed",
+        }
+        _require(budget["projected_total_seconds"] <= TOTAL_LIMIT_SECONDS, f"read-only workload projects beyond two hours: {budget['projected_total_seconds']:.1f}s", ResourceBudgetExceeded)
+        receipt = PreflightReceipt(
+            source_semantics_id=str(source["execution_source_semantics_id"]),
+            authorization_id=AUTHORIZATION_ID,
+            checks={
+                CORRECTNESS_INVARIANTS: {
+                    "status": "READY",
+                    "step600_and_step1200_checkpoint_lineage": "PASS",
+                    "both_adam_states_verified_without_loading_or_creating_optimizer": "PASS",
+                    "fixed_train_permutation_and_gradient_batch": "PASS",
+                    "all_measurement_forwards_no_graph": "PASS",
+                    "autograd_grad_did_not_accumulate_or_update": "PASS",
+                    "E_D_frozen_confirmation_only": "PASS",
+                    "old_attempt_02_status_preserved_invalid_harness": "PASS",
+                },
+                RESOURCE_ENVELOPE: {"status": "READY", "budget": budget, "phases": recorder.entries},
+                IMPLEMENTATION_SELECTION: {
+                    "status": "READY",
+                    "measurement_path": "production CUDA optical runtime; CPU-staged outputs; frozen E_D forward; read-only autograd.grad",
+                    "optimizer_created": False,
+                    "parameter_updates": 0,
+                },
+            },
+            selected_engine="CUDA",
+            resource={"budget": budget, "phases": recorder.entries, "projection": projection},
+            status=PREFLIGHT_READY,
+        )
+        result = {
+            "schema": PREFLIGHT_SCHEMA,
+            "status": PREFLIGHT_READY,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "source_manifest": dict(source),
+            "source_semantics_id": source["execution_source_semantics_id"],
+            "source_manifest_id": source["source_manifest_id"],
+            "input_authorities": authorities["authority_identities"],
+            "previous_preflight_history": authorities["previous_preflight_history"],
+            "previous_invalid_attempt": authorities["previous_invalid_attempt"],
+            "step1200_endpoint_audit": authorities["endpoint_state"],
+            "preflight_measurements": phases,
+            "resources": {"budget": budget, "phases": recorder.entries, "projection": projection},
+            "optimizer_created": False,
+            "parameter_updates": 0,
+            "read_ledger": context.ledger.to_dict(),
+            "data_firewall": {"protected": 0, "official_test": 0, "sealed": 0},
+            "receipt": receipt.to_dict(),
+            "elapsed_seconds": elapsed,
+            "task_elapsed_seconds": task_elapsed,
+            "attempt_created": False,
+        }
+        return result, receipt
+    except Exception as error:
+        if isinstance(error, ResourceBudgetExceeded) and not error.resource_records:
+            try:
+                recorder.sample("preflight_stop_observation", progress={"reason": str(error)})
+            except ResourceBudgetExceeded as observed:
+                error.resource_records = list(observed.resource_records)
+            if not error.resource_records:
+                error.resource_records = [dict(record) for record in recorder.entries]
+        elif not getattr(error, "resource_records", None):
+            error.resource_records = [dict(record) for record in recorder.entries]
+        raise
+    finally:
+        del consumer, context
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def _write_json_or_compare(path: Path, payload: Mapping[str, Any], kind: str) -> None:
+    if path.exists():
+        _require(_read_json(path) == dict(payload), f"existing immutable JSON differs: {path.name}")
+    else:
+        atomic_write_new_json(path, dict(payload), artifact_kind=kind)
+
+
+def _write_torch_or_compare(path: Path, payload: Mapping[str, Any], kind: str) -> None:
+    if path.exists():
+        saved = safe_torch_load(path, map_location="cpu")
+        _require(_tree_equal(saved, payload), f"existing immutable tensor artifact differs: {path.name}")
+    else:
+        atomic_torch_save_new(path, dict(payload), artifact_kind=kind)
+
+
+def _chunk_paths(directory: Path, prefix: str) -> list[Path]:
+    return sorted(directory.glob(f"{prefix}_*.pt"), key=lambda path: path.name)
+
+
+def _load_train_ols_chunks(
+    attempt: Path,
+    *,
+    source_manifest_id: str,
+    endpoint_hash: str,
+    data_identity: Mapping[str, Any],
+) -> tuple[list[torch.Tensor], int]:
+    directory = attempt / "train_ols_chunks"
+    paths = _chunk_paths(directory, "train_ols_chunk")
+    chunks: list[torch.Tensor] = []
+    cursor = 0
+    for path in paths:
+        payload = safe_torch_load(path, map_location="cpu")
+        _require(
+            isinstance(payload, Mapping)
+            and payload.get("schema") == "m0_bogt_step1200_train_ols_chunk.v1"
+            and payload.get("source_manifest_id") == source_manifest_id
+            and payload.get("endpoint_checkpoint_sha256") == endpoint_hash
+            and payload.get("data_identity") == dict(data_identity)
+            and payload.get("data_role") == bogt.TRAIN_ROLE
+            and payload.get("selected_step") == canary.END_STEP
+            and payload.get("start_row") == cursor,
+            f"TRAIN OLS recovery chunk is not a continuous same-attempt artifact: {path.name}",
+        )
+        values = payload.get("z")
+        _require(
+            isinstance(values, torch.Tensor)
+            and values.shape == (OLS_CHUNK_ROWS, 100)
+            and values.dtype == torch.complex64
+            and bool(torch.isfinite(values.real).all().item())
+            and bool(torch.isfinite(values.imag).all().item()),
+            f"TRAIN OLS recovery chunk is malformed: {path.name}",
+        )
+        chunks.append(values.contiguous())
+        cursor += int(values.shape[0])
+    _require(cursor <= TRAIN_ROWS, "TRAIN OLS recovery bank exceeds the fixed population")
+    expected_names = [f"train_ols_chunk_{start:05d}.pt" for start in range(0, cursor, OLS_CHUNK_ROWS)]
+    _require([path.name for path in paths] == expected_names, "TRAIN OLS recovery chunks contain a gap or unexpected name")
+    return chunks, cursor
+
+
+def _collect_train_ols(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    context: m0.RuntimeContext,
+    attempt: Path,
+    source_manifest_id: str,
+    endpoint_hash: str,
+    recorder: ResourceRecorder,
+    heartbeat: HeartbeatWriter,
+    task_started: float,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    directory = attempt / "train_ols_chunks"
+    directory.mkdir(exist_ok=True)
+    chunks, completed = _load_train_ols_chunks(
+        attempt,
+        source_manifest_id=source_manifest_id,
+        endpoint_hash=endpoint_hash,
+        data_identity=context.data_identity,
+    )
+    phase_started = time.perf_counter()
+    consumer.runtime.eval()
+    for row_start in range(completed, TRAIN_ROWS, OLS_CHUNK_ROWS):
+        _require(time.perf_counter() - task_started <= TOTAL_LIMIT_SECONDS, "two-hour task wall-clock limit exceeded during full TRAIN OLS collection", ResourceBudgetExceeded)
+        rows: list[torch.Tensor] = []
+        for offset in range(row_start, row_start + OLS_CHUNK_ROWS, 100):
+            small: list[torch.Tensor] = []
+            for index in range(offset, offset + 100, TRAIN_BATCH_SIZE):
+                small.append(_encode_batch(consumer, context, context.train_indices[index : index + TRAIN_BATCH_SIZE]))
+            rows.append(torch.cat(small, 0))
+            del small
+            if (offset + 100) % 100 == 0:
+                recorder.sample(
+                    "scientific_full_train_ols_collection",
+                    progress={"completed_rows": offset + 100, "target_rows": TRAIN_ROWS},
+                    started=phase_started,
+                )
+        values = torch.cat(rows, 0).contiguous()
+        _require(values.shape == (OLS_CHUNK_ROWS, 100), "production TRAIN OLS chunk has the wrong shape")
+        payload = {
+            "schema": "m0_bogt_step1200_train_ols_chunk.v1",
+            "start_row": row_start,
+            "z": values,
+            "source_manifest_id": source_manifest_id,
+            "endpoint_checkpoint_sha256": endpoint_hash,
+            "data_identity": dict(context.data_identity),
+            "selected_step": canary.END_STEP,
+            "data_role": bogt.TRAIN_ROLE,
+        }
+        chunk_path = directory / f"train_ols_chunk_{row_start:05d}.pt"
+        _write_torch_or_compare(chunk_path, payload, "freshly recomputed step1200 TRAIN OLS chunk")
+        chunks.append(values)
+        completed = row_start + OLS_CHUNK_ROWS
+        gc.collect()
+        torch.cuda.empty_cache()
+        heartbeat.update(
+            state=RUNNING,
+            phase="POST_TRAIN_COLLECTION",
+            step=completed,
+            latest_losses={"phase": "full_step1200_train_ols", "completed_rows": completed, "source_step": canary.END_STEP},
+            last_recovery_checkpoint=chunk_path.name,
+            force=True,
+        )
+    _require(completed == TRAIN_ROWS and len(chunks) == TRAIN_ROWS // OLS_CHUNK_ROWS, "full step1200 OLS bank is incomplete")
+    bank = torch.cat(chunks, 0).contiguous()
+    _require(bank.shape == (TRAIN_ROWS, 100) and bool(torch.isfinite(bank.real).all().item()) and bool(torch.isfinite(bank.imag).all().item()), "full step1200 TRAIN OLS bank is invalid", ModelNumericalInvalidity)
+    payload = {
+        "schema": BANK_SCHEMA,
+        "z": bank,
+        "data_identity": dict(context.data_identity),
+        "source_manifest_id": source_manifest_id,
+        "selected_checkpoint_sha256": endpoint_hash,
+        "selected_step": canary.END_STEP,
+        "data_role": bogt.TRAIN_ROLE,
+        "row_order": "increasing canonical TRAIN source row order",
+        "rows": TRAIN_ROWS,
+        "optimizer_created": False,
+        "updates": 0,
+    }
+    _write_torch_or_compare(attempt / "step1200_train_ols.pt", payload, "complete recomputed step1200 TRAIN OLS bank")
+    stage = {"elapsed_seconds": time.perf_counter() - phase_started, "rows": completed, "chunk_count": len(chunks), "collection_source": "step1200 optical Encoder forward", "autograd_graph_retained": False}
+    return bank, stage
+
+
+def _s1_inputs(
+    bank: torch.Tensor,
+    context: m0.RuntimeContext,
+    old_coefficients: Mapping[str, Any],
+) -> tuple[torch.Tensor, dict[str, Any], dict[str, torch.Tensor]]:
+    generated, metadata, arrays = m0._fit_s1_and_generate_inputs(bank, context)
+    for name, current in (
+        ("requested_labels", arrays["requested"]),
+        ("sample_indices", arrays["sample_indices"]),
+        ("seeds", arrays["seeds"]),
+        ("anchor_positions", arrays["anchor_positions"]),
+    ):
+        _require(torch.equal(current.cpu(), old_coefficients[name].cpu()), f"step600 and step1200 S1 {name} do not refer to the same fixed requests")
+    train_labels = context.labels.index_select(0, context.train_indices)
+    requested = arrays["requested"].to(torch.long).cpu()
+    anchors = arrays["anchor_positions"].to(torch.long).cpu()
+    neighbors = arrays["neighbor_positions"].to(torch.long).cpu()
+    _require(anchors.shape == (S1_ROWS,) and neighbors.shape == (S1_ROWS,), "S1 anchor/neighbor position shapes changed")
+    _require(bool(((anchors >= 0) & (anchors < TRAIN_ROWS) & (neighbors >= 0) & (neighbors < TRAIN_ROWS)).all().item()), "S1 anchor/neighbor position is outside TRAIN")
+    _require(torch.equal(train_labels.index_select(0, anchors), requested), "S1 anchors do not match their requested TRAIN classes")
+    _require(torch.equal(train_labels.index_select(0, neighbors), requested), "S1 neighbors do not match their requested TRAIN classes")
+    _require(bool((anchors != neighbors).all().item()), "S1 neighbor selection includes its anchor")
+    _require(generated.shape == (S1_ROWS, 100) and torch.is_complex(generated), "step1200 S1 bank has the wrong shape")
+    _require(bool(torch.isfinite(generated.real).all().item()) and bool(torch.isfinite(generated.imag).all().item()), "step1200 S1 OLS inputs are nonfinite", ModelNumericalInvalidity)
+    metadata = {
+        **metadata,
+        "source_step": canary.END_STEP,
+        "source_train_ols_sha256": tensor_sha256(bank),
+        "same_fixed_request_identity_as_step600": True,
+        "neighbor_positions_recomputed_for_current_step1200_bank": True,
+        "neighbor_positions_match_step600": bool(torch.equal(neighbors, old_coefficients["neighbor_positions"].detach().cpu())),
+        "data_role": bogt.TRAIN_ROLE,
+        "claim_boundary": "S1 is fixed TRAIN-neighborhood interpolation; it is not an independent prior",
+    }
+    return generated.contiguous(), metadata, arrays
+
+
+def _raw_chunk_validity(raw: torch.Tensor) -> dict[str, Any]:
+    flat = raw.reshape(raw.shape[0], -1)
+    finite = torch.isfinite(flat).all(1)
+    safe = torch.nan_to_num(flat, nan=0.0, posinf=0.0, neginf=0.0)
+    std = safe.std(1, unbiased=False)
+    peak = safe.abs().amax(1)
+    return {
+        "count": int(raw.shape[0]),
+        "finite_image_count": int(finite.sum().item()),
+        "nonconstant_image_count": int((finite & (std > 0)).sum().item()),
+        "nonzero_image_count": int((finite & (peak > 0)).sum().item()),
+        "finite": bool(finite.all().item()),
+        "minimum": float(safe.min().item()),
+        "maximum": float(safe.max().item()),
+        "mean": float(safe.mean().item()),
+    }
+
+
+def _combine_raw_validity(parts: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    count = sum(int(item["count"]) for item in parts)
+    finite_count = sum(int(item["finite_image_count"]) for item in parts)
+    nonconstant = sum(int(item["nonconstant_image_count"]) for item in parts)
+    nonzero = sum(int(item["nonzero_image_count"]) for item in parts)
+    return {
+        "count": count,
+        "finite_image_count": finite_count,
+        "nonconstant_image_count": nonconstant,
+        "nonzero_image_count": nonzero,
+        "finite": finite_count == count,
+        "all_nonconstant": nonconstant == count,
+        "all_nonzero": nonzero == count,
+        "minimum": min(float(item["minimum"]) for item in parts),
+        "maximum": max(float(item["maximum"]) for item in parts),
+        "mean": sum(float(item["mean"]) * int(item["count"]) for item in parts) / max(count, 1),
+    }
+
+
+def _generate_s1_raw(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    generated_ols: torch.Tensor,
+    requested: torch.Tensor,
+    attempt: Path,
+    source_manifest_id: str,
+    endpoint_hash: str,
+    recorder: ResourceRecorder,
+    heartbeat: HeartbeatWriter,
+    task_started: float,
+) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    directory = attempt / "s1_raw_chunks"
+    directory.mkdir(exist_ok=True)
+    existing = _chunk_paths(directory, "s1_raw_chunk")
+    completed = 0
+    raws: list[torch.Tensor] = []
+    powers: list[torch.Tensor] = []
+    validity: list[dict[str, Any]] = []
+    for path in existing:
+        payload = safe_torch_load(path, map_location="cpu")
+        _require(
+            isinstance(payload, Mapping)
+            and payload.get("schema") == "m0_bogt_step1200_s1_raw_chunk.v1"
+            and payload.get("source_manifest_id") == source_manifest_id
+            and payload.get("endpoint_checkpoint_sha256") == endpoint_hash
+            and payload.get("start_row") == completed,
+            f"S1 raw recovery chunk identity/ordering changed: {path.name}",
+        )
+        raw = payload.get("raw_cmos")
+        power = payload.get("optical_powers")
+        _require(isinstance(raw, torch.Tensor) and raw.shape == (S1_RAW_CHUNK_ROWS, 1, 200, 200), "S1 raw recovery chunk shape changed")
+        _require(isinstance(power, torch.Tensor) and power.shape[0] == S1_RAW_CHUNK_ROWS, "S1 power recovery chunk shape changed")
+        raws.append(raw.contiguous())
+        powers.append(power.contiguous())
+        validity.append(_raw_chunk_validity(raw))
+        completed += S1_RAW_CHUNK_ROWS
+    expected_names = [f"s1_raw_chunk_{start:05d}.pt" for start in range(0, completed, S1_RAW_CHUNK_ROWS)]
+    _require([path.name for path in existing] == expected_names and completed <= S1_ROWS, "S1 raw chunks contain a gap or excess rows")
+    phase_started = time.perf_counter()
+    consumer.runtime.eval()
+    for row_start in range(completed, S1_ROWS, S1_RAW_CHUNK_ROWS):
+        _require(time.perf_counter() - task_started <= TOTAL_LIMIT_SECONDS, "two-hour task wall-clock limit exceeded during S1 raw generation", ResourceBudgetExceeded)
+        raw_parts: list[torch.Tensor] = []
+        power_parts: list[torch.Tensor] = []
+        for offset in range(row_start, row_start + S1_RAW_CHUNK_ROWS, TRAIN_BATCH_SIZE):
+            z = generated_ols[offset : offset + TRAIN_BATCH_SIZE].to(consumer.device)
+            with torch.no_grad():
+                result = consumer.generated_forward(z)
+                raw = result.raw_intensity.detach().to(torch.float32).cpu().contiguous()
+                fields = (result.generator_input_field, *result.generator_records)
+                optical_powers = torch.stack([bogt.physical_plane_power(field) for field in fields], dim=1).detach().to(torch.float64).cpu().contiguous()
+            _require(raw.shape == (TRAIN_BATCH_SIZE, 1, 200, 200), "step1200 S1 forward returned unexpected raw CMOS shape")
+            raw_parts.append(raw)
+            power_parts.append(optical_powers)
+            del result, raw, optical_powers, z
+        raw_chunk = torch.cat(raw_parts, 0).contiguous()
+        power_chunk = torch.cat(power_parts, 0).contiguous()
+        validity_chunk = _raw_chunk_validity(raw_chunk)
+        payload = {
+            "schema": "m0_bogt_step1200_s1_raw_chunk.v1",
+            "start_row": row_start,
+            "raw_cmos": raw_chunk,
+            "optical_powers": power_chunk,
+            "source_manifest_id": source_manifest_id,
+            "endpoint_checkpoint_sha256": endpoint_hash,
+            "requested_labels": requested[row_start : row_start + S1_RAW_CHUNK_ROWS].cpu(),
+            "data_role": bogt.TRAIN_ROLE,
+        }
+        chunk_path = directory / f"s1_raw_chunk_{row_start:05d}.pt"
+        _write_torch_or_compare(chunk_path, payload, "step1200 S1 raw CMOS chunk")
+        raws.append(raw_chunk)
+        powers.append(power_chunk)
+        validity.append(validity_chunk)
+        completed = row_start + S1_RAW_CHUNK_ROWS
+        del raw_parts, power_parts
+        gc.collect()
+        torch.cuda.empty_cache()
+        recorder.sample("scientific_s1_raw_cmos_generation", progress={"completed_rows": completed, "target_rows": S1_ROWS}, started=phase_started)
+        heartbeat.update(
+            state=RUNNING,
+            phase="POST_TRAIN_FIT",
+            step=TRAIN_ROWS + completed,
+            latest_losses={"phase": "step1200_S1_raw_cmos", "completed_rows": completed},
+            last_recovery_checkpoint=chunk_path.name,
+            force=True,
+        )
+    _require(completed == S1_ROWS, "step1200 S1 raw CMOS is incomplete")
+    raw_bank = torch.cat(raws, 0).contiguous()
+    power_bank = torch.cat(powers, 0).contiguous()
+    _require(raw_bank.shape == (S1_ROWS, 1, 200, 200), "step1200 raw CMOS bank is incomplete")
+    raw_payload = {
+        "schema": RAW_SCHEMA,
+        "raw_cmos": raw_bank,
+        "requested_labels": requested.cpu(),
+        "optical_powers": power_bank,
+        "source_step": canary.END_STEP,
+        "selected_checkpoint_sha256": endpoint_hash,
+        "source_manifest_id": source_manifest_id,
+        "data_role": bogt.TRAIN_ROLE,
+        "sampler_family": "S1",
+        "optimizer_created": False,
+        "updates": 0,
+    }
+    _write_torch_or_compare(attempt / "generated_raw_cmos.pt", raw_payload, "complete step1200 S1 raw CMOS bank")
+    return raw_bank, power_bank, {
+        "raw_validity": _combine_raw_validity(validity),
+        "optical_power_finite": bool(torch.isfinite(power_bank).all().item()),
+        "mean_power_by_plane": power_bank.mean(0).tolist(),
+        "raw_generation_elapsed_seconds": time.perf_counter() - phase_started,
+    }
+
+
+def _measure_step600_s1_power(
+    checkpoint: Mapping[str, Any],
+    context: m0.RuntimeContext,
+    refs: Any,
+    weights: Any,
+    coefficients: torch.Tensor,
+    recorder: ResourceRecorder,
+    task_started: float,
+    expected_frozen_runtime_state_sha256: str,
+) -> dict[str, Any]:
+    _require(coefficients.shape == (S1_ROWS, 100) and torch.is_complex(coefficients), "saved step600 S1 coefficients changed shape")
+    consumer = _build_consumer(
+        checkpoint,
+        device=torch.device("cuda:0"),
+        expected_data_identity=context.data_identity,
+        external_references=refs,
+        external_weights=weights,
+        expected_frozen_runtime_state_sha256=expected_frozen_runtime_state_sha256,
+    )
+    recorder.sample("scientific_load_step600_s1_power_runtime")
+    before = consumer.trainable_state_dict()
+    power_parts: list[torch.Tensor] = []
+    phase_started = time.perf_counter()
+    consumer.runtime.eval()
+    for start in range(0, S1_ROWS, S1_RAW_CHUNK_ROWS):
+        _require(time.perf_counter() - task_started <= TOTAL_LIMIT_SECONDS, "two-hour task wall-clock limit exceeded during step600 S1 optical-power confirmation", ResourceBudgetExceeded)
+        local: list[torch.Tensor] = []
+        for offset in range(start, start + S1_RAW_CHUNK_ROWS, TRAIN_BATCH_SIZE):
+            z = coefficients[offset : offset + TRAIN_BATCH_SIZE].to(consumer.device)
+            with torch.no_grad():
+                result = consumer.generated_forward(z)
+                fields = (result.generator_input_field, *result.generator_records)
+                powers = torch.stack([bogt.physical_plane_power(field) for field in fields], dim=1).detach().to(torch.float64).cpu().contiguous()
+            _require(bool(torch.isfinite(powers).all().item()), "step600 S1 optical-power readout is nonfinite", ModelNumericalInvalidity)
+            local.append(powers)
+            del result, fields, powers, z
+        power_parts.append(torch.cat(local, 0))
+        del local
+        if (start + S1_RAW_CHUNK_ROWS) % S1_RAW_CHUNK_ROWS == 0:
+            recorder.sample(
+                "scientific_step600_s1_power_confirmation",
+                progress={"completed_rows": start + S1_RAW_CHUNK_ROWS, "target_rows": S1_ROWS},
+                started=phase_started,
+            )
+    power_bank = torch.cat(power_parts, 0).contiguous()
+    _require(power_bank.shape[0] == S1_ROWS and bool(torch.isfinite(power_bank).all().item()), "step600 S1 optical-power bank is invalid", ModelNumericalInvalidity)
+    _require(_tree_equal(before, consumer.trainable_state_dict()), "step600 S1 power confirmation modified model parameters")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "step600 S1 power confirmation accumulated gradients")
+    summary = {
+        "finite": True,
+        "count": int(power_bank.numel()),
+        "mean_power_by_plane": power_bank.mean(0).tolist(),
+        "mean_all_planes": float(power_bank.mean().item()),
+        "rows": S1_ROWS,
+        "source_step": canary.START_STEP,
+        "optimizer_created": False,
+        "parameter_updates": 0,
+        "elapsed_seconds": time.perf_counter() - phase_started,
+    }
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+    del consumer, power_parts, power_bank
+    gc.collect()
+    torch.cuda.empty_cache()
+    return summary
+
+
+def _confusion_metrics(labels: torch.Tensor, predictions: torch.Tensor, *, role: str) -> dict[str, Any]:
+    labels = labels.detach().to(device="cpu", dtype=torch.long).reshape(-1)
+    predictions = predictions.detach().to(device="cpu", dtype=torch.long).reshape(-1)
+    _require(labels.shape == predictions.shape and labels.numel() > 0, "E_D labels/predictions are not aligned")
+    _require(bool(((labels >= 0) & (labels < 10) & (predictions >= 0) & (predictions < 10)).all().item()), "E_D produced an out-of-domain label", ModelNumericalInvalidity)
+    confusion = torch.bincount(labels * 10 + predictions, minlength=100).reshape(10, 10)
+    denominators = confusion.sum(1)
+    _require(bool((denominators > 0).all().item()), "E_D comparison population is missing one or more classes")
+    per_class = confusion.diag().to(torch.float64) / denominators
+    histogram = confusion.sum(0)
+    return {
+        "evaluated": True,
+        "data_role": role,
+        "rows": int(labels.numel()),
+        "macro_recall": float(per_class.mean().item()),
+        "per_class_recall": per_class.tolist(),
+        "minimum_class_recall": float(per_class.min().item()),
+        "confusion_matrix": confusion.tolist(),
+        "prediction_histogram": histogram.tolist(),
+        "class8_prediction_mass": float(histogram[8].item() / labels.numel()),
+        "true_labels": labels.tolist(),
+        "prediction_labels": predictions.tolist(),
+    }
+
+
+def _measure_ed_on_raw(
+    evaluator: torch.nn.Module,
+    raw: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    role: str,
+    recorder: ResourceRecorder,
+    phase: str,
+    task_started: float,
+) -> dict[str, Any]:
+    _require(bool(torch.isfinite(raw).all().item()), f"{phase} raw CMOS contains nonfinite values", ModelNumericalInvalidity)
+    device = torch.device("cuda:0")
+    evaluator.to(device)
+    evaluator.eval()
+    predictions: list[torch.Tensor] = []
+    recorder.sample(f"{phase}_evaluator_load", progress={"device": "cuda:0"})
+    phase_started = time.perf_counter()
+    with torch.no_grad():
+        for start in range(0, raw.shape[0], TRAIN_BATCH_SIZE):
+            _require(time.perf_counter() - task_started <= TOTAL_LIMIT_SECONDS, "two-hour task wall-clock limit exceeded during E_D evaluation", ResourceBudgetExceeded)
+            views = m0._evaluator_view(raw[start : start + TRAIN_BATCH_SIZE]).to(device)
+            logits = evaluator(views)
+            _require(bool(torch.isfinite(logits).all().item()), "frozen E_D produced nonfinite logits", ModelNumericalInvalidity)
+            _require(not logits.requires_grad and logits.grad_fn is None, "E_D output is attached to an autograd graph")
+            predictions.append(logits.argmax(1).detach().cpu())
+            del views, logits
+            if (start + TRAIN_BATCH_SIZE) % 100 == 0 or start + TRAIN_BATCH_SIZE >= raw.shape[0]:
+                recorder.sample(phase, progress={"completed_rows": min(start + TRAIN_BATCH_SIZE, raw.shape[0]), "target_rows": int(raw.shape[0])}, started=phase_started)
+    result = _confusion_metrics(labels, torch.cat(predictions), role=role)
+    _require(all(parameter.grad is None and not parameter.requires_grad for parameter in evaluator.parameters()), "E_D parameters acquired gradients or became trainable")
+    evaluator.to(torch.device("cpu"))
+    gc.collect()
+    torch.cuda.empty_cache()
+    result["elapsed_seconds"] = time.perf_counter() - phase_started
+    result["evaluator_device"] = "cuda:0 after optical runtime release"
+    return result
+
+
+def _measure_dev_optical(
+    checkpoint: Mapping[str, Any],
+    context: m0.RuntimeContext,
+    refs: Any,
+    weights: Any,
+    recorder: ResourceRecorder,
+    attempt: Path,
+    source_manifest_id: str,
+    endpoint_hash: str,
+    task_started: float,
+    *,
+    step: int,
+    expected_frozen_runtime_state_sha256: str,
+) -> tuple[dict[str, Any], torch.Tensor]:
+    device = torch.device("cuda:0")
+    consumer = _build_consumer(
+        checkpoint,
+        device=device,
+        expected_data_identity=context.data_identity,
+        external_references=refs,
+        external_weights=weights,
+        expected_frozen_runtime_state_sha256=expected_frozen_runtime_state_sha256,
+    )
+    recorder.sample(f"scientific_load_step{step}_optical_runtime")
+    before = consumer.trainable_state_dict()
+    raw_parts: list[torch.Tensor] = []
+    power_parts: list[torch.Tensor] = []
+    validity_parts: list[dict[str, Any]] = []
+    reconstruction_sum = 0.0
+    phase_started = time.perf_counter()
+    for start in range(0, DEV_ROWS, TRAIN_BATCH_SIZE):
+        _require(time.perf_counter() - task_started <= TOTAL_LIMIT_SECONDS, "two-hour task wall-clock limit exceeded during DEV optical readout", ResourceBudgetExceeded)
+        indices = context.development_indices[start : start + TRAIN_BATCH_SIZE]
+        images = context.images.index_select(0, indices).to(device)
+        with torch.no_grad():
+            result = consumer.runtime.forward_from_image(images)
+            raw = result.raw_intensity.detach().to(torch.float32).cpu().contiguous()
+            target = result.image_input.slm_intensity.detach()
+            reconstruction_sum += float((result.raw_intensity - target).square().sum().cpu())
+            powers = bogt.contracted_plane_powers(result).detach().to(torch.float64).cpu().contiguous()
+        _require(raw.shape == (TRAIN_BATCH_SIZE, 1, 200, 200), "fixed DEV optical output shape changed")
+        raw_parts.append(raw)
+        power_parts.append(powers)
+        validity_parts.append(_raw_chunk_validity(raw))
+        context.ledger.record(bogt.DEV_ROLE, int(indices.numel()))
+        del result, raw, target, powers, images
+        if (start + TRAIN_BATCH_SIZE) % 100 == 0 or start + TRAIN_BATCH_SIZE >= DEV_ROWS:
+            recorder.sample(
+                f"scientific_dev_step{step}_optical_forward",
+                progress={"completed_rows": min(start + TRAIN_BATCH_SIZE, DEV_ROWS), "target_rows": DEV_ROWS},
+                started=phase_started,
+            )
+    raw_bank = torch.cat(raw_parts, 0).contiguous()
+    power_bank = torch.cat(power_parts, 0).contiguous()
+    validity = _combine_raw_validity(validity_parts)
+    result_metrics = {
+        "rows": DEV_ROWS,
+        "data_role": bogt.DEV_ROLE,
+        "L_rec": reconstruction_sum / (DEV_ROWS * 200 * 200),
+        "raw_cmos_validity": validity,
+        "optical_power_finite": bool(torch.isfinite(power_bank).all().item()),
+        "mean_power_by_plane": power_bank.mean(0).tolist(),
+        "optical_elapsed_seconds": time.perf_counter() - phase_started,
+        "raw_cmos_staged_on_cpu_before_E_D": True,
+    }
+    _require(_tree_equal(before, consumer.trainable_state_dict()), f"step{step} DEV forward modified checkpoint parameters")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), f"step{step} DEV forward accumulated parameter gradients")
+    del consumer, raw_parts, power_parts, validity_parts, power_bank
+    gc.collect()
+    torch.cuda.empty_cache()
+    return result_metrics, raw_bank
+
+
+def _gradient_vectors(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    loss: Any,
+) -> tuple[dict[str, dict[str, torch.Tensor]], dict[str, float]]:
+    names = ("encoder.phase", "generator.phase")
+    parameters_by_name = dict(consumer.runtime.named_parameters())
+    _require(tuple(parameters_by_name) == names, "gradient parameter ordering changed")
+    parameters = [parameters_by_name[name] for name in names]
+    terms = {
+        "alpha_L_dist": consumer.weights.alpha * loss.l_dist,
+        "beta_L_rec": consumer.weights.beta * loss.l_rec,
+        "gamma_L_op": consumer.weights.gamma * loss.l_op,
+    }
+    vectors: dict[str, dict[str, torch.Tensor]] = {}
+    for term_index, (term_name, term) in enumerate(terms.items()):
+        gradients = torch.autograd.grad(
+            term,
+            parameters,
+            retain_graph=term_index < len(terms) - 1,
+            allow_unused=True,
+        )
+        vectors[term_name] = {}
+        for name, parameter, gradient in zip(names, parameters, gradients, strict=True):
+            vector = torch.zeros(parameter.numel(), dtype=torch.float64, device=parameter.device) if gradient is None else gradient.detach().to(torch.float64).reshape(-1)
+            _require(bool(torch.isfinite(vector).all().item()), f"{term_name} gradient is nonfinite for {name}", ModelNumericalInvalidity)
+            vectors[term_name][name] = vector
+    if not bool(torch.isfinite(loss.l_total).item()):
+        raise ModelNumericalInvalidity("L_total is nonfinite on the fixed gradient batch")
+    weighted_sum = consumer.weights.alpha * loss.l_dist + consumer.weights.beta * loss.l_rec + consumer.weights.gamma * loss.l_op
+    _require(torch.allclose(loss.l_total.detach(), weighted_sum.detach(), rtol=1e-6, atol=1e-8), "L_total is inconsistent with the three frozen weighted terms")
+    losses = {
+        "L_dist": float(loss.l_dist.detach().cpu()),
+        "L_rec": float(loss.l_rec.detach().cpu()),
+        "L_op": float(loss.l_op.detach().cpu()),
+        "L_total": float(loss.l_total.detach().cpu()),
+        "alpha_L_dist": float((consumer.weights.alpha * loss.l_dist).detach().cpu()),
+        "beta_L_rec": float((consumer.weights.beta * loss.l_rec).detach().cpu()),
+        "gamma_L_op": float((consumer.weights.gamma * loss.l_op).detach().cpu()),
+    }
+    _require(all(math.isfinite(value) for value in losses.values()), "fixed-batch BOGT loss is nonfinite", ModelNumericalInvalidity)
+    return vectors, losses
+
+
+def _vector_metrics(vectors: Mapping[str, Mapping[str, torch.Tensor]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    terms = ("alpha_L_dist", "beta_L_rec", "gamma_L_op")
+    for group in ("encoder.phase", "generator.phase"):
+        local = {name: vectors[name][group] for name in terms}
+        total = sum(local.values())
+        norms = {name: float(value.norm().detach().cpu()) for name, value in local.items()}
+        pairwise: dict[str, float | None] = {}
+        for left_index, left in enumerate(terms):
+            for right in terms[left_index + 1 :]:
+                a, b = local[left], local[right]
+                denominator = float(a.norm().detach().cpu()) * float(b.norm().detach().cpu())
+                pairwise[f"{left}_vs_{right}"] = None if denominator == 0.0 else float((torch.dot(a, b) / denominator).detach().cpu())
+        alignment = {}
+        total_norm = float(total.norm().detach().cpu())
+        for term in terms:
+            denominator = norms[term] * total_norm
+            alignment[f"{term}_vs_combined"] = None if denominator == 0.0 else float((torch.dot(local[term], total) / denominator).detach().cpu())
+        ratios: dict[str, float | None] = {}
+        for numerator in ("alpha_L_dist", "gamma_L_op"):
+            denominator = norms["beta_L_rec"]
+            ratios[f"{numerator}_over_beta_L_rec"] = None if denominator == 0.0 else norms[numerator] / denominator
+        ratios["beta_L_rec_over_gamma_L_op"] = None if norms["gamma_L_op"] == 0.0 else norms["beta_L_rec"] / norms["gamma_L_op"]
+        result[group] = {
+            "weighted_gradient_norms": norms,
+            "ratios": ratios,
+            "pairwise_cosines": pairwise,
+            "component_to_combined_cosines": alignment,
+            "combined_gradient_norm": total_norm,
+        }
+    _require(
+        all(
+            result["generator.phase"]["weighted_gradient_norms"][term] == 0.0
+            for term in ("alpha_L_dist",)
+        ),
+        "L_dist -> Generator is not a structural zero",
+    )
+    result["generator.phase"]["L_dist_gradient_status"] = "STRUCTURALLY_ZERO"
+    return result
+
+
+def _summarize_records(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    _require(bool(records), "cannot summarize an empty gradient record set")
+    fields = ("L_dist", "L_rec", "L_op", "L_total", "alpha_L_dist", "beta_L_rec", "gamma_L_op")
+    result: dict[str, Any] = {}
+    for field_name in fields:
+        values = torch.tensor([float(item["losses"][field_name]) for item in records], dtype=torch.float64)
+        result[f"loss_{field_name}"] = {
+            "median": float(values.median().item()),
+            "q1": float(torch.quantile(values, 0.25).item()),
+            "q3": float(torch.quantile(values, 0.75).item()),
+            "method": "torch.quantile linear interpolation",
+        }
+    metrics = ("weighted_gradient_norms", "ratios", "pairwise_cosines", "component_to_combined_cosines", "combined_gradient_norm")
+    for group in ("encoder.phase", "generator.phase"):
+        group_summary: dict[str, Any] = {}
+        first = records[0]["gradient_metrics"][group]
+        for section in metrics:
+            if section == "combined_gradient_norm":
+                paths = {"combined_gradient_norm": ("combined_gradient_norm",)}
+            else:
+                paths = {key: (section, key) for key in first[section]}
+            section_values: dict[str, Any] = {}
+            for name, path in paths.items():
+                values_list: list[float] = []
+                for record in records:
+                    value: Any = record["gradient_metrics"][group]
+                    for part in path:
+                        value = value[part]
+                    if value is not None and math.isfinite(float(value)):
+                        values_list.append(float(value))
+                if values_list:
+                    values = torch.tensor(values_list, dtype=torch.float64)
+                    section_values[name] = {
+                        "median": float(values.median().item()),
+                        "q1": float(torch.quantile(values, 0.25).item()),
+                        "q3": float(torch.quantile(values, 0.75).item()),
+                        "finite_batch_count": len(values_list),
+                        "method": "torch.quantile linear interpolation",
+                    }
+                else:
+                    section_values[name] = {"median": None, "q1": None, "q3": None, "finite_batch_count": 0}
+            group_summary[section] = section_values
+        result[group] = group_summary
+    return result
+
+
+def _gradient_endpoint(
+    checkpoint: Mapping[str, Any],
+    context: m0.RuntimeContext,
+    refs: Any,
+    weights: Any,
+    batches: Sequence[torch.Tensor],
+    recorder: ResourceRecorder,
+    task_started: float,
+    *,
+    step: int,
+    expected_frozen_runtime_state_sha256: str,
+) -> dict[str, Any]:
+    consumer = _build_consumer(
+        checkpoint,
+        device=torch.device("cuda:0"),
+        expected_data_identity=context.data_identity,
+        external_references=refs,
+        external_weights=weights,
+        expected_frozen_runtime_state_sha256=expected_frozen_runtime_state_sha256,
+    )
+    recorder.sample(f"scientific_step{step}_load_gradient_runtime")
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(True)
+        parameter.grad = None
+    before = consumer.trainable_state_dict()
+    records: list[dict[str, Any]] = []
+    phase_started = time.perf_counter()
+    for offset, indices in enumerate(batches):
+        _require(time.perf_counter() - task_started <= TOTAL_LIMIT_SECONDS, "two-hour task wall-clock limit exceeded during fixed-batch gradients", ResourceBudgetExceeded)
+        _require(indices.numel() == 10 and torch.unique(indices).numel() == 10, "fixed gradient batch is not ten unique TRAIN rows")
+        images = context.images.index_select(0, indices).to(consumer.device)
+        context.ledger.record(bogt.TRAIN_ROLE, int(indices.numel()))
+        try:
+            loss = consumer.forward_loss(images, data_role=bogt.TRAIN_ROLE)
+        except bogt.TrainingContractError as error:
+            lowered = str(error).lower()
+            if "finite" in lowered or "nonfinite" in lowered:
+                raise ModelNumericalInvalidity(f"step{step} fixed-batch BOGT forward is numerically invalid: {error}") from error
+            raise
+        vectors, losses = _gradient_vectors(consumer, loss)
+        metrics = _vector_metrics(vectors)
+        labels = context.labels.index_select(0, indices)
+        _require(torch.equal(torch.sort(labels).values, torch.arange(10)), "gradient batch does not contain one row per class")
+        records.append({
+            "batch_index": offset,
+            "cursor": GRADIENT_BATCH_START + offset,
+            "row_indices": indices.tolist(),
+            "row_indices_sha256": tensor_sha256(indices),
+            "labels": labels.tolist(),
+            "losses": losses,
+            "gradient_metrics": metrics,
+            "data_role": bogt.TRAIN_ROLE,
+        })
+        _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "autograd.grad accumulated parameter .grad")
+        _require(all(parameter.grad is None for parameter in context.independent_evaluator.parameters()), "E_D acquired a gradient during BOGT characterization")
+        del images, loss, vectors
+        recorder.sample(
+            f"scientific_step{step}_fixed_batch_bogt_gradients",
+            progress={"completed_batches": offset + 1, "target_batches": GRADIENT_BATCH_COUNT},
+            started=phase_started,
+        )
+        if (offset + 1) % 5 == 0:
+            gc.collect()
+            torch.cuda.empty_cache()
+    after = consumer.trainable_state_dict()
+    _require(_tree_equal(before, after), f"step{step} gradient characterization modified checkpoint parameters")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), f"step{step} gradient fields are not empty after autograd.grad")
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+    result = {
+        "step": step,
+        "checkpoint_sha256": START_CHECKPOINT_SHA256 if step == canary.START_STEP else file_sha256(_root() / ENDPOINT_PATH),
+        "cursor_start": GRADIENT_BATCH_START,
+        "batch_count": GRADIENT_BATCH_COUNT,
+        "unique_rows": GRADIENT_BATCH_COUNT * 10,
+        "records": records,
+        "summary": _summarize_records(records),
+        "parameter_state_unchanged": True,
+        "parameter_grad_fields_empty": True,
+        "optimizer_created": False,
+        "updates": 0,
+        "elapsed_seconds": time.perf_counter() - phase_started,
+    }
+    del consumer
+    gc.collect()
+    torch.cuda.empty_cache()
+    return result
+
+
+def _gradient_decisions(analysis: Mapping[str, Any]) -> dict[str, Any]:
+    endpoint = analysis["step1200"]["records"]
+    _require(len(endpoint) == GRADIENT_BATCH_COUNT, "step1200 gradient analysis does not contain twenty fixed batches")
+    count_a = 0
+    count_c = 0
+    count_b = 0
+    for record in endpoint:
+        enc = record["gradient_metrics"]["encoder.phase"]
+        gen = record["gradient_metrics"]["generator.phase"]
+        enc_norm = enc["weighted_gradient_norms"]
+        gen_norm = gen["weighted_gradient_norms"]
+        enc_cos = enc["pairwise_cosines"]
+        gen_cos = gen["pairwise_cosines"]
+        if (
+            enc_norm["alpha_L_dist"] >= GRADIENT_DOMINANCE_RATIO * enc_norm["beta_L_rec"]
+            and enc_cos["alpha_L_dist_vs_beta_L_rec"] is not None
+            and enc_cos["alpha_L_dist_vs_beta_L_rec"] < GRADIENT_CONFLICT_COSINE
+        ):
+            count_a += 1
+        c_enc = (
+            enc_norm["gamma_L_op"] >= GRADIENT_DOMINANCE_RATIO * enc_norm["beta_L_rec"]
+            and enc_cos["beta_L_rec_vs_gamma_L_op"] is not None
+            and enc_cos["beta_L_rec_vs_gamma_L_op"] < GRADIENT_CONFLICT_COSINE
+        )
+        c_gen = (
+            gen_norm["gamma_L_op"] >= GRADIENT_DOMINANCE_RATIO * gen_norm["beta_L_rec"]
+            and gen_cos["beta_L_rec_vs_gamma_L_op"] is not None
+            and gen_cos["beta_L_rec_vs_gamma_L_op"] < GRADIENT_CONFLICT_COSINE
+        )
+        if c_enc or c_gen:
+            count_c += 1
+        if (
+            enc_norm["beta_L_rec"] < 0.5 * max(enc_norm["alpha_L_dist"], enc_norm["gamma_L_op"])
+            and gen_norm["beta_L_rec"] < 0.5 * gen_norm["gamma_L_op"]
+        ):
+            count_b += 1
+    return {
+        "A_encoder_alpha_L_dist_vs_beta_L_rec_conflict_batches": count_a,
+        "B_encoder_and_generator_reconstruction_underweight_batches": count_b,
+        "C_either_group_gamma_L_op_vs_beta_L_rec_conflict_batches": count_c,
+        "required_consistent_batch_count": GRADIENT_CONSISTENCY_COUNT,
+        "thresholds": {
+            "norm_ratio_at_least": GRADIENT_DOMINANCE_RATIO,
+            "cosine_less_than": GRADIENT_CONFLICT_COSINE,
+            "batches": GRADIENT_CONSISTENCY_COUNT,
+        },
+        "case_A_supported": count_a >= GRADIENT_CONSISTENCY_COUNT,
+        "case_B_gradient_condition_supported": count_b >= GRADIENT_CONSISTENCY_COUNT,
+        "case_C_supported": count_c >= GRADIENT_CONSISTENCY_COUNT,
+    }
+
+
+def classify_tuning_direction(
+    *,
+    gradient_decisions: Mapping[str, Any],
+    dev_reconstruction_delta: float,
+    full_generation_numeric_conditions_met: bool,
+) -> tuple[str, str, list[str]]:
+    if full_generation_numeric_conditions_met:
+        return CLASSIFICATION_D, "NONE", []
+    a = bool(gradient_decisions["case_A_supported"])
+    b = bool(gradient_decisions["case_B_gradient_condition_supported"]) and dev_reconstruction_delta > DEV_RECONSTRUCTION_TOLERANCE
+    c = bool(gradient_decisions["case_C_supported"])
+    cases = [name for name, enabled in ((CLASSIFICATION_A, a), (CLASSIFICATION_B, b), (CLASSIFICATION_C, c)) if enabled]
+    if len(cases) > 1:
+        return CLASSIFICATION_E, "NONE", cases
+    if not cases:
+        return CLASSIFICATION_D, "NONE", []
+    chosen = cases[0]
+    candidate = {
+        CLASSIFICATION_A: "reduce_alpha_only",
+        CLASSIFICATION_B: "increase_beta_only",
+        CLASSIFICATION_C: "reduce_gamma_only",
+    }[chosen]
+    return chosen, candidate, cases
+
+
+def _ed_and_safety(
+    step600_raw: Mapping[str, Any],
+    step600_coeff: Mapping[str, Any],
+    step1200_raw: torch.Tensor,
+    step1200_ols: torch.Tensor,
+    context: m0.RuntimeContext,
+    recorder: ResourceRecorder,
+    task_started: float,
+    step600_power: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
+    evaluator = context.independent_evaluator
+    old_raw = step600_raw["raw_cmos"]
+    old_requested = step600_raw["requested_labels"]
+    old_prediction = step600_raw["prediction_labels"]
+    _require(torch.equal(old_requested.cpu(), step600_coeff["requested_labels"].cpu()), "step600 S1 raw and coefficient requests diverged")
+    _require(
+        bool(torch.equal(torch.tensor(step600_raw["requested_labels"]), torch.tensor(step600_coeff["requested_labels"]))),
+        "step600 S1 request labels changed",
+    )
+    old_metrics = _measure_ed_on_raw(evaluator, old_raw, old_requested, role=bogt.TRAIN_ROLE, recorder=recorder, phase="scientific_step600_s1_frozen_ed", task_started=task_started)
+    _require(torch.equal(torch.tensor(old_metrics["prediction_labels"]), old_prediction.cpu()), "recomputed step600 S1 E_D predictions differ from accepted saved predictions")
+    old_validity_parts = [_raw_chunk_validity(old_raw[start : start + S1_RAW_CHUNK_ROWS]) for start in range(0, S1_ROWS, S1_RAW_CHUNK_ROWS)]
+    old_s1 = {
+        "E_D": old_metrics,
+        "raw_cmos_validity": _combine_raw_validity(old_validity_parts),
+        "optical_power_finite": bool(step600_power.get("finite", False)),
+        "mean_power_by_plane": list(step600_power.get("mean_power_by_plane", [])),
+        "optical_power_measurement": dict(step600_power),
+        "raw_cmos_path": STEP600_S1_RAW_PATH.as_posix(),
+        "coefficients_path": STEP600_S1_OLS_PATH.as_posix(),
+    }
+
+    endpoint_metrics = _measure_ed_on_raw(
+        evaluator,
+        step1200_raw,
+        step1200_ols["requested_labels"],
+        role=bogt.TRAIN_ROLE,
+        recorder=recorder,
+        phase="scientific_step1200_s1_frozen_ed",
+        task_started=task_started,
+    )
+    endpoint_validity = [_raw_chunk_validity(step1200_raw[start : start + S1_RAW_CHUNK_ROWS]) for start in range(0, S1_ROWS, S1_RAW_CHUNK_ROWS)]
+    endpoint = {
+        "E_D": endpoint_metrics,
+        "raw_cmos_validity": _combine_raw_validity(endpoint_validity),
+        "optical_power_finite": bool(torch.isfinite(step1200_ols["optical_powers"]).all().item()),
+        "mean_power_by_plane": step1200_ols["optical_powers"].mean(0).tolist(),
+        "raw_cmos_path": "generated_raw_cmos.pt",
+        "coefficients_path": "generated_s1_ols_coefficients.pt",
+    }
+    predictions = {
+        "step600_s1": torch.tensor(old_metrics["prediction_labels"], dtype=torch.long),
+        "step1200_s1": torch.tensor(endpoint_metrics["prediction_labels"], dtype=torch.long),
+    }
+    return {"step600": old_s1, "step1200": endpoint}, predictions
+
+
+def _write_contact_sheet(raw: torch.Tensor, labels: torch.Tensor, path: Path, *, common_vmax: float) -> dict[str, Any]:
+    _require(raw.ndim == 4 and raw.shape[1:] == (1, 200, 200) and labels.shape == (raw.shape[0],), "contact sheet inputs changed shape")
+    _require(math.isfinite(common_vmax) and common_vmax > 0, "common display scale is invalid")
+    canvas = Image.new("L", (10 * 200, 10 * 220), color=0)
+    draw = ImageDraw.Draw(canvas)
+    for digit in range(10):
+        positions = torch.nonzero(labels.cpu() == digit, as_tuple=False).flatten()[:10]
+        _require(positions.numel() == 10, f"contact sheet class {digit} lacks ten fixed samples")
+        draw.text((4, digit * 220 + 2), str(digit), fill=255)
+        for column, position in enumerate(positions.tolist()):
+            image = torch.nan_to_num(raw[position, 0].detach().cpu().to(torch.float32), nan=0.0, posinf=0.0, neginf=0.0).clamp(0.0, common_vmax)
+            array = (image / common_vmax * 255.0).round().to(torch.uint8).numpy()
+            canvas.paste(Image.fromarray(array, mode="L"), (column * 200, digit * 220 + 20))
+    expected = canvas.tobytes()
+    if path.exists():
+        with Image.open(path) as existing:
+            _require(existing.mode == "L" and existing.size == canvas.size and existing.tobytes() == expected, f"existing contact sheet differs: {path.name}")
+    else:
+        temporary = path.with_suffix(".tmp.png")
+        canvas.save(temporary, format="PNG", optimize=True)
+        try:
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {
+        "path": path.name,
+        "common_vmin": 0.0,
+        "common_vmax": common_vmax,
+        "scale_source": "accepted step600 shared contact-sheet scale reused unchanged",
+        "per_image_contrast_stretch": False,
+    }
+
+
+def _numeric_model_validity(dev: Mapping[str, Any], s1_measurements: Mapping[str, Any], gradient_analysis: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    failures: list[str] = []
+    for key, record in dev.items():
+        if not math.isfinite(float(record.get("L_rec", float("nan")))):
+            failures.append(f"{key}_DEV_reconstruction_nonfinite")
+        if not record.get("raw_cmos_validity", {}).get("finite", False):
+            failures.append(f"{key}_DEV_raw_CMOS_nonfinite")
+        if not record.get("raw_cmos_validity", {}).get("all_nonzero", False):
+            failures.append(f"{key}_DEV_raw_CMOS_zero_image")
+        if not record.get("raw_cmos_validity", {}).get("all_nonconstant", False):
+            failures.append(f"{key}_DEV_raw_CMOS_constant_image")
+        if not record.get("optical_power_finite", False):
+            failures.append(f"{key}_DEV_optical_power_nonfinite")
+    for key, record in s1_measurements.items():
+        validity = record["raw_cmos_validity"]
+        if not validity.get("finite", False):
+            failures.append(f"{key}_S1_raw_CMOS_nonfinite")
+        if not validity.get("all_nonzero", False):
+            failures.append(f"{key}_S1_raw_CMOS_zero_image")
+        if not validity.get("all_nonconstant", False):
+            failures.append(f"{key}_S1_raw_CMOS_constant_image")
+        if not record.get("optical_power_finite", False):
+            failures.append(f"{key}_S1_optical_power_nonfinite")
+    for step_name in ("step600", "step1200"):
+        for record in gradient_analysis[step_name]["records"]:
+            if not all(math.isfinite(float(value)) for value in record["losses"].values()):
+                failures.append(f"{step_name}_fixed_batch_loss_nonfinite")
+                break
+            for group in ("encoder.phase", "generator.phase"):
+                if not all(math.isfinite(float(value)) for value in record["gradient_metrics"][group]["weighted_gradient_norms"].values()):
+                    failures.append(f"{step_name}_{group}_gradient_nonfinite")
+                    break
+    return not failures, failures
+
+
+def _artifact_manifest(attempt: Path, names: Sequence[str]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for name in names:
+        path = attempt / name
+        if path.is_file():
+            result[name] = {"path": name, "sha256": file_sha256(path), "size_bytes": path.stat().st_size}
+    return result
+
+
+def _execute(
+    root: Path,
+    authorities: Mapping[str, Any],
+    source: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+    receipt: PreflightReceipt,
+    identity: ResearchRunIdentity,
+    *,
+    task_started: float,
+    resume: bool,
+) -> dict[str, Any]:
+    control = ResearchRunControl(
+        identity,
+        AUTHORIZATION_ID,
+        preflight_status=PREFLIGHT_READY if resume else PREFLIGHT_READY,
+        state=RUN_INTERRUPTED if resume else RUN_PREPARING,
+        receipt=receipt,
+    )
+    if resume:
+        control.resume_scientific_attempt(ATTEMPT_DIR, ATTEMPT_ID, receipt)
+    else:
+        control.open_scientific_attempt(ATTEMPT_DIR, ATTEMPT_ID, receipt)
+    canary._write_json_or_compare(ATTEMPT_DIR / "source_manifest.json", source, "step1200 readout source manifest")
+    canary._write_json_or_compare(ATTEMPT_DIR / "preflight.json", preflight, "source-bound step1200 readout READY preflight")
+    manifest = {
+        "schema": "m0_bogt_step1200_evidence_gradient_balance_manifest.v1",
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization": {"id": AUTHORIZATION_ID, "token": AUTHORIZATION_TOKEN, "scope": "one read-only step1200 measurement and fixed-batch gradient characterization"},
+        "attempt_id": ATTEMPT_ID,
+        "source_manifest_id": source["source_manifest_id"],
+        "source_semantics_id": source["execution_source_semantics_id"],
+        "input_authorities": authorities["authority_identities"],
+        "optimizer_created": False,
+        "parameter_updates": 0,
+        "data_roles": {"TRAIN": "full OLS, fixed S1, fixed gradient batches", "DEV": "step600 and step1200 readout only", "protected": 0, "official_test": 0, "sealed": 0},
+    }
+    canary._write_json_or_compare(ATTEMPT_DIR / "execution_manifest.json", manifest, "step1200 read-only execution manifest")
+    canary._write_execution_instance(ATTEMPT_DIR)
+    telemetry = ATTEMPT_DIR / "resource_telemetry.jsonl"
+    device = torch.device("cuda:0")
+    recorder = ResourceRecorder(device, DEVICE_HARD_LIMIT, DEVICE_HARD_LIMIT, telemetry_path=telemetry)
+    heartbeat = HeartbeatWriter(ATTEMPT_DIR, RUN_ID, total_steps=67_400)
+    heartbeat.update(state=RUN_PREPARING, phase="STATISTICS", step=0, latest_losses={"mode": "read_only", "updates": 0}, force=True)
+    heartbeat.update(state=RUNNING, phase="POST_TRAIN_COLLECTION", step=0, latest_losses={"phase": "read_only_preparation"}, force=True)
+
+    if (ATTEMPT_DIR / "report.json").exists():
+        report = _read_json(ATTEMPT_DIR / "report.json")
+        _require(report.get("source_manifest_id") == source["source_manifest_id"] and report.get("task_id") == TASK_ID, "existing report does not belong to this source-bound attempt")
+        if control.state in {RUN_SCIENTIFIC_ACTIVE, RUNNING}:
+            control.complete()
+        status = {
+            "schema": "m0_bogt_step1200_evidence_gradient_balance_status.v1",
+            "state": RUN_COMPLETED,
+            "phase": RUN_COMPLETED,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "attempt_id": ATTEMPT_ID,
+            "source_manifest_id": source["source_manifest_id"],
+            "classification": report.get("classification"),
+            "optimizer_created": False,
+            "parameter_updates": 0,
+            "report_sha256": file_sha256(ATTEMPT_DIR / "report.json"),
+            "recovered_after_report_write": True,
+        }
+        if not (ATTEMPT_DIR / "status.json").exists():
+            atomic_write_new_json(ATTEMPT_DIR / "status.json", status, artifact_kind="recovered step1200 read-only terminal status")
+        heartbeat.update(state=RUN_COMPLETED, phase=RUN_COMPLETED, step=67_400, latest_losses={"classification": report["classification"]}, force=True)
+        return report
+
+    context: m0.RuntimeContext | None = None
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer | None = None
+    current_phase = "load_cpu_data_and_frozen_evaluators"
+    try:
+        _require(file_sha256(root / PARENT_STATUS_PATH) == authorities["parent_status_hash"], "original attempt_02 INVALID_HARNESS status changed after READY")
+        _require(file_sha256(root / ENDPOINT_PATH) == authorities["endpoint_hash"], "step1200 endpoint changed after READY")
+        _require(file_sha256(root / START_CHECKPOINT) == START_CHECKPOINT_SHA256, "accepted step600 checkpoint changed after READY")
+        context = _load_cpu_context(root, authorities["step1200"]["data_identity"])
+        refs, weights = _step600_external_weights(root, context.data_identity)
+        step600_raw = safe_torch_load(root / STEP600_S1_RAW_PATH, map_location="cpu")
+        step600_coeff = safe_torch_load(root / STEP600_S1_OLS_PATH, map_location="cpu")
+        _require(_tree_equal(authorities["step600"]["weights"], authorities["step1200"]["weights"]), "frozen BOGT weights changed after READY")
+        recorder.sample("science_cpu_inputs_and_evaluators_loaded")
+
+        current_phase = "step1200_full_train_ols"
+        consumer = _build_consumer(
+            authorities["step1200"],
+            device=device,
+            expected_data_identity=context.data_identity,
+            external_references=refs,
+            external_weights=weights,
+        )
+        recorder.sample("scientific_load_step1200_optical_runtime")
+        bank, bank_stage = _collect_train_ols(
+            consumer,
+            context,
+            ATTEMPT_DIR,
+            str(source["source_manifest_id"]),
+            str(authorities["endpoint_hash"]),
+            recorder,
+            heartbeat,
+            task_started,
+        )
+        old_s1_metadata = _read_json(root / (canary.START_RUN / "s1_sampling_manifest.json"))
+        generated_ols, s1_metadata, s1_arrays = _s1_inputs(bank, context, step600_coeff)
+        requested = torch.as_tensor(s1_metadata["requested_labels"], dtype=torch.long)
+        s1_coeff_payload = {
+            "schema": "m0_bogt_step1200_s1_coefficients.v1",
+            "z": generated_ols,
+            "requested_labels": requested,
+            "sample_indices": s1_arrays["sample_indices"],
+            "seeds": s1_arrays["seeds"],
+            "anchor_positions": s1_arrays["anchor_positions"],
+            "neighbor_positions": s1_arrays["neighbor_positions"],
+            "metadata": s1_metadata,
+            "source_step": canary.END_STEP,
+            "source_train_ols_sha256": tensor_sha256(bank),
+            "data_role": bogt.TRAIN_ROLE,
+            "sampler_family": "S1",
+        }
+        _write_torch_or_compare(ATTEMPT_DIR / "generated_s1_ols_coefficients.pt", s1_coeff_payload, "fixed step1200 S1 OLS inputs")
+        _require(_tree_equal(s1_metadata["split"], old_s1_metadata["split"]), "step600 and step1200 S1 split identity changed")
+        current_phase = "step1200_s1_raw_cmos"
+        raw_bank, power_bank, s1_optical = _generate_s1_raw(
+            consumer,
+            generated_ols,
+            requested,
+            ATTEMPT_DIR,
+            str(source["source_manifest_id"]),
+            str(authorities["endpoint_hash"]),
+            recorder,
+            heartbeat,
+            task_started,
+        )
+        common_scale = float(authorities["step600_report"]["sampling"]["common_contact_sheet_scale"]["common_vmax"])
+        sheet = _write_contact_sheet(raw_bank, requested, ATTEMPT_DIR / "step1200_s1_contact_sheet.png", common_vmax=common_scale)
+        sheet["sha256"] = file_sha256(ATTEMPT_DIR / "step1200_s1_contact_sheet.png")
+        _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "read-only OLS/S1 forward accumulated parameter gradients")
+        _require(_tree_equal(authorities["step1200"]["trainable_parameter_state"], consumer.trainable_state_dict()), "step1200 OLS/S1 forward modified the saved parameters")
+        del consumer
+        consumer = None
+        gc.collect()
+        torch.cuda.empty_cache()
+        current_phase = "step600_s1_optical_power_confirmation"
+        step600_s1_power = _measure_step600_s1_power(
+            authorities["step600"],
+            context,
+            refs,
+            weights,
+            step600_coeff["z"],
+            recorder,
+            task_started,
+            str(authorities["step1200"]["frozen_runtime_state_sha256"]),
+        )
+        current_phase = "step600_step1200_s1_ed"
+        s1_readout, s1_predictions = _ed_and_safety(
+            step600_raw,
+            step600_coeff,
+            raw_bank,
+            {"requested_labels": requested, "optical_powers": power_bank},
+            context,
+            recorder,
+            task_started,
+            step600_s1_power,
+        )
+        canary._write_json_or_compare(ATTEMPT_DIR / "s1_measurements.json", s1_readout, "step600 and step1200 S1 E_D measurement")
+        canary._write_torch_or_compare(
+            ATTEMPT_DIR / "s1_prediction_vectors.pt",
+            {
+                "schema": "m0_bogt_step1200_s1_predictions.v1",
+                "step600_requested_labels": step600_raw["requested_labels"],
+                "step600_predictions": s1_predictions["step600_s1"],
+                "step1200_requested_labels": requested,
+                "step1200_predictions": s1_predictions["step1200_s1"],
+                "data_role": bogt.TRAIN_ROLE,
+                "source_manifest_id": source["source_manifest_id"],
+            },
+            "step600 and step1200 S1 prediction vectors",
+        )
+        del step600_raw, raw_bank, power_bank
+        gc.collect()
+
+        current_phase = "step600_dev"
+        dev_start, dev_start_raw = _measure_dev_optical(
+            authorities["step600"], context, refs, weights, recorder, ATTEMPT_DIR,
+            str(source["source_manifest_id"]), START_CHECKPOINT_SHA256, task_started, step=canary.START_STEP,
+            expected_frozen_runtime_state_sha256=str(authorities["step1200"]["frozen_runtime_state_sha256"]),
+        )
+        dev_start["E_D"] = _measure_ed_on_raw(
+            context.independent_evaluator, dev_start_raw, context.labels.index_select(0, context.development_indices),
+            role=bogt.DEV_ROLE, recorder=recorder, phase="scientific_step600_dev_frozen_ed", task_started=task_started,
+        )
+        accepted_dev = _read_json(root / STEP600_DEV_BASELINE_PATH)
+        _require(accepted_dev.get("rows") == DEV_ROWS and accepted_dev.get("data_role") == bogt.DEV_ROLE, "step600 DEV baseline authority is not the fixed population")
+        _require(abs(float(dev_start["L_rec"]) - float(accepted_dev["L_rec"])) <= 1e-6, "recomputed step600 DEV reconstruction loss does not reproduce the stored baseline")
+        _require(abs(float(dev_start["E_D"]["macro_recall"]) - float(accepted_dev["E_D"]["macro_recall"])) <= 1e-12, "recomputed step600 DEV E_D score does not reproduce the stored baseline")
+        _require(dev_start["E_D"]["confusion_matrix"] == accepted_dev["E_D"]["confusion_matrix"], "recomputed step600 DEV confusion differs from saved baseline")
+        canary._write_json_or_compare(ATTEMPT_DIR / "dev_step600_measurement.json", dev_start, "step600 fixed DEV measurement")
+        canary._write_torch_or_compare(
+            ATTEMPT_DIR / "dev_step600_prediction_vectors.pt",
+            {"schema": "m0_bogt_step1200_dev_predictions.v1", "true_labels": torch.as_tensor(dev_start["E_D"]["true_labels"]), "prediction_labels": torch.as_tensor(dev_start["E_D"]["prediction_labels"]), "source_step": canary.START_STEP, "data_role": bogt.DEV_ROLE},
+            "step600 DEV prediction vectors",
+        )
+        del dev_start_raw
+        gc.collect()
+
+        current_phase = "step1200_dev"
+        dev_end, dev_end_raw = _measure_dev_optical(
+            authorities["step1200"], context, refs, weights, recorder, ATTEMPT_DIR,
+            str(source["source_manifest_id"]), str(authorities["endpoint_hash"]), task_started, step=canary.END_STEP,
+            expected_frozen_runtime_state_sha256=str(authorities["step1200"]["frozen_runtime_state_sha256"]),
+        )
+        dev_end["E_D"] = _measure_ed_on_raw(
+            context.independent_evaluator, dev_end_raw, context.labels.index_select(0, context.development_indices),
+            role=bogt.DEV_ROLE, recorder=recorder, phase="scientific_step1200_dev_frozen_ed", task_started=task_started,
+        )
+        canary._write_json_or_compare(ATTEMPT_DIR / "dev_step1200_measurement.json", dev_end, "step1200 fixed DEV measurement")
+        canary._write_torch_or_compare(
+            ATTEMPT_DIR / "dev_step1200_prediction_vectors.pt",
+            {"schema": "m0_bogt_step1200_dev_predictions.v1", "true_labels": torch.as_tensor(dev_end["E_D"]["true_labels"]), "prediction_labels": torch.as_tensor(dev_end["E_D"]["prediction_labels"]), "source_step": canary.END_STEP, "data_role": bogt.DEV_ROLE},
+            "step1200 DEV prediction vectors",
+        )
+        del dev_end_raw
+        gc.collect()
+
+        current_phase = "fixed_batch_bogt_gradients"
+        batches = build_gradient_batches(authorities["step600"]["sampler_state"]["permutations"])
+        _require(
+            all(torch.equal(a, b) for a, b in zip(batches, build_gradient_batches(authorities["step1200"]["sampler_state"]["permutations"]), strict=True)),
+            "fixed gradient rows differ between endpoint sampler states",
+        )
+        _require(
+            all(torch.equal(torch.sort(context.labels.index_select(0, batch)).values, torch.arange(10)) for batch in batches),
+            "fixed gradient batch is not class balanced",
+        )
+        gradient_analysis = {
+            "schema": GRADIENT_SCHEMA,
+            "batch_rule": "20 batches at saved class-balanced TRAIN permutation cursors 1200..1219; each batch has one distinct row per class",
+            "batch_indices": [batch.tolist() for batch in batches],
+            "step600": _gradient_endpoint(
+                authorities["step600"], context, refs, weights, batches, recorder, task_started,
+                step=canary.START_STEP,
+                expected_frozen_runtime_state_sha256=str(authorities["step1200"]["frozen_runtime_state_sha256"]),
+            ),
+            "step1200": _gradient_endpoint(
+                authorities["step1200"], context, refs, weights, batches, recorder, task_started,
+                step=canary.END_STEP,
+                expected_frozen_runtime_state_sha256=str(authorities["step1200"]["frozen_runtime_state_sha256"]),
+            ),
+            "E_D_in_gradient_graph": False,
+            "optimizer_created": False,
+            "parameter_updates": 0,
+            "interpretation_boundary": "raw per-loss gradients only; no decomposition of Adam's coupled history",
+        }
+        canary._write_json_or_compare(ATTEMPT_DIR / "gradient_analysis.json", gradient_analysis, "step600 and step1200 BOGT gradient analysis")
+
+        current_phase = "classification_and_report"
+        dev_delta = float(dev_end["L_rec"]) - float(dev_start["L_rec"])
+        full_generation_conditions = bool(
+            s1_readout["step1200"]["E_D"]["macro_recall"] >= REPORT_GENERATION_MACRO
+            and s1_readout["step1200"]["E_D"]["minimum_class_recall"] >= REPORT_GENERATION_CLASS
+            and dev_delta <= DEV_RECONSTRUCTION_TOLERANCE
+            and s1_readout["step1200"]["raw_cmos_validity"]["finite"]
+            and s1_readout["step1200"]["raw_cmos_validity"]["all_nonzero"]
+            and s1_readout["step1200"]["raw_cmos_validity"]["all_nonconstant"]
+            and s1_readout["step1200"]["optical_power_finite"]
+            and dev_end["raw_cmos_validity"]["finite"]
+            and dev_end["optical_power_finite"]
+        )
+        decisions = _gradient_decisions(gradient_analysis)
+        classification, next_candidate, supported_cases = classify_tuning_direction(
+            gradient_decisions=decisions,
+            dev_reconstruction_delta=dev_delta,
+            full_generation_numeric_conditions_met=full_generation_conditions,
+        )
+        numeric_valid, numeric_failures = _numeric_model_validity(
+            {"step600": dev_start, "step1200": dev_end},
+            s1_readout,
+            gradient_analysis,
+        )
+        if not numeric_valid:
+            classification = "MODEL_NUMERICAL_INVALIDITY"
+            next_candidate = "NONE"
+            supported_cases = []
+
+        _require(abs(float(s1_readout["step600"]["E_D"]["macro_recall"]) - 0.1355) <= 1e-12, "step600 S1 E_D did not reproduce the accepted baseline macro")
+        _require(abs(float(dev_start["E_D"]["macro_recall"]) - 0.1318) <= 0.001, "step600 DEV E_D did not reproduce the accepted baseline")
+        model_snapshots = {}
+        for key, checkpoint in (("step600", authorities["step600"]), ("step1200", authorities["step1200"])):
+            consumer = _build_consumer(
+                checkpoint,
+                device=device,
+                expected_data_identity=context.data_identity,
+                external_references=refs,
+                external_weights=weights,
+                expected_frozen_runtime_state_sha256=authorities["step1200"]["frozen_runtime_state_sha256"],
+            )
+            model_snapshots[key] = _tree_equal(consumer.trainable_state_dict(), checkpoint["trainable_parameter_state"])
+            _require(model_snapshots[key], f"{key} parameter state differs after all read-only measurements")
+            _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), f"{key} runtime has accumulated .grad")
+            del consumer
+            consumer = None
+            gc.collect()
+            torch.cuda.empty_cache()
+        _require(all(parameter.grad is None and not parameter.requires_grad for parameter in context.independent_evaluator.parameters()), "E_D gradient firewall failed after all measurements")
+        _require(file_sha256(root / PARENT_STATUS_PATH) == authorities["parent_status_hash"], "original training attempt_02 status changed during the read-only task")
+        _verify_authority_bytes(root, authorities["authority_identities"])
+        read_ledger = context.ledger.to_dict()
+        for role in (bogt.PROTECTED_ROLE, bogt.TEST_ROLE, bogt.SEALED_ROLE):
+            _require(int(read_ledger.get(role, 0)) == 0, f"forbidden data role was read: {role}")
+
+        payload = {
+            "schema": REPORT_SCHEMA,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "result": "VALID_COMPLETED" if numeric_valid else RUN_VALID_FAILED,
+            "classification": classification,
+            "candidate_weight_change": next_candidate,
+            "candidate_cases": supported_cases,
+            "source_manifest_id": source["source_manifest_id"],
+            "source_semantics_id": source["execution_source_semantics_id"],
+            "input_authorities": authorities["authority_identities"],
+            "step600": {"DEV": dev_start, "S1": s1_readout["step600"]},
+            "step1200": {"DEV": dev_end, "S1": s1_readout["step1200"]},
+            "comparison": {
+                "DEV_E_D_macro_delta_step1200_minus_step600": float(dev_end["E_D"]["macro_recall"] - dev_start["E_D"]["macro_recall"]),
+                "DEV_reconstruction_delta_step1200_minus_step600": dev_delta,
+                "S1_E_D_macro_delta_step1200_minus_step600": float(s1_readout["step1200"]["E_D"]["macro_recall"] - s1_readout["step600"]["E_D"]["macro_recall"]),
+                "S1_class8_prediction_mass_delta": float(s1_readout["step1200"]["E_D"]["class8_prediction_mass"] - s1_readout["step600"]["E_D"]["class8_prediction_mass"]),
+            },
+            "gradient_decision_counts": decisions,
+            "gradient_analysis_path": "gradient_analysis.json",
+            "numeric_model_validity": {"valid": numeric_valid, "failures": numeric_failures},
+            "full_original_generation_numeric_conditions": {
+                "S1_macro_at_least_0_50": s1_readout["step1200"]["E_D"]["macro_recall"] >= REPORT_GENERATION_MACRO,
+                "S1_each_class_at_least_0_10": s1_readout["step1200"]["E_D"]["minimum_class_recall"] >= REPORT_GENERATION_CLASS,
+                "DEV_reconstruction_delta_at_most_0_005": dev_delta <= DEV_RECONSTRUCTION_TOLERANCE,
+                "raw_cmos_validity": bool(s1_readout["step1200"]["raw_cmos_validity"]["finite"] and s1_readout["step1200"]["raw_cmos_validity"]["all_nonzero"] and s1_readout["step1200"]["raw_cmos_validity"]["all_nonconstant"] and dev_end["raw_cmos_validity"]["finite"]),
+                "optical_power_finite": bool(s1_readout["step1200"]["optical_power_finite"] and dev_end["optical_power_finite"]),
+                "all_conditions_met": full_generation_conditions,
+            },
+            "thresholds": {
+                "preflight_seconds": PREFLIGHT_LIMIT_SECONDS,
+                "total_seconds": TOTAL_LIMIT_SECONDS,
+                "global_device_hard_fraction": DEVICE_HARD_LIMIT,
+                "global_device_preflight_admission_fraction": PREFLIGHT_ADMISSION_LIMIT,
+                "gradient_consistency": {"batches": GRADIENT_CONSISTENCY_COUNT, "norm_ratio": GRADIENT_DOMINANCE_RATIO, "cosine_lt": GRADIENT_CONFLICT_COSINE},
+                "original_generation_numeric": {"S1_macro": REPORT_GENERATION_MACRO, "per_class": REPORT_GENERATION_CLASS, "dev_reconstruction_delta": DEV_RECONSTRUCTION_TOLERANCE},
+            },
+            "integrity": {
+                "optimizer_created": False,
+                "parameter_updates": 0,
+                "step600_and_step1200_trainable_parameters_unchanged": model_snapshots,
+                "parameter_grad_fields_empty_after_analysis": True,
+                "E_D_frozen_confirmation_only": True,
+                "E_D_gradient_count": 0,
+                "original_training_attempt_02_state_preserved": True,
+                "original_training_attempt_02_status_sha256": authorities["parent_status_hash"],
+            },
+            "data_reads": {
+                "scientific": read_ledger,
+                "preflight_train_rows": int(preflight.get("read_ledger", {}).get(bogt.TRAIN_ROLE, 0)),
+                "protected": 0,
+                "official_test": 0,
+                "sealed": 0,
+            },
+            "measurement_stages": {
+                "step1200_full_train_ols": bank_stage,
+                "step1200_s1_raw_cmos": s1_optical,
+                "step600_s1_optical_power": step600_s1_power,
+            },
+            "resources": {"phase_records": recorder.entries, "peak_global_device_fraction": max(float(item["global_used_fraction"]) for item in recorder.entries)},
+            "elapsed_seconds": time.perf_counter() - task_started,
+            "automatic_next_action": "NONE",
+            "successor_research_hypothesis": next_candidate,
+            "claim_boundary": "read-only characterization; does not alter attempt_02 status, retroactively accept its Gate, or authorize training",
+        }
+        artifact_paths = (
+            "step1200_train_ols.pt",
+            "generated_s1_ols_coefficients.pt",
+            "generated_raw_cmos.pt",
+            "step1200_s1_contact_sheet.png",
+            "s1_measurements.json",
+            "s1_prediction_vectors.pt",
+            "dev_step600_measurement.json",
+            "dev_step600_prediction_vectors.pt",
+            "dev_step1200_measurement.json",
+            "dev_step1200_prediction_vectors.pt",
+            "gradient_analysis.json",
+        )
+        payload["artifacts"] = _artifact_manifest(ATTEMPT_DIR, artifact_paths)
+        _require(max(float(item["global_used_fraction"]) for item in recorder.entries) <= DEVICE_HARD_LIMIT, "global GPU usage crossed the 90% hard line", ResourceBudgetExceeded)
+        report_path = ATTEMPT_DIR / "report.json"
+        atomic_write_new_json(report_path, payload, artifact_kind="M0 step1200 tuning-direction Outer Gate report")
+        terminal_state = RUN_COMPLETED if numeric_valid else RUN_VALID_FAILED
+        if terminal_state == RUN_COMPLETED:
+            control.complete()
+        else:
+            control.valid_failed()
+        status = {
+            "schema": "m0_bogt_step1200_evidence_gradient_balance_status.v1",
+            "state": terminal_state,
+            "phase": terminal_state,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": ATTEMPT_ID,
+            "source_manifest_id": source["source_manifest_id"],
+            "classification": classification,
+            "optimizer_created": False,
+            "parameter_updates": 0,
+            "report_sha256": file_sha256(report_path),
+            "elapsed_seconds": payload["elapsed_seconds"],
+        }
+        atomic_write_new_json(ATTEMPT_DIR / "status.json", status, artifact_kind="M0 step1200 tuning-direction terminal status")
+        heartbeat.update(state=terminal_state, phase=terminal_state, step=67_400, latest_losses={"classification": classification, "optimizer_created": False, "updates": 0}, force=True)
+        return payload
+    except ResourceBudgetExceeded as error:
+        if not error.resource_records:
+            try:
+                recorder.sample(f"{current_phase}_stop_observation", progress={"reason": str(error)})
+            except ResourceBudgetExceeded as observed:
+                error.resource_records = list(observed.resource_records)
+            if not error.resource_records and recorder.entries:
+                error.resource_records = [dict(recorder.entries[-1])]
+        if control.state in {RUN_SCIENTIFIC_ACTIVE, RUNNING}:
+            control.interrupted()
+        heartbeat.heartbeat(
+            state=RUN_INTERRUPTED,
+            phase="INTERRUPTED",
+            latest_losses={
+                "error": str(error),
+                "phase": current_phase,
+                "classification": None,
+                "resource_observation": error.resource_records[-1] if error.resource_records else None,
+            },
+            force=True,
+        )
+        raise
+    except ModelNumericalInvalidity as error:
+        failure_report = {
+            "schema": REPORT_SCHEMA,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "result": RUN_VALID_FAILED,
+            "classification": "MODEL_NUMERICAL_INVALIDITY",
+            "candidate_weight_change": "NONE",
+            "source_manifest_id": source["source_manifest_id"],
+            "source_semantics_id": source["execution_source_semantics_id"],
+            "input_authorities": authorities["authority_identities"],
+            "measurement_completed": False,
+            "failure": {"type": type(error).__name__, "message": str(error), "phase": current_phase},
+            "completed_artifacts": _artifact_manifest(
+                ATTEMPT_DIR,
+                (
+                    "step1200_train_ols.pt",
+                    "generated_s1_ols_coefficients.pt",
+                    "generated_raw_cmos.pt",
+                    "s1_measurements.json",
+                    "dev_step600_measurement.json",
+                    "dev_step1200_measurement.json",
+                    "gradient_analysis.json",
+                ),
+            ),
+            "resource_phase_records": recorder.entries,
+            "optimizer_created": False,
+            "parameter_updates": 0,
+            "automatic_next_action": "NONE",
+        }
+        report_path = ATTEMPT_DIR / "report.json"
+        if report_path.exists():
+            _require(_read_json(report_path) == failure_report, "existing report conflicts with the model numerical-invalidity terminal record")
+        else:
+            atomic_write_new_json(report_path, failure_report, artifact_kind="M0 step1200 numerical invalidity report")
+        terminal = {
+            "schema": "m0_bogt_step1200_evidence_gradient_balance_status.v1",
+            "state": RUN_VALID_FAILED,
+            "phase": current_phase,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": ATTEMPT_ID,
+            "source_manifest_id": source["source_manifest_id"],
+            "classification": "MODEL_NUMERICAL_INVALIDITY",
+            "candidate_weight_change": "NONE",
+            "failure": {"type": type(error).__name__, "message": str(error), "phase": current_phase},
+            "resource_phase_records": recorder.entries,
+            "optimizer_created": False,
+            "parameter_updates": 0,
+            "report_sha256": file_sha256(report_path),
+        }
+        if not (ATTEMPT_DIR / "status.json").exists():
+            atomic_write_new_json(ATTEMPT_DIR / "status.json", terminal, artifact_kind="M0 step1200 model numerical validity status")
+        if control.state in {RUN_SCIENTIFIC_ACTIVE, RUNNING}:
+            control.valid_failed()
+        heartbeat.update(state=RUN_VALID_FAILED, phase=RUN_VALID_FAILED, step=0, latest_losses={"error": str(error), "classification": "MODEL_NUMERICAL_INVALIDITY"}, force=True)
+        return {"result": RUN_VALID_FAILED, "classification": "MODEL_NUMERICAL_INVALIDITY", "candidate_weight_change": "NONE", "failure": terminal["failure"]}
+    except Exception as error:
+        terminal = {
+            "schema": "m0_bogt_step1200_evidence_gradient_balance_status.v1",
+            "state": RUN_INVALID_HARNESS,
+            "phase": current_phase,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": ATTEMPT_ID,
+            "source_manifest_id": source["source_manifest_id"],
+            "classification": None,
+            "failure": {"type": type(error).__name__, "message": str(error), "traceback": traceback.format_exc(), "phase": current_phase},
+            "resource_phase_records": recorder.entries,
+            "optimizer_created": False,
+            "parameter_updates": 0,
+        }
+        if not (ATTEMPT_DIR / "status.json").exists():
+            atomic_write_new_json(ATTEMPT_DIR / "status.json", terminal, artifact_kind="M0 step1200 invalid harness status")
+        if control.state in {RUN_SCIENTIFIC_ACTIVE, RUNNING}:
+            control.invalid_harness()
+        heartbeat.update(state=RUN_INVALID_HARNESS, phase=RUN_INVALID_HARNESS, step=0, latest_losses={"error": str(error), "phase": current_phase}, force=True)
+        raise
+    finally:
+        del consumer, context
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--resume", action="store_true", help="resume the same interrupted attempt after validating source, process, and contiguous artifacts")
+    args = parser.parse_args(argv)
+    root = _root()
+    canary._prepare_cuda_dll_path()
+    invocation_started = time.perf_counter()
+    previous_preflight_history = _load_previous_preflight_history(root)
+    preflight_started = invocation_started - float(previous_preflight_history["elapsed_seconds"])
+    active_attempt_path = root / ATTEMPT_DIR
+    _require(not active_attempt_path.exists() or args.resume, f"write-once {ATTEMPT_DIR.name} already exists")
+    if active_attempt_path.exists():
+        latest_path = active_attempt_path / "latest_status.json"
+        status_path = active_attempt_path / "status.json"
+        _require(args.resume and latest_path.is_file() and not status_path.exists(), "only a nonterminal same-attempt interruption may be resumed")
+        latest = _read_json(latest_path)
+        _require(latest.get("state") in {RUNNING, RUN_INTERRUPTED}, "attempt is not an interrupted or stale-running task")
+        instances = sorted(active_attempt_path.glob("execution_instance_*.json"))
+        _require(bool(instances), "interrupted attempt lacks process-instance evidence")
+        canary._require_previous_process_exited(_read_json(instances[-1]))
+        latest_wall = float(latest.get("wall_time", 0.0))
+    else:
+        latest_wall = 0.0
+
+    if not torch.cuda.is_available():
+        raise ResourceBudgetExceeded("CUDA is unavailable for required production optical measurements")
+    authorities: dict[str, Any] | None = None
+    source: dict[str, Any] | None = None
+    try:
+        authorities = _validate_authorities(root)
+        previous_invalid_attempt = _load_previous_invalid_attempt(root, authorities)
+        task_started = invocation_started - (
+            float(previous_preflight_history["elapsed_seconds"])
+            + float(previous_invalid_attempt["attempt_elapsed_seconds"])
+        )
+        config = {
+            "attempt_id": ATTEMPT_ID,
+            "outer_gate": OUTER_GATE,
+            "input_authorities": authorities["authorities"],
+            "scientific_contract": {
+                "read_only": True,
+                "updates": 0,
+                "optimizer_created": False,
+                "train_ols_rows": TRAIN_ROWS,
+                "s1_per_class": canary.PER_CLASS_GENERATION,
+                "s1_neighbors": 16,
+                "gradient_cursor_start": GRADIENT_BATCH_START,
+                "gradient_batch_count": GRADIENT_BATCH_COUNT,
+            },
+            "previous_preflight_history": previous_preflight_history,
+            "previous_invalid_attempt": previous_invalid_attempt,
+        }
+        captured = capture_execution_source_manifest(
+            root,
+            task_id=TASK_ID,
+            semantic_authority_id=canary.SEMANTIC_AUTHORITY_ID,
+            relevant_paths=_source_paths(root),
+            config_identity=config,
+        )
+        source = captured.to_dict()
+        authority_identities = authorities["authorities"]
+        authorities["authority_identities"] = authority_identities
+        authorities["previous_preflight_history"] = previous_preflight_history
+        authorities["previous_invalid_attempt"] = previous_invalid_attempt
+        identity = _identity(source, authorities["step1200"]["data_identity"], authorities["step1200"])
+    except Exception as error:
+        print(json.dumps({"status": RUN_INVALID_HARNESS, "phase": "authority_resolution", "error": str(error), "attempt_created": False}, ensure_ascii=False))
+        return 2
+
+    if args.resume:
+        preflight = _read_json(root / PREFLIGHT_PATH)
+        _require(preflight.get("status") == PREFLIGHT_READY and preflight.get("source_semantics_id") == source["execution_source_semantics_id"], "resume source does not match the saved READY preflight")
+        saved_manifest = _read_json(root / ATTEMPT_DIR / "source_manifest.json")
+        _require(saved_manifest.get("execution_source_semantics_id") == source["execution_source_semantics_id"], "resume execution source semantics changed")
+        source = saved_manifest
+        identity = _identity(source, authorities["step1200"]["data_identity"], authorities["step1200"])
+        receipt = PreflightReceipt.from_mapping(preflight["receipt"])
+        _verify_authority_bytes(root, authorities["authority_identities"])
+        task_started = time.perf_counter() - float(preflight["task_elapsed_seconds"]) - latest_wall
+        report = _execute(root, authorities, source, preflight, receipt, identity, task_started=task_started, resume=True)
+        print(json.dumps({"status": "VALID_COMPLETED" if report.get("result") == "VALID_COMPLETED" else report.get("result"), "classification": report.get("classification"), "report": (ATTEMPT_DIR / "report.json").as_posix()}, ensure_ascii=False))
+        return 0
+
+    _require(not active_attempt_path.exists(), f"{ATTEMPT_DIR.name} must not exist before READY")
+    preflight_path = root / PREFLIGHT_PATH
+    if preflight_path.exists():
+        preflight = _read_json(preflight_path)
+        _require(preflight.get("status") == PREFLIGHT_READY and preflight.get("source_semantics_id") == source["execution_source_semantics_id"], "existing preflight is not READY for current source")
+        receipt = PreflightReceipt.from_mapping(preflight["receipt"])
+        if not args.resume:
+            task_started = time.perf_counter() - float(preflight["task_elapsed_seconds"])
+            preflight_started = time.perf_counter() - float(preflight["elapsed_seconds"])
+    else:
+        try:
+            preflight, receipt = _preflight(
+                root,
+                authorities,
+                source,
+                task_started=task_started,
+                preflight_started=preflight_started,
+            )
+            preflight["input_authorities"] = authorities["authority_identities"]
+            preflight["previous_preflight_history"] = authorities["previous_preflight_history"]
+            preflight["previous_invalid_attempt"] = authorities["previous_invalid_attempt"]
+            preflight["cuda_runtime_dll_path"] = {"status": "prepared", "scope": "current_process"}
+            preflight_path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_new_json(preflight_path, preflight, artifact_kind="source-bound step1200 read-only READY preflight")
+        except Exception as error:
+            preflight_path.parent.mkdir(parents=True, exist_ok=True)
+            blocked = {
+                "schema": PREFLIGHT_SCHEMA,
+                "status": "PREFLIGHT_BLOCKED(resource)" if isinstance(error, ResourceBudgetExceeded) else RUN_INVALID_HARNESS,
+                "task_id": TASK_ID,
+                "outer_gate": OUTER_GATE,
+                "authorization_id": AUTHORIZATION_ID,
+                "source_manifest": source,
+                "source_semantics_id": source["execution_source_semantics_id"],
+                "input_authorities": authorities["authority_identities"],
+                "previous_preflight_history": authorities["previous_preflight_history"],
+                "previous_invalid_attempt": authorities["previous_invalid_attempt"],
+                "failure": {"type": type(error).__name__, "message": str(error), "traceback": traceback.format_exc()},
+                "resource_phase_records": getattr(error, "resource_records", []),
+                "attempt_created": False,
+                "elapsed_seconds": time.perf_counter() - preflight_started,
+                "task_elapsed_seconds": time.perf_counter() - task_started,
+            }
+            atomic_write_new_json(preflight_path, blocked, artifact_kind="step1200 read-only blocked preflight")
+            print(json.dumps({"status": blocked["status"], "failure": blocked["failure"], "preflight": PREFLIGHT_PATH.as_posix(), "attempt_created": False}, ensure_ascii=False))
+            return 2
+
+    try:
+        _verify_authority_bytes(root, authorities["authority_identities"])
+    except Exception as error:
+        print(json.dumps({"status": RUN_INVALID_HARNESS, "phase": "ready_to_attempt_authority_recheck", "error": str(error), "attempt_created": False}, ensure_ascii=False))
+        return 2
+
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    _require(preflight.get("status") == PREFLIGHT_READY and preflight.get("source_semantics_id") == source["execution_source_semantics_id"], "source-bound READY preflight failed final consumer validation")
+    report = _execute(root, authorities, source, preflight, receipt, identity, task_started=task_started, resume=False)
+    print(json.dumps({"status": report.get("result"), "classification": report.get("classification"), "report": (ATTEMPT_DIR / "report.json").as_posix()}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

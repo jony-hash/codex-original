@@ -1,0 +1,1779 @@
+"""Capture one evidence-only replay of the frozen N3 floor qualification path."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+import torch
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, RESOURCE_ENVELOPE, RUN_COMPLETED, RUN_VALID_FAILED, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, capture_execution_source_manifest
+from ldm_project.v2.evidence.io import atomic_write_json, atomic_write_new_json, file_sha256, tensor_sha256
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_floor_axis_surrogate_alignment_qualification_v1 as qualification
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_low_rank_model_order_v1 as n3
+
+
+TASK_ID = "REPLAY_LIGHTGEN_2D_N3_FLOOR_ALIGNMENT_FAILURE_EVIDENCE_V1"
+SEMANTIC_ID = "N3_FLOOR_ALIGNMENT_FAILURE_EVIDENCE_REPLAY_V1"
+AUTHORIZATION_ID = "AUTHORIZED_EXECUTE_N3_FLOOR_ALIGNMENT_FAILURE_EVIDENCE_REPLAY_V1"
+OUTER_GATE = "N3_FLOOR_ALIGNMENT_POST_REPLAY_HUMAN_REDECISION"
+RUNS_ROOT = Path("outputs/20260924_n3_floor_alignment_failure_evidence_replay_v1/runs")
+PREVIOUS_PREFLIGHT_PATH = RUNS_ROOT / "preflight_01/preflight.json"
+PREVIOUS_AUTHORIZATION_PATH = RUNS_ROOT / "authorization_01/replay_authorization.json"
+PREVIOUS_REPLAY_DIR = RUNS_ROOT / "failure_evidence_replay_01"
+PREFLIGHT_DIR = RUNS_ROOT / "preflight_02"
+PREFLIGHT_PATH = PREFLIGHT_DIR / "preflight.json"
+PREFLIGHT_FAILURE_PATH = RUNS_ROOT / "preflight_failure_02.json"
+AUTHORIZATION_PATH = RUNS_ROOT / "authorization_02/replay_authorization.json"
+REPLAY_SLOT = "failure_evidence_replay_02"
+REPLAY_DIR = RUNS_ROOT / REPLAY_SLOT
+REPLAY_ID = f"n3-floor-alignment-failure-evidence-replay:{REPLAY_SLOT}"
+ORIGINAL_RUNS_ROOT = qualification.RUNS_ROOT
+ORIGINAL_ATTEMPT = ORIGINAL_RUNS_ROOT / "attempt_01"
+AXES = qualification.FLOOR_INDICES
+THRESHOLDS = (0.25, 0.50, 0.75)
+
+
+class ReplayError(RuntimeError):
+    """An authority, preflight, fidelity, or evidence-transaction invariant failed."""
+
+
+class ResourceAbortedError(ReplayError):
+    """The frozen replay cannot safely enter its measurement phase."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReplayError(message)
+
+
+def _read_json(path: Path, name: str) -> dict[str, Any]:
+    _require(path.is_file(), f"{name} is missing: {path.as_posix()}")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    _require(isinstance(value, dict), f"{name} must be a JSON object")
+    return value
+
+
+def _sha_json(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _attempt_inventory(root: Path, attempt_dir: Path) -> dict[str, str]:
+    return {
+        path.relative_to(root).as_posix(): file_sha256(path)
+        for path in sorted(attempt_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _exact_equal(left: Any, right: Any, path: str = "root") -> tuple[bool, str | None]:
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        if set(left) != set(right):
+            return False, f"{path}: key set differs"
+        for key in sorted(left):
+            equal, reason = _exact_equal(left[key], right[key], f"{path}.{key}")
+            if not equal:
+                return False, reason
+        return True, None
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        if len(left) != len(right):
+            return False, f"{path}: length differs"
+        for index, (left_item, right_item) in enumerate(zip(left, right, strict=True)):
+            equal, reason = _exact_equal(left_item, right_item, f"{path}[{index}]")
+            if not equal:
+                return False, reason
+        return True, None
+    if type(left) is not type(right) or left != right:
+        return False, f"{path}: {left!r} != {right!r}"
+    return True, None
+
+
+def _measurement_summary(value: Mapping[str, Any]) -> dict[str, Any]:
+    compact = {key: item for key, item in value.items() if not key.startswith("replay_")}
+    return qualification._json_measurements(compact)
+
+
+def _calibration_summary(value: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in {"g336", "gfloor", "g_aligned", "fixed_reference_rows"}
+    }
+
+
+def _original_authorities(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    auth_path = root / qualification.AUTHORIZATION_PATH
+    preflight_path = root / qualification.PREFLIGHT_DIR / "preflight.json"
+    source_path = root / ORIGINAL_ATTEMPT / "source_manifest.json"
+    population_path = root / ORIGINAL_ATTEMPT / "population_manifest.json"
+    fixed_targets_path = root / ORIGINAL_ATTEMPT / "fixed_reference_targets.json"
+    report_path = root / ORIGINAL_ATTEMPT / "report.json"
+    status_path = root / ORIGINAL_ATTEMPT / "status.json"
+    original_paths = (auth_path, preflight_path, source_path, population_path, fixed_targets_path, report_path, status_path)
+    _require(all(path.is_file() for path in original_paths), "original qualification evidence set is incomplete")
+    _require(not (root / ORIGINAL_RUNS_ROOT / "attempt_02").exists(), "qualification attempt_02 already exists")
+
+    source = _read_json(source_path, "attempt_01 source manifest")
+    population = _read_json(population_path, "attempt_01 population manifest")
+    fixed_targets = _read_json(fixed_targets_path, "attempt_01 fixed target manifest")
+    report = _read_json(report_path, "attempt_01 report")
+    status = _read_json(status_path, "attempt_01 status")
+    preflight = _read_json(preflight_path, "qualification preflight")
+    old_auth = _read_json(auth_path, "qualification authorization provenance")
+
+    _require(status.get("state") == "VALID_FAILED", "original attempt_01 is not VALID_FAILED")
+    _require(report.get("attempt_status") == "VALID_COMPLETED", "original qualification is not a valid completed measurement")
+    _require(
+        report.get("qualification_result") == qualification.CLASSIFICATION_NOT_QUALIFIED,
+        "original qualification classification changed",
+    )
+    _require(report.get("continued_after_result") is False, "original qualification continued after its result")
+    _require(report.get("persistent_update_count") == 0 and report.get("checkpoint_write_count") == 0, "original qualification has persistent updates or checkpoint writes")
+    _require(report.get("N3_SELECT_reads") == 0 and report.get("N3_CONFIRM_reads") == 0, "original qualification consumed a selection or confirmation role")
+    _require(report.get("protected_test_sealed_reads") == {"protected": 0, "test": 0, "sealed": 0}, "original qualification protected-role ledger is nonzero")
+    _require(preflight.get("status") == "READY", "original qualification did not have a READY preflight")
+    _require(preflight.get("preflight_receipt", {}).get("status") == "READY", "original READY receipt is missing")
+    _require(report.get("source_manifest") == source, "original report and source manifest disagree")
+    _require(report.get("authorization_id") == qualification.AUTHORIZATION_ID, "original qualification authorization provenance changed")
+    _require(report.get("authorization_sha256") == file_sha256(auth_path), "original qualification authorization hash changed")
+
+    expected_auth = {
+        "authorization_id": qualification.AUTHORIZATION_ID,
+        "contract_v1_sha256": qualification.V1_SHA256,
+        "contract_v2_sha256": qualification.V2_SHA256,
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "active_fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "source_manifest_id": source.get("source_manifest_id"),
+        "execution_source_semantics_id": source.get("execution_source_semantics_id"),
+        "qualification_population_sha256": population.get("qualification_population_sha256"),
+    }
+    _require(all(old_auth.get(key) == expected for key, expected in expected_auth.items()), "original authorization lineage does not match attempt_01")
+    _require(report.get("v1_sha256") == qualification.V1_SHA256, "attempt_01 V1 identity changed")
+    _require(report.get("v2_sha256") == qualification.V2_SHA256, "attempt_01 V2 identity changed")
+    _require(report.get("active_n3_contract_sha256") == n3.CONTRACT_SHA256, "attempt_01 N3 contract identity changed")
+    _require(report.get("active_fit_protocol_sha256") == n3.PROTOCOL_SHA256, "attempt_01 FIT protocol identity changed")
+    _require(report.get("accepted_step9000_sha256") == n3.START_CHECKPOINT_SHA256, "attempt_01 accepted step9000 identity changed")
+    _require(population.get("qualification_rows") == 10240 and population.get("rows_per_class") == 1024, "frozen qualification population shape changed")
+    _require(population.get("qualification_population_sha256") == old_auth.get("qualification_population_sha256"), "qualification population authorization binding changed")
+    _require(fixed_targets.get("frozen_before_temporary_update") is True, "qualification fixed targets are not bound to the pre-update state")
+
+    protected_counts = report["read_ledger"]
+    _require(protected_counts.get("protected") == protected_counts.get("test") == protected_counts.get("sealed") == 0, "attempt_01 read ledger contains protected-role reads")
+    hashes = _attempt_inventory(root, root / ORIGINAL_ATTEMPT)
+    hashes[auth_path.relative_to(root).as_posix()] = file_sha256(auth_path)
+    hashes[preflight_path.relative_to(root).as_posix()] = file_sha256(preflight_path)
+    return {
+        "source_manifest": source,
+        "population_manifest": population,
+        "fixed_reference_targets": fixed_targets,
+        "report": report,
+        "status": status,
+        "preflight": preflight,
+        "authorization": old_auth,
+        "immutable_files": hashes,
+    }, {
+        "report_sha256": file_sha256(report_path),
+        "source_manifest_sha256": file_sha256(source_path),
+        "population_manifest_sha256": file_sha256(population_path),
+        "fixed_reference_targets_sha256": file_sha256(fixed_targets_path),
+        "status_sha256": file_sha256(status_path),
+        "qualification_authorization_sha256": file_sha256(auth_path),
+        "qualification_preflight_sha256": file_sha256(preflight_path),
+    }
+
+
+def _verify_interrupted_replay_01(root: Path) -> dict[str, Any]:
+    attempt = root / PREVIOUS_REPLAY_DIR
+    preflight_path = root / PREVIOUS_PREFLIGHT_PATH
+    authorization_path = root / PREVIOUS_AUTHORIZATION_PATH
+    status_path = attempt / "status.json"
+    interruption_path = attempt / "replay_interruption.json"
+    source_path = attempt / "source_manifest.json"
+    required = (preflight_path, authorization_path, status_path, interruption_path, source_path)
+    _require(all(path.is_file() for path in required), "interrupted replay_01 history is incomplete")
+
+    status = _read_json(status_path, "replay_01 status")
+    interruption = _read_json(interruption_path, "replay_01 interruption")
+    preflight = _read_json(preflight_path, "replay_01 READY preflight")
+    authorization = _read_json(authorization_path, "replay_01 authorization")
+    source = _read_json(source_path, "replay_01 source manifest")
+    _require(status.get("state") == "INTERRUPTED", "replay_01 is not immutably interrupted")
+    _require(status.get("phase") == "EVIDENCE_REPLAY", "replay_01 interruption phase changed")
+    _require(status.get("replay_interruption_sha256") == file_sha256(interruption_path), "replay_01 interruption receipt hash changed")
+    _require(interruption.get("state") == "INTERRUPTED", "replay_01 interruption receipt state changed")
+    _require(interruption.get("preflight_sha256") == file_sha256(preflight_path), "replay_01 preflight binding changed")
+    _require(interruption.get("authorization_id") == AUTHORIZATION_ID, "replay_01 authorization identity changed")
+    _require(interruption.get("execution_source_semantics_id") == source.get("execution_source_semantics_id"), "replay_01 source semantics binding changed")
+    _require(preflight.get("status") == "READY" and preflight.get("preflight_receipt", {}).get("status") == "READY", "replay_01 did not have a READY receipt")
+    _require(preflight.get("authorization_id") == AUTHORIZATION_ID, "replay_01 READY receipt authorization changed")
+    _require(preflight.get("authorization") == authorization, "replay_01 preflight and authorization disagree")
+    _require(preflight.get("authorization_sha256") == _sha_json(authorization), "replay_01 authorization digest changed")
+    _require(preflight.get("source_manifest") == source, "replay_01 preflight and source manifest disagree")
+    _require(authorization.get("authorization_id") == AUTHORIZATION_ID, "replay_01 authorization record changed")
+    bindings = authorization.get("bindings", {})
+    _require(bindings.get("source_manifest_id") == source.get("source_manifest_id"), "replay_01 authorization source manifest binding changed")
+    _require(bindings.get("execution_source_semantics_id") == source.get("execution_source_semantics_id"), "replay_01 authorization source semantics binding changed")
+    _require(bindings.get("accepted_step9000_sha256") == n3.START_CHECKPOINT_SHA256, "replay_01 accepted step9000 binding changed")
+    _require(bindings.get("n3_contract_sha256") == n3.CONTRACT_SHA256, "replay_01 N3 contract binding changed")
+    _require(bindings.get("fit_protocol_sha256") == n3.PROTOCOL_SHA256, "replay_01 FIT protocol binding changed")
+    _require(preflight.get("accepted_step9000_sha256") == n3.START_CHECKPOINT_SHA256, "replay_01 READY receipt checkpoint identity changed")
+    _require(preflight.get("n3_contract_sha256") == n3.CONTRACT_SHA256, "replay_01 READY receipt N3 contract identity changed")
+    _require(preflight.get("fit_protocol_sha256") == n3.PROTOCOL_SHA256, "replay_01 READY receipt FIT protocol identity changed")
+    _require(interruption.get("scientific_measurement_complete") is False, "replay_01 unexpectedly completed a scientific measurement")
+    _require(interruption.get("evidence_bundle_published") is False, "replay_01 unexpectedly published an evidence bundle")
+    _require(interruption.get("persistent_model_updates") == 0 and interruption.get("checkpoint_writes") == 0, "replay_01 contains persistent updates or checkpoint writes")
+    _require(interruption.get("qualification_attempt_02_created") is False, "qualification attempt_02 was created")
+    files = {path.relative_to(attempt).as_posix() for path in attempt.rglob("*") if path.is_file()}
+    _require(files == {"source_manifest.json", "status.json", "replay_interruption.json"}, "replay_01 contains unexpected or mutable evidence files")
+
+    return {
+        "replay_id": "n3-floor-alignment-failure-evidence-replay:failure_evidence_replay_01",
+        "state": "INTERRUPTED",
+        "authorization_id": AUTHORIZATION_ID,
+        "execution_source_semantics_id": source["execution_source_semantics_id"],
+        "preflight_sha256": file_sha256(preflight_path),
+        "authorization_file_sha256": file_sha256(authorization_path),
+        "source_manifest_sha256": file_sha256(source_path),
+        "status_sha256": file_sha256(status_path),
+        "interruption_sha256": file_sha256(interruption_path),
+        "persistent_model_updates": 0,
+        "checkpoint_writes": 0,
+        "scientific_measurement_complete": False,
+        "evidence_bundle_published": False,
+    }
+
+
+def _nvidia_smi_snapshot() -> dict[str, Any]:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,name,memory.used,memory.total", "--format=csv,noheader,nounits"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ResourceAbortedError(f"GPU resource observation failed: {type(error).__name__}: {error}") from error
+    if result.returncode != 0:
+        raise ResourceAbortedError(f"nvidia-smi resource observation failed: {result.stderr.strip()}")
+    rows = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if len(rows) != 1:
+        raise ResourceAbortedError("replay requires the previously qualified single-GPU device")
+    fields = [field.strip() for field in rows[0].split(",")]
+    if len(fields) != 4:
+        raise ResourceAbortedError("nvidia-smi returned an unrecognized GPU memory row")
+    try:
+        index, name = int(fields[0]), fields[1]
+        used_mib, total_mib = int(fields[2]), int(fields[3])
+    except ValueError as error:
+        raise ResourceAbortedError("nvidia-smi returned nonnumeric memory values") from error
+    if index != 0 or used_mib < 0 or total_mib <= used_mib:
+        raise ResourceAbortedError("GPU resource observation is invalid")
+    return {
+        "index": index,
+        "device_name": name,
+        "used_mib": used_mib,
+        "total_mib": total_mib,
+        "used_bytes": used_mib * 1024**2,
+        "total_bytes": total_mib * 1024**2,
+        "free_bytes": (total_mib - used_mib) * 1024**2,
+    }
+
+
+def _measured_peak_bytes(original: Mapping[str, Any], previous_preflight: Mapping[str, Any]) -> tuple[int, int, str]:
+    peak_gb = float(original["report"]["peak_cuda_memory"]["peak_reserved_gb"])
+    total_bytes = int(previous_preflight["cuda_runtime"]["total_memory_bytes"])
+    device_name = str(previous_preflight["cuda_runtime"]["device_name"])
+    _require(math.isfinite(peak_gb) and peak_gb > 0.0 and total_bytes > 0 and device_name, "frozen measured replay peak or device identity is invalid")
+    peak_bytes = math.ceil(peak_gb * 1024**3)
+    _require(peak_bytes < total_bytes, "frozen measured replay peak exceeds the qualified GPU capacity")
+    return peak_bytes, total_bytes, device_name
+
+
+def _gpu_capacity_check(
+    snapshot: Mapping[str, Any],
+    *,
+    expected_peak_bytes: int,
+    qualified_total_bytes: int,
+    qualified_device_name: str,
+) -> dict[str, Any]:
+    # The frozen qualification consumer defines no additive free-memory reserve;
+    # retain its measured-peak/free-memory policy instead of inventing a new budget.
+    reserve_bytes = 0
+    total_matches = abs(int(snapshot["total_bytes"]) - qualified_total_bytes) <= 1024**2
+    device_matches = snapshot["device_name"] == qualified_device_name
+    required_free = expected_peak_bytes + reserve_bytes
+    free_bytes = int(snapshot["free_bytes"])
+    return {
+        "status": "PASS" if total_matches and device_matches and free_bytes >= required_free else "RESOURCE_ABORTED",
+        "device_identity_matches": device_matches,
+        "total_memory_matches_within_1_mib": total_matches,
+        "observed_free_bytes": free_bytes,
+        "measured_scientific_peak_reserved_bytes": expected_peak_bytes,
+        "execution_reserve_bytes": reserve_bytes,
+        "reserve_policy": "no additive reserve is defined by the active qualification consumer; require free memory at least equal to its measured peak",
+        "required_free_bytes": required_free,
+        "headroom_after_peak_bytes": free_bytes - required_free,
+        "observation": dict(snapshot),
+    }
+
+
+def _late_gpu_quiescence_result(
+    first: Mapping[str, Any],
+    second: Mapping[str, Any],
+    *,
+    expected_peak_bytes: int,
+    qualified_total_bytes: int,
+    qualified_device_name: str,
+) -> dict[str, Any]:
+    first_capacity = _gpu_capacity_check(
+        first,
+        expected_peak_bytes=expected_peak_bytes,
+        qualified_total_bytes=qualified_total_bytes,
+        qualified_device_name=qualified_device_name,
+    )
+    second_capacity = _gpu_capacity_check(
+        second,
+        expected_peak_bytes=expected_peak_bytes,
+        qualified_total_bytes=qualified_total_bytes,
+        qualified_device_name=qualified_device_name,
+    )
+    growth_bytes = int(second["used_bytes"]) - int(first["used_bytes"])
+    no_upward_usage = growth_bytes <= 0
+    passed = first_capacity["status"] == second_capacity["status"] == "PASS" and no_upward_usage
+    return {
+        "status": "PASS" if passed else "RESOURCE_ABORTED",
+        "observation_count": 2,
+        "no_upward_usage_between_observations": no_upward_usage,
+        "used_memory_growth_bytes": growth_bytes,
+        "first_capacity_check": first_capacity,
+        "second_capacity_check": second_capacity,
+    }
+
+
+def _verify_replay_02_slots_absent(root: Path) -> None:
+    paths = (root / PREFLIGHT_PATH, root / PREFLIGHT_FAILURE_PATH, root / AUTHORIZATION_PATH, root / REPLAY_DIR)
+    _require(not any(path.exists() for path in paths), "replay_02 or its write-once preflight/authorization slot already exists")
+
+
+def _new_source_manifest(
+    root: Path,
+    original: Mapping[str, Any],
+    hashes: Mapping[str, str],
+    fit_identity: Mapping[str, Any],
+    previous_replay_identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    original_source = original["source_manifest"]
+    paths = list(original_source["relevant_source_paths"])
+    replay_source_path = Path(__file__).resolve().relative_to(root).as_posix()
+    if replay_source_path not in paths:
+        paths.append(replay_source_path)
+    config = {
+        "v1_sha256": qualification.V1_SHA256,
+        "v2_sha256": qualification.V2_SHA256,
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "original_attempt_01_hashes": dict(hashes),
+        "N3_FIT_calibration_identity": dict(fit_identity),
+        "qualification_population_sha256": original["population_manifest"]["qualification_population_sha256"],
+        "qualification_rows": 10240,
+        "rows_per_class": 1024,
+        "floor_indices": list(AXES),
+        "temporary_updates": 1,
+        "persistent_updates": 0,
+        "checkpoint_writes": 0,
+        "replay_only": True,
+        "replay_slot": REPLAY_SLOT,
+        "previous_interrupted_replay_identity": dict(previous_replay_identity),
+    }
+    manifest = capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_ID,
+        relevant_paths=paths,
+        config_identity=config,
+    )
+    return manifest.to_dict()
+
+
+def _new_authorization(
+    source: Mapping[str, Any],
+    hashes: Mapping[str, str],
+    population_sha: str,
+    fit_identity: Mapping[str, Any],
+    previous_replay_identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema": "n3_floor_alignment_failure_evidence_replay_authorization.v1",
+        "authorization_id": AUTHORIZATION_ID,
+        "authorization_source": "explicit user request in the current task authorizing the single replacement completion in replay_02",
+        "authorization_instance": REPLAY_SLOT,
+        "scope": "exactly one replacement completion of interrupted replay_01 on the same frozen qualification path; no qualification attempt or persistent update",
+        "original_qualification_authorization_used_for_replay": False,
+        "bindings": {
+            "v1_sha256": qualification.V1_SHA256,
+            "v2_sha256": qualification.V2_SHA256,
+            "n3_contract_sha256": n3.CONTRACT_SHA256,
+            "fit_protocol_sha256": n3.PROTOCOL_SHA256,
+            "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+            "qualification_population_sha256": population_sha,
+            "N3_FIT_calibration_identity": dict(fit_identity),
+            "original_attempt_01_hashes": dict(hashes),
+            "execution_source_semantics_id": source["execution_source_semantics_id"],
+            "source_manifest_id": source["source_manifest_id"],
+            "replay_slot": REPLAY_SLOT,
+            "interrupted_replay_01_identity": dict(previous_replay_identity),
+        },
+    }
+
+
+def _run_identity(source: Mapping[str, Any], populations: Mapping[str, Any]) -> ResearchRunIdentity:
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=f"n3-floor-alignment-failure-evidence-replay-v1:{REPLAY_SLOT}",
+        trajectory_id="accepted-step9000-canonical-rank2-one-temporary-fresh-zero-adam-update",
+        semantic_authority_id=SEMANTIC_ID,
+        data_role="N3_QUALIFICATION_TRAIN_FIXED_1024_PER_CLASS",
+        config_identity={
+            "v1_sha256": qualification.V1_SHA256,
+            "v2_sha256": qualification.V2_SHA256,
+            "n3_contract_sha256": n3.CONTRACT_SHA256,
+            "fit_protocol_sha256": n3.PROTOCOL_SHA256,
+            "qualification_population_sha256": populations["qualification_population_sha256"],
+            "floor_indices": list(AXES),
+            "one_temporary_update": True,
+            "evidence_only": True,
+            "replay_slot": REPLAY_SLOT,
+        },
+        model_identity="accepted_step9000_plus_exact_canonical_rank2_initialization",
+        optimizer_identity={
+            "name": "Adam",
+            "parameters": ["B", "A"],
+            "learning_rate": n3.LEARNING_RATE,
+            "betas": list(n3.ADAM_BETAS),
+            "eps": n3.ADAM_EPS,
+            "weight_decay": n3.WEIGHT_DECAY,
+            "state": "fresh-zero; one temporary update; exact rollback",
+        },
+        sampler_identity={"calibration_population": "exact frozen N3_FIT order", "cursor_consumed": 0},
+        execution_source_semantics_id=str(source["execution_source_semantics_id"]),
+        source_manifest_id=str(source["source_manifest_id"]),
+    )
+
+
+def _preflight_receipt(
+    source: Mapping[str, Any],
+    authorization_sha: str,
+    populations: Mapping[str, Any],
+    runtime: Mapping[str, Any],
+    rehearsal: Mapping[str, Any],
+    initial_gpu_guard: Mapping[str, Any],
+) -> PreflightReceipt:
+    checks = {
+        CORRECTNESS_INVARIANTS: {
+            "status": "PASS",
+            "checks": {
+                "explicit_replay_authorization_bound_to_current_request": "PASS",
+                "new_authorization_instance_bound_to_replay_02": "PASS",
+                "interrupted_replay_01_preserved_and_verified": "PASS",
+                "V1_V2_N3_protocol_and_step9000_identity": "PASS",
+                "immutable_original_attempt_01_valid_failed": "PASS",
+                "same_fixed_qualification_population": "PASS",
+                "same_N3_FIT_calibration_role_and_order": "PASS",
+                "same_rank2_initialization_and_fresh_zero_Adam": "PASS",
+                "single_temporary_update_and_exact_rollback_contract": "PASS",
+                "no_op_full_runtime_rollback": runtime["rollback_probe"],
+                "artifact_transaction_rehearsal": "PASS",
+                "N3_SELECT_N3_CONFIRM_reads": 0,
+                "protected_test_sealed_reads": 0,
+            },
+        },
+        RESOURCE_ENVELOPE: {
+            "status": "PASS",
+            "checks": {
+                "cuda_runtime": runtime,
+                "evidence_transaction": rehearsal,
+                "free_cuda_memory_bytes": runtime["free_memory_bytes"],
+                "runtime_loaded_and_noop_rollback_checked": True,
+                "initial_gpu_resource_guard": dict(initial_gpu_guard),
+            },
+        },
+        IMPLEMENTATION_SELECTION: {
+            "status": "PASS",
+            "checks": {
+                "execution_backend": "ONE_FROZEN_CALIBRATION_PLUS_ONE_TEMPORARY_FRESH_ZERO_ADAM_UPDATE",
+                "persistent_updates": 0,
+                "qualification_attempt_created": False,
+                "evidence_only_replay": True,
+            },
+        },
+    }
+    return PreflightReceipt(
+        source_semantics_id=str(source["execution_source_semantics_id"]),
+        authorization_id=AUTHORIZATION_ID,
+        checks=checks,
+        selected_engine="ONE_TEMPORARY_FRESH_ZERO_ADAM_UPDATE_EVIDENCE_CAPTURE",
+        resource={
+            "source_manifest_id": source["source_manifest_id"],
+            "execution_source_semantics_id": source["execution_source_semantics_id"],
+            "authorization_sha256": authorization_sha,
+            "qualification_population_sha256": populations["qualification_population_sha256"],
+            "cuda_runtime": runtime,
+            "artifact_transaction": rehearsal,
+            "initial_gpu_resource_guard": dict(initial_gpu_guard),
+        },
+    )
+
+
+_JSON_ARTIFACT_NAMES = (
+    "replay_manifest.json",
+    "source_manifest.json",
+    "population_manifest.json",
+    "read_ledger.json",
+    "parameter_layout.json",
+    "aggregate_replay_report.json",
+    "rollback_proof.json",
+    "authorization_record.json",
+    "terminal_lifecycle.json",
+)
+_ARRAY_ARTIFACT_NAMES = ("sample_floor_evidence.npz", "parameter_vectors.npz")
+
+
+def _as_numpy(value: Any) -> np.ndarray:
+    if isinstance(value, torch.Tensor):
+        return value.detach().to(device="cpu").contiguous().numpy()
+    return np.asarray(value)
+
+
+def _publish_evidence_transaction(
+    attempt_dir: Path,
+    json_artifacts: Mapping[str, Mapping[str, Any]],
+    array_artifacts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    _require(set(json_artifacts) == set(_JSON_ARTIFACT_NAMES), "evidence transaction JSON artifact set changed")
+    _require(set(array_artifacts) == set(_ARRAY_ARTIFACT_NAMES), "evidence transaction tensor artifact set changed")
+    staging = attempt_dir / ".evidence-staging"
+    published = attempt_dir / "evidence"
+    _require(not staging.exists() and not published.exists(), "evidence transaction destination is not fresh")
+    staging.mkdir(parents=False, exist_ok=False)
+    try:
+        for name in _JSON_ARTIFACT_NAMES:
+            atomic_write_new_json(staging / name, json_artifacts[name], artifact_kind=f"replay {name}")
+        for name in _ARRAY_ARTIFACT_NAMES:
+            arrays = {key: _as_numpy(value) for key, value in array_artifacts[name].items()}
+            np.savez_compressed(staging / name, **arrays)
+        files = {
+            path.name: {"sha256": file_sha256(path), "size_bytes": path.stat().st_size}
+            for path in sorted(staging.iterdir())
+            if path.is_file()
+        }
+        manifest = {
+            "schema": "n3_floor_alignment_failure_evidence_artifact_manifest.v1",
+            "publication": "single same-volume directory rename after every artifact is complete",
+            "files": files,
+        }
+        atomic_write_new_json(staging / "evidence_manifest.json", manifest, artifact_kind="replay evidence manifest")
+        os.replace(staging, published)
+        for name, identity in files.items():
+            target = published / name
+            _require(target.is_file() and file_sha256(target) == identity["sha256"], f"published evidence hash mismatch: {name}")
+        return {**manifest, "manifest_sha256": file_sha256(published / "evidence_manifest.json")}
+    except BaseException:
+        raise
+
+
+def rehearse_artifact_transaction(*, parent: Path | None = None) -> dict[str, Any]:
+    """Exercise the exact atomic bundle writer using synthetic, non-scientific data."""
+    with tempfile.TemporaryDirectory(prefix="n3floor-replay-", dir=None if parent is None else str(parent)) as temporary:
+        attempt = Path(temporary) / "synthetic_attempt"
+        attempt.mkdir()
+        json_artifacts = {name: {"rehearsal": True, "artifact": name} for name in _JSON_ARTIFACT_NAMES}
+        arrays = {
+            "sample_floor_evidence.npz": {"sample": np.array([0, 1], dtype=np.int64), "soft": np.array([0.1, 0.2])},
+            "parameter_vectors.npz": {"g336": np.array([1.0, 2.0]), "delta": np.array([0.0, 1.0])},
+        }
+        result = _publish_evidence_transaction(attempt, json_artifacts, arrays)
+        published = attempt / "evidence"
+        expected = set(_JSON_ARTIFACT_NAMES) | set(_ARRAY_ARTIFACT_NAMES) | {"evidence_manifest.json"}
+        _require({path.name for path in published.iterdir()} == expected, "artifact transaction rehearsal file set changed")
+        manifest = _read_json(published / "evidence_manifest.json", "rehearsal evidence manifest")
+        _require(set(manifest["files"]) == expected - {"evidence_manifest.json"}, "artifact transaction manifest is incomplete")
+        for name, identity in manifest["files"].items():
+            _require(file_sha256(published / name) == identity["sha256"], f"artifact transaction rehearsal hash mismatch: {name}")
+        _require(result["manifest_sha256"] == file_sha256(published / "evidence_manifest.json"), "artifact transaction manifest hash changed")
+        try:
+            _publish_evidence_transaction(attempt, json_artifacts, arrays)
+        except ReplayError:
+            pass
+        else:
+            raise ReplayError("artifact transaction rehearsal did not reject a second publication")
+        return {"status": "ARTIFACT_TRANSACTION_REHEARSAL_PASS", "artifact_count": len(expected), "atomic_directory_publication": True}
+
+
+def _verify_original_population(
+    root: Path,
+    original: Mapping[str, Any],
+    authorities: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
+    role_indices = {name: authorities["roles"][name].to(torch.long).cpu() for name in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")}
+    indices, populations = qualification._load_frozen_indices(root, json.loads((root / qualification.V1_PATH).read_text(encoding="utf-8")), authorities)
+    frozen_population = qualification._population_manifest(populations)
+    equal, reason = _exact_equal(original["population_manifest"], frozen_population)
+    _require(equal, f"qualification population differs from attempt_01: {reason}")
+    _require(populations["qualification_population_sha256"] == original["population_manifest"]["qualification_population_sha256"], "qualification population SHA mismatch")
+    return populations, role_indices
+
+
+def _make_original_identity_record(original: Mapping[str, Any], hashes: Mapping[str, str]) -> dict[str, Any]:
+    return {
+        "attempt_id": "qualification:attempt_01",
+        "status": original["status"].get("state"),
+        "qualification_result": original["report"].get("qualification_result"),
+        "report_sha256": hashes["report_sha256"],
+        "source_manifest_sha256": hashes["source_manifest_sha256"],
+        "population_manifest_sha256": hashes["population_manifest_sha256"],
+        "fixed_reference_targets_sha256": hashes["fixed_reference_targets_sha256"],
+        "status_sha256": hashes["status_sha256"],
+        "qualification_authorization_sha256": hashes["qualification_authorization_sha256"],
+        "qualification_preflight_sha256": hashes["qualification_preflight_sha256"],
+    }
+
+
+def _preflight(
+    root: Path,
+    *,
+    previous_replay_identity: Mapping[str, Any],
+    initial_gpu_guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    _verify_replay_02_slots_absent(root)
+    _require(not (root / (ORIGINAL_RUNS_ROOT / "attempt_02")).exists(), "qualification attempt_02 exists; replay cannot continue")
+    original, original_hashes = _original_authorities(root)
+    previous_preflight = _read_json(root / PREVIOUS_PREFLIGHT_PATH, "replay_01 READY preflight")
+    rehearsal = rehearse_artifact_transaction()
+
+    v1, v2, contract, active = qualification._authority(root)
+    _require(file_sha256(root / n3.START_CHECKPOINT) == n3.START_CHECKPOINT_SHA256, "accepted step9000 checkpoint file hash mismatch")
+    _require(v1["classification"] == "N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_CONTRACT_DEFINED", "V1 qualification contract classification changed")
+    _require(v2["supersession"]["v1_sha256"] == qualification.V1_SHA256, "V2 no longer binds immutable V1")
+    _require(v2["inherited_scientific_definitions"]["source_contract_sha256"] == qualification.V1_SHA256, "V2 scientific definition inheritance changed")
+    _require(not v2["qualification_execution_authorization"].get("issued_by_this_contract", False), "qualification contract unexpectedly issued its old authorization")
+
+    protocol = json.loads((root / n3.PROTOCOL_PATH).read_text(encoding="utf-8"))
+    read_ledger = n3.SampleReadLedger()
+    authorities = n3._load_authorities(root, contract, protocol, read_ledger)
+    populations, role_indices = _verify_original_population(root, original, authorities)
+    qualification_indices = populations["qualification_indices"].to(torch.long).cpu()
+    fit_indices = role_indices["N3_FIT"]
+    fit_labels = authorities["labels"].to(torch.long).cpu().index_select(0, fit_indices)
+    fit_identity = {
+        "role": "N3_FIT",
+        "rows": int(fit_indices.numel()),
+        "rows_per_class": 256,
+        "indices_sha256": tensor_sha256(fit_indices),
+        "class_counts": torch.bincount(fit_labels, minlength=qualification.CLASS_COUNT).tolist(),
+        "order": "exact canonical N3_FIT role order; no reshuffle",
+        "protocol_sha256": n3.PROTOCOL_SHA256,
+    }
+    _require(fit_identity["rows"] == 2560 and fit_identity["class_counts"] == [256] * 10, "N3_FIT calibration identity changed")
+
+    replay_source = _new_source_manifest(
+        root,
+        original,
+        original_hashes,
+        fit_identity,
+        previous_replay_identity,
+    )
+    authorization = _new_authorization(
+        replay_source,
+        original_hashes,
+        populations["qualification_population_sha256"],
+        fit_identity,
+        previous_replay_identity,
+    )
+    authorization_sha = _sha_json(authorization)
+    identity = _run_identity(replay_source, populations)
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+
+    process_rng = n3._rng_snapshot()
+    runtime = n3._prepare_cuda_runtime()
+    n3._restore_rng(process_rng)
+    _require(n3._rng_equal(n3._rng_snapshot(), process_rng), "CUDA runtime preparation changed process RNG")
+    device = torch.device("cuda:0")
+    torch.cuda.reset_peak_memory_stats(device)
+    prepared = qualification._prepare_runtime_transaction(root, authorities, protocol, device)
+    torch.cuda.synchronize(device)
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    runtime = {
+        **runtime,
+        "device_name": torch.cuda.get_device_name(device),
+        "free_memory_bytes": int(free_bytes),
+        "total_memory_bytes": int(total_bytes),
+        "memory_after_runtime_load": n3._cuda_memory(device),
+        "rollback_probe": prepared["rollback_probe"],
+    }
+    _require(torch.cuda.is_available() and free_bytes > 0, "CUDA runtime has no usable free memory")
+    _require(prepared["rollback_probe"].get("passed") is True, "runtime no-op rollback probe failed")
+    ledger_summary = read_ledger.summary()
+    _require(ledger_summary.get("protected") == ledger_summary.get("test") == ledger_summary.get("sealed") == 0, "preflight read protected/test/sealed data")
+    for role in ("N3_SELECT", "N3_CONFIRM"):
+        _require(ledger_summary.get(role, {}).get("rows_consumed") == 0, f"preflight consumed {role}")
+
+    receipt = _preflight_receipt(replay_source, authorization_sha, populations, runtime, rehearsal, initial_gpu_guard)
+    control.mark_preflight_ready(receipt)
+    preflight_payload = {
+        "schema": "n3_floor_alignment_failure_evidence_replay_preflight.v1",
+        "status": "READY",
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "authorization_sha256": authorization_sha,
+        "authorization": authorization,
+        "v1_sha256": qualification.V1_SHA256,
+        "v2_sha256": qualification.V2_SHA256,
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "replay_slot": REPLAY_SLOT,
+        "original_attempt_01": _make_original_identity_record(original, original_hashes),
+        "interrupted_replay_01_identity": dict(previous_replay_identity),
+        "initial_gpu_resource_guard": dict(initial_gpu_guard),
+        "source_manifest": replay_source,
+        "qualification_population": {key: value for key, value in populations.items() if not key.endswith("indices")},
+        "n3_fit_calibration_identity": fit_identity,
+        "artifact_transaction_rehearsal": rehearsal,
+        "preflight_receipt": receipt.to_dict(),
+        "cuda_runtime": runtime,
+        "no_model_forward": True,
+        "persistent_updates": 0,
+        "qualification_attempt_created": False,
+    }
+    atomic_write_new_json(root / PREFLIGHT_PATH, preflight_payload, artifact_kind="failure-evidence replay READY receipt")
+    atomic_write_new_json(root / AUTHORIZATION_PATH, authorization, artifact_kind="failure-evidence replay authorization record")
+    return {
+        "control": control,
+        "receipt": receipt,
+        "source": replay_source,
+        "authorization": authorization,
+        "authorization_sha256": authorization_sha,
+        "original": original,
+        "original_hashes": original_hashes,
+        "populations": populations,
+        "qualification_indices": qualification_indices,
+        "fit_indices": fit_indices,
+        "fit_identity": fit_identity,
+        "read_ledger": read_ledger,
+        "authorities": authorities,
+        "protocol": protocol,
+        "prepared": prepared,
+        "device": device,
+        "runtime": runtime,
+        "active_authority": active,
+        "attempt": root / REPLAY_DIR,
+        "previous_replay_identity": dict(previous_replay_identity),
+        "initial_gpu_guard": dict(initial_gpu_guard),
+        "expected_peak_bytes": _measured_peak_bytes(original, previous_preflight)[0],
+        "qualified_total_bytes": int(previous_preflight["cuda_runtime"]["total_memory_bytes"]),
+        "qualified_device_name": str(previous_preflight["cuda_runtime"]["device_name"]),
+        "v1": v1,
+        "v2": v2,
+    }
+
+
+def _open_attempt(context: dict[str, Any]) -> None:
+    attempt = context["attempt"]
+    context["control"].open_scientific_attempt(attempt, REPLAY_ID, context["receipt"])
+    atomic_write_new_json(attempt / "source_manifest.json", context["source"], artifact_kind="failure-evidence replay source manifest")
+    atomic_write_new_json(
+        attempt / "status.json",
+        {"state": "SCIENTIFIC_ACTIVE", "phase": "EVIDENCE_REPLAY", "authorization_id": AUTHORIZATION_ID},
+    )
+
+
+def _cpu64(value: Any) -> torch.Tensor:
+    return torch.as_tensor(value).detach().to(device="cpu", dtype=torch.float64).contiguous()
+
+
+def _build_sample_evidence(
+    authorities: Mapping[str, Any],
+    populations: Mapping[str, Any],
+    reference: Mapping[str, Any],
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, torch.Tensor]:
+    axis_tensor = torch.tensor(AXES, dtype=torch.long)
+    raw_reference = _cpu64(reference["structural_fit"]["raw_signature"])
+    feature_scale = _cpu64(reference["normalization"]["population_std_clamped_scale"]).index_select(0, axis_tensor)
+    source_indices = torch.as_tensor(reference["structural_fit"]["canonical_source_indices"], dtype=torch.long).cpu()
+    sample_indices = populations["qualification_indices"].to(torch.long).cpu()
+    row_position = torch.arange(sample_indices.numel(), dtype=torch.long)
+    labels = before["labels"].to(torch.long).cpu()
+    expected_labels = authorities["labels"].to(torch.long).cpu().index_select(0, sample_indices)
+    _require(torch.equal(labels, expected_labels), "qualification labels do not match the frozen canonical TRAIN indices")
+    _require(torch.equal(labels, after["labels"].to(torch.long).cpu()), "sample label ordering changed between replay states")
+
+    soft_reference_rows = before["fixed_reference_rows"].to(torch.long).cpu()
+    _require(torch.equal(soft_reference_rows, after["fixed_reference_rows"].to(torch.long).cpu()), "soft floor reference target changed after the temporary update")
+    soft_reference = raw_reference.index_select(0, soft_reference_rows).index_select(1, axis_tensor)
+    soft_raw_before = _cpu64(before["replay_soft_floor_raw_by_axis"])
+    soft_raw_after = _cpu64(after["replay_soft_floor_raw_by_axis"])
+    soft_residual_before = soft_raw_before - soft_reference
+    soft_residual_after = soft_raw_after - soft_reference
+    soft_axis_loss_before = soft_residual_before.square() / len(AXES)
+    soft_axis_loss_after = soft_residual_after.square() / len(AXES)
+    _require(torch.equal(soft_residual_before.square(), _cpu64(before["soft_floor_error_by_axis"])), "captured soft baseline does not reconstruct the frozen per-axis loss")
+    _require(torch.equal(soft_residual_after.square(), _cpu64(after["soft_floor_error_by_axis"])), "captured soft candidate does not reconstruct the frozen per-axis loss")
+
+    hard_raw_before = _cpu64(before["raw_signature"]).index_select(1, axis_tensor)
+    hard_raw_after = _cpu64(after["raw_signature"]).index_select(1, axis_tensor)
+    hard_reference_rows_before = before["official_reference_rows"].to(torch.long).cpu()
+    hard_reference_rows_after = after["official_reference_rows"].to(torch.long).cpu()
+    hard_reference_before = raw_reference.index_select(0, hard_reference_rows_before).index_select(1, axis_tensor)
+    hard_reference_after = raw_reference.index_select(0, hard_reference_rows_after).index_select(1, axis_tensor)
+    hard_residual_before = hard_raw_before - hard_reference_before
+    hard_residual_after = hard_raw_after - hard_reference_after
+    hard_normalized_before = hard_residual_before / feature_scale
+    hard_normalized_after = hard_residual_after / feature_scale
+    hard_contribution_before = _cpu64(before["hard_contribution_by_axis_tensor"])
+    hard_contribution_after = _cpu64(after["hard_contribution_by_axis_tensor"])
+    reconstructed_before = hard_normalized_before.square() / 337.0
+    reconstructed_after = hard_normalized_after.square() / 337.0
+    _require(torch.equal(reconstructed_before, hard_contribution_before), "baseline hard contribution reconstruction differs from the frozen evaluator")
+    _require(torch.equal(reconstructed_after, hard_contribution_after), "candidate hard contribution reconstruction differs from the frozen evaluator")
+
+    hard_reference_source_before = source_indices.index_select(0, hard_reference_rows_before)
+    hard_reference_source_after = source_indices.index_select(0, hard_reference_rows_after)
+    soft_reference_source = source_indices.index_select(0, soft_reference_rows)
+    soft_loss_before = soft_axis_loss_before.sum(dim=1)
+    soft_loss_after = soft_axis_loss_after.sum(dim=1)
+    hard_floor_before = hard_contribution_before.sum(dim=1)
+    hard_floor_after = hard_contribution_after.sum(dim=1)
+    evidence = {
+        "qualification_row_position": row_position,
+        "canonical_train_source_index": sample_indices,
+        "class_label": labels,
+        "soft_reference_row": soft_reference_rows,
+        "soft_reference_source_index": soft_reference_source,
+        "hard_reference_row_before": hard_reference_rows_before,
+        "hard_reference_source_index_before": hard_reference_source_before,
+        "hard_reference_row_after": hard_reference_rows_after,
+        "hard_reference_source_index_after": hard_reference_source_after,
+        "soft_reference_before": soft_reference.clone(),
+        "soft_reference_after": soft_reference.clone(),
+        "soft_raw_before": soft_raw_before,
+        "soft_raw_after": soft_raw_after,
+        "soft_raw_delta": soft_raw_after - soft_raw_before,
+        "soft_residual_before": soft_residual_before,
+        "soft_residual_after": soft_residual_after,
+        "soft_axis_loss_before": soft_axis_loss_before,
+        "soft_axis_loss_after": soft_axis_loss_after,
+        "soft_loss_before": soft_loss_before,
+        "soft_loss_after": soft_loss_after,
+        "hard_raw_before": hard_raw_before,
+        "hard_raw_after": hard_raw_after,
+        "hard_raw_delta": hard_raw_after - hard_raw_before,
+        "hard_reference_before": hard_reference_before,
+        "hard_reference_after": hard_reference_after,
+        "hard_residual_before": hard_residual_before,
+        "hard_residual_after": hard_residual_after,
+        "hard_normalized_residual_before": hard_normalized_before,
+        "hard_normalized_residual_after": hard_normalized_after,
+        "hard_axis_contribution_before": hard_contribution_before,
+        "hard_axis_contribution_after": hard_contribution_after,
+        "hard_axis_contribution_delta": hard_contribution_after - hard_contribution_before,
+        "hard_floor_contribution_before": hard_floor_before,
+        "hard_floor_contribution_after": hard_floor_after,
+        "hard_nonfloor_contribution_before": _cpu64(before["replay_nonfloor_by_sample"]),
+        "hard_nonfloor_contribution_after": _cpu64(after["replay_nonfloor_by_sample"]),
+        "official_logrho_before": _cpu64(before["replay_hard_logrho_by_sample"]),
+        "official_logrho_after": _cpu64(after["replay_hard_logrho_by_sample"]),
+        "official_q95_before": _cpu64(before["replay_hard_q95_by_sample"]),
+        "official_q95_after": _cpu64(after["replay_hard_q95_by_sample"]),
+        "threshold_margin_min_before": _cpu64(before["replay_threshold_margin_min_by_sample"]),
+        "threshold_margin_min_after": _cpu64(after["replay_threshold_margin_min_by_sample"]),
+    }
+    _require(all(bool(torch.isfinite(value).all()) for value in evidence.values()), "per-sample replay evidence contains nonfinite values")
+    return evidence
+
+
+def _summary(values: torch.Tensor) -> dict[str, Any]:
+    value = _cpu64(values).reshape(-1)
+    _require(value.numel() > 0 and bool(torch.isfinite(value).all()), "summary input is empty or nonfinite")
+    quantiles = torch.quantile(value, torch.tensor((0.05, 0.25, 0.50, 0.75, 0.95), dtype=torch.float64)).tolist()
+    return {
+        "count": int(value.numel()),
+        "mean": float(value.mean()),
+        "mean_abs": float(value.abs().mean()),
+        "median": float(quantiles[2]),
+        "p05": float(quantiles[0]),
+        "p25": float(quantiles[1]),
+        "p50": float(quantiles[2]),
+        "p75": float(quantiles[3]),
+        "p95": float(quantiles[4]),
+        "favorable_count": int((value > 0).sum()),
+        "favorable_fraction": float((value > 0).to(torch.float64).mean()),
+        "unfavorable_count": int((value < 0).sum()),
+        "unfavorable_fraction": float((value < 0).to(torch.float64).mean()),
+        "exact_zero_count": int((value == 0).sum()),
+        "exact_zero_fraction": float((value == 0).to(torch.float64).mean()),
+        "near_zero_threshold": qualification.TOL,
+        "near_zero_count": int((value.abs() <= qualification.TOL).sum()),
+        "near_zero_fraction": float((value.abs() <= qualification.TOL).to(torch.float64).mean()),
+    }
+
+
+def _hard_summary(evidence: Mapping[str, torch.Tensor], mask: torch.Tensor, axis_positions: torch.Tensor) -> dict[str, Any]:
+    raw_before = evidence["hard_raw_before"][mask].index_select(1, axis_positions).reshape(-1)
+    raw_after = evidence["hard_raw_after"][mask].index_select(1, axis_positions).reshape(-1)
+    contribution_before = evidence["hard_axis_contribution_before"][mask].index_select(1, axis_positions).reshape(-1)
+    contribution_after = evidence["hard_axis_contribution_after"][mask].index_select(1, axis_positions).reshape(-1)
+    contribution_improvement = contribution_before - contribution_after
+    raw_delta = raw_after - raw_before
+    return {
+        "count": int(raw_before.numel()),
+        "raw_feature_unchanged_count": int((raw_before == raw_after).sum()),
+        "raw_feature_unchanged_fraction": float((raw_before == raw_after).to(torch.float64).mean()),
+        "raw_feature_changed_count": int((raw_before != raw_after).sum()),
+        "raw_feature_favorable_count_by_squared_contribution": int((contribution_improvement > 0).sum()),
+        "raw_feature_favorable_fraction_by_squared_contribution": float((contribution_improvement > 0).to(torch.float64).mean()),
+        "raw_feature_unfavorable_count_by_squared_contribution": int((contribution_improvement < 0).sum()),
+        "raw_feature_unfavorable_fraction_by_squared_contribution": float((contribution_improvement < 0).to(torch.float64).mean()),
+        "raw_feature_delta_nonzero": _summary(raw_delta[raw_delta != 0]) if bool((raw_delta != 0).any()) else {"count": 0},
+        "contribution_favorable_count": int((contribution_improvement > 0).sum()),
+        "contribution_favorable_fraction": float((contribution_improvement > 0).to(torch.float64).mean()),
+        "contribution_unfavorable_count": int((contribution_improvement < 0).sum()),
+        "contribution_unfavorable_fraction": float((contribution_improvement < 0).to(torch.float64).mean()),
+        "contribution_unchanged_count": int((contribution_improvement == 0).sum()),
+        "contribution_unchanged_fraction": float((contribution_improvement == 0).to(torch.float64).mean()),
+        "hard_squared_contribution_nonzero_change_distribution": _summary(contribution_improvement[contribution_improvement != 0]) if bool((contribution_improvement != 0).any()) else {"count": 0},
+        "hard_squared_contribution_improvement": _summary(contribution_improvement),
+    }
+
+
+def _soft_response(evidence: Mapping[str, torch.Tensor]) -> dict[str, Any]:
+    labels = evidence["class_label"]
+    improvement = evidence["soft_axis_loss_before"] - evidence["soft_axis_loss_after"]
+    aggregate = evidence["soft_loss_before"] - evidence["soft_loss_after"]
+    by_class = {
+        str(digit): _summary(aggregate[labels == digit])
+        for digit in range(qualification.CLASS_COUNT)
+    }
+    by_axis = {
+        str(axis): {
+            "all_classes": _summary(improvement[:, position]),
+            "by_class": {
+                str(digit): _summary(improvement[labels == digit, position])
+                for digit in range(qualification.CLASS_COUNT)
+            },
+        }
+        for position, axis in enumerate(AXES)
+    }
+    return {
+        "delta_convention": "before minus after; positive is favorable",
+        "all_samples_four_axis_aggregate": _summary(aggregate),
+        "by_class_four_axis_aggregate": by_class,
+        "by_axis": by_axis,
+        "class1_four_axis_aggregate": by_class["1"],
+        "class8_four_axis_aggregate": by_class["8"],
+        "near_zero_convention": {"absolute_delta_at_most": qualification.TOL},
+        "opposing_sample_signs_present": bool((aggregate > 0).any() and (aggregate < 0).any()),
+        "opposing_axis_mean_signs_present": bool(
+            any(by_axis[str(axis)]["all_classes"]["mean"] > 0 for axis in AXES)
+            and any(by_axis[str(axis)]["all_classes"]["mean"] < 0 for axis in AXES)
+        ),
+        "all_sample_axis_deltas_within_existing_tolerance": bool((improvement.abs() <= qualification.TOL).all()),
+    }
+
+
+def _hard_census(evidence: Mapping[str, torch.Tensor]) -> dict[str, Any]:
+    labels = evidence["class_label"]
+    all_mask = torch.ones_like(labels, dtype=torch.bool)
+    all_axes = torch.arange(len(AXES), dtype=torch.long)
+    result = {
+        "delta_convention": "hard contribution improvement is before minus after; positive is favorable",
+        "all_samples_all_axes": _hard_summary(evidence, all_mask, all_axes),
+        "by_class": {
+            str(digit): _hard_summary(evidence, labels == digit, all_axes)
+            for digit in range(qualification.CLASS_COUNT)
+        },
+        "by_axis": {
+            str(axis): {
+                "all_classes": _hard_summary(evidence, all_mask, torch.tensor([position])),
+                "by_class": {
+                    str(digit): _hard_summary(evidence, labels == digit, torch.tensor([position]))
+                    for digit in range(qualification.CLASS_COUNT)
+                },
+            }
+            for position, axis in enumerate(AXES)
+        },
+        "class1": _hard_summary(evidence, labels == 1, all_axes),
+        "class8": _hard_summary(evidence, labels == 8, all_axes),
+    }
+    raw_unchanged = bool(torch.equal(evidence["hard_raw_before"], evidence["hard_raw_after"]))
+    contribution_unchanged = bool(torch.equal(evidence["hard_axis_contribution_before"], evidence["hard_axis_contribution_after"]))
+    result["transition_state"] = "EXACT_HARD_FLOOR_PLATEAU" if raw_unchanged and contribution_unchanged else "NONZERO_HARD_FLOOR_TRANSITIONS_PRESENT"
+    result["all_raw_features_exactly_unchanged"] = raw_unchanged
+    result["all_squared_contributions_exactly_unchanged"] = contribution_unchanged
+    result["reference_switch_count"] = int((evidence["hard_reference_source_index_before"] != evidence["hard_reference_source_index_after"]).sum())
+    result["hard_cancellation"] = {}
+    for scope, mask in (("all_samples", all_mask), ("class8", labels == 8)):
+        improvement = evidence["hard_axis_contribution_before"][mask] - evidence["hard_axis_contribution_after"][mask]
+        positive = improvement[improvement > 0]
+        negative = improvement[improvement < 0]
+        result["hard_cancellation"][scope] = {
+            "favorable_contribution_sum": float(positive.sum()),
+            "unfavorable_contribution_sum": float(negative.sum()),
+            "net_contribution_improvement_sum": float(improvement.sum()),
+            "favorable_fraction": float((improvement > 0).to(torch.float64).mean()),
+            "unfavorable_fraction": float((improvement < 0).to(torch.float64).mean()),
+            "unchanged_fraction": float((improvement == 0).to(torch.float64).mean()),
+            "opposing_nonzero_changes": bool(positive.numel() > 0 and negative.numel() > 0),
+        }
+    result["hard_cancellation_observed"] = bool(
+        result["transition_state"] == "NONZERO_HARD_FLOOR_TRANSITIONS_PRESENT"
+        and result["hard_cancellation"]["all_samples"]["opposing_nonzero_changes"]
+    )
+    result["class8_hard_cancellation_observed"] = bool(
+        result["hard_cancellation"]["class8"]["opposing_nonzero_changes"]
+    )
+    return result
+
+
+def _paired_transitions(evidence: Mapping[str, torch.Tensor]) -> dict[str, Any]:
+    labels = evidence["class_label"]
+    soft_improvement = evidence["soft_axis_loss_before"] - evidence["soft_axis_loss_after"]
+    hard_improvement = evidence["hard_axis_contribution_before"] - evidence["hard_axis_contribution_after"]
+
+    def counts(mask: torch.Tensor, positions: torch.Tensor) -> dict[str, Any]:
+        soft = soft_improvement[mask].index_select(1, positions).reshape(-1)
+        hard = hard_improvement[mask].index_select(1, positions).reshape(-1)
+        result = {}
+        for soft_name, soft_mask in (("soft_favorable", soft > 0), ("soft_unfavorable", soft < 0)):
+            for hard_name, hard_mask in (("hard_favorable", hard > 0), ("hard_unchanged", hard == 0), ("hard_unfavorable", hard < 0)):
+                key = f"{soft_name}_{hard_name}"
+                result[key] = {"count": int((soft_mask & hard_mask).sum()), "fraction": float((soft_mask & hard_mask).to(torch.float64).mean())}
+        result["soft_unchanged_count"] = int((soft == 0).sum())
+        result["soft_unchanged_fraction"] = float((soft == 0).to(torch.float64).mean())
+        return result
+
+    all_mask = torch.ones_like(labels, dtype=torch.bool)
+    all_axes = torch.arange(len(AXES), dtype=torch.long)
+    return {
+        "all_samples_all_axes": counts(all_mask, all_axes),
+        "by_class": {str(digit): counts(labels == digit, all_axes) for digit in range(qualification.CLASS_COUNT)},
+        "by_axis": {str(axis): counts(all_mask, torch.tensor([position])) for position, axis in enumerate(AXES)},
+        "class1": counts(labels == 1, all_axes),
+        "class8": counts(labels == 8, all_axes),
+        "hard_state_definition": "sign of per-axis squared hard-contribution improvement (before minus after)",
+        "soft_state_definition": "sign of per-axis soft loss improvement (before minus after)",
+    }
+
+
+def _tensor_vector(parts: Sequence[torch.Tensor]) -> torch.Tensor:
+    return torch.cat([value.detach().to(device="cpu", dtype=torch.float64).contiguous().reshape(-1) for value in parts])
+
+
+def _parameter_vectors(
+    model: n3.N3ClassConditionedModel,
+    calibration: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
+    parameters = (("B", model.B), ("A", model.A))
+    delta_parts = [parameter.detach() - snapshot["runtime"]["model"][name] for name, parameter in parameters]
+    delta_raw = torch.cat([value.detach().to(device="cpu").contiguous().reshape(-1) for value in delta_parts])
+    consumed_gradient_raw = torch.cat([parameter.grad.detach().to(device="cpu").contiguous().reshape(-1) for _, parameter in parameters])
+    g336 = _tensor_vector(calibration["g336"])
+    gfloor_raw = _tensor_vector(calibration["gfloor"])
+    gfloor_scaled = gfloor_raw * float(calibration["lambda_floor"])
+    galigned = _tensor_vector(calibration["g_aligned"])
+    delta = _cpu64(delta_raw)
+    consumed_gradient = _cpu64(consumed_gradient_raw)
+    _require(g336.shape == gfloor_raw.shape == gfloor_scaled.shape == galigned.shape == delta.shape == consumed_gradient.shape, "parameter vector layouts do not align")
+    _require(torch.equal(galigned, g336 + gfloor_scaled), "aligned calibration gradient does not equal its frozen components")
+    _require(all(bool(torch.isfinite(value).all()) for value in (g336, gfloor_raw, gfloor_scaled, galigned, delta, consumed_gradient)), "persisted gradient or Adam displacement vector is nonfinite")
+
+    layout = []
+    offset = 0
+    for name, parameter in parameters:
+        size = parameter.numel()
+        layout.append(
+            {
+                "parameter_name": name,
+                "low_rank_group": name,
+                "shape": list(parameter.shape),
+                "dtype": str(parameter.dtype),
+                "flatten_order": "row-major contiguous tensor order",
+                "flat_start": offset,
+                "flat_end_exclusive": offset + size,
+                "element_count": size,
+            }
+        )
+        offset += size
+    _require(offset == delta.numel(), "parameter coordinate map does not cover every vector element")
+
+    vectors = {
+        "g336": g336,
+        "gfloor_raw": gfloor_raw,
+        "lambda_floor_times_gfloor_raw": gfloor_scaled,
+        "g_aligned": galigned,
+        "adam_input_gradient_after_model_dtype_cast": consumed_gradient_raw,
+        "delta_theta_adam": delta_raw,
+    }
+    norms = {name: float(_cpu64(value).norm()) for name, value in vectors.items()}
+    norms.update({f"{name}_rms": float(_cpu64(value).square().mean().sqrt()) for name, value in vectors.items()})
+    geometry = _vector_geometry(g336, gfloor_raw, gfloor_scaled, galigned, delta, float(calibration["lambda_floor"]))
+    geometry["vector_norms"] = norms
+    geometry["finite"] = True
+    geometry["parameter_count"] = int(delta.numel())
+    return vectors, {"schema": "n3_floor_alignment_failure_replay_parameter_layout.v1", "vector_flatten_order": "concatenate B then A; each tensor row-major contiguous", "total_elements": offset, "slices": layout, "geometry": geometry}
+
+
+def _vector_geometry(g336: torch.Tensor, gfloor: torch.Tensor, gfloor_scaled: torch.Tensor, galigned: torch.Tensor, delta: torch.Tensor, lambda_floor: float) -> dict[str, Any]:
+    def cosine(left: torch.Tensor, right: torch.Tensor) -> float | None:
+        denominator = float(left.norm() * right.norm())
+        return None if denominator == 0.0 else float(torch.dot(left, right) / denominator)
+
+    descent = {"g336": -g336, "lambda_gfloor_raw": -gfloor_scaled, "g_aligned": -galigned}
+    _require(all(float(direction.norm()) > 0.0 for direction in descent.values()), "a frozen descent vector is zero; optimizer geometry is undefined")
+    projections = {name: float(torch.dot(delta, direction / direction.norm())) for name, direction in descent.items()}
+    basis = torch.stack((descent["g336"], descent["lambda_gfloor_raw"]), dim=1)
+    gram = basis.T @ basis
+    full_rank = int(torch.linalg.matrix_rank(gram)) == 2
+    if full_rank:
+        coefficients = torch.linalg.solve(gram, basis.T @ delta)
+        residual_norm = float((delta - basis @ coefficients).norm())
+    else:
+        residual_norm = None
+    rms_ratio = float(gfloor_scaled.square().mean().sqrt() / g336.square().mean().sqrt())
+    projection_ratio = None if projections["g336"] == 0.0 else abs(projections["lambda_gfloor_raw"] / projections["g336"])
+    return {
+        "cosine_delta_adam_to_minus_g336": cosine(delta, descent["g336"]),
+        "cosine_delta_adam_to_minus_lambda_gfloor_raw": cosine(delta, descent["lambda_gfloor_raw"]),
+        "cosine_delta_adam_to_minus_g_aligned": cosine(delta, descent["g_aligned"]),
+        "projection_delta_onto_normalized_minus_g336": projections["g336"],
+        "projection_delta_onto_normalized_minus_lambda_gfloor_raw": projections["lambda_gfloor_raw"],
+        "projection_delta_onto_normalized_minus_g_aligned": projections["g_aligned"],
+        "optimizer_space_floor_to_base_projection_ratio": projection_ratio,
+        "optimizer_space_to_raw_rms_balance_ratio": None if projection_ratio is None or rms_ratio == 0.0 else projection_ratio / rms_ratio,
+        "raw_rms_lambda_gfloor_over_g336": rms_ratio,
+        "residual_norm_orthogonal_to_span_g336_and_lambda_gfloor": residual_norm,
+        "gradient_span_full_rank": full_rank,
+        "first_order_predicted_improvement_minus_g336_dot_delta": -float(torch.dot(g336, delta)),
+        "first_order_predicted_improvement_minus_gfloor_raw_dot_delta": -float(torch.dot(gfloor, delta)),
+        "first_order_predicted_improvement_minus_g_aligned_dot_delta": -float(torch.dot(galigned, delta)),
+        "lambda_floor": lambda_floor,
+        "parameter_space_only": True,
+        "qualification_loss_taylor_comparison": "not asserted; N3_FIT calibration and qualification populations differ",
+    }
+
+
+def _fidelity_report(
+    original: Mapping[str, Any],
+    calibration: Mapping[str, Any],
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    optical: Mapping[str, Any],
+    semantic: Mapping[str, Any],
+    adam_geometry: Mapping[str, Any],
+    fixed_targets: Mapping[str, Any],
+) -> dict[str, Any]:
+    comparisons: dict[str, dict[str, Any]] = {}
+
+    def compare(name: str, expected: Any, actual: Any) -> None:
+        equal, reason = _exact_equal(expected, actual, name)
+        comparisons[name] = {"exact_match": equal, "mismatch": reason}
+
+    report = original["report"]
+    compare("lambda_calibration", report["lambda_calibration"], _calibration_summary(calibration))
+    compare("qualification_before", report["qualification_before"], _measurement_summary(before))
+    compare("qualification_after", report["qualification_after"], _measurement_summary(after))
+    compare("per_axis_change", report["per_axis_change"], qualification._axis_changes(before, after))
+    compare("optical_control", report["C_OPTICAL"], optical)
+    compare("semantic_control", report["C_SEMANTIC"], semantic)
+    compare("adam_effective_update_geometry", report["adam_effective_update_geometry"], adam_geometry)
+    compare("fixed_reference_targets", original["fixed_reference_targets"], fixed_targets)
+    q_metrics = {}
+    for metric, criterion in qualification._METRIC_KEYS.items():
+        for state, population in (("before", before), ("after", after)):
+            name = f"{criterion}_{state}"
+            expected = report[f"qualification_{state}"][metric]
+            actual = population[metric]
+            compare(name, expected, actual)
+            q_metrics[name] = {"original": expected, "replay": actual}
+        expected_delta = report["qualification_before"][metric] - report["qualification_after"][metric]
+        actual_delta = before[metric] - after[metric]
+        compare(f"{criterion}_delta", expected_delta, actual_delta)
+        q_metrics[f"{criterion}_delta"] = {"original": expected_delta, "replay": actual_delta}
+    mismatches = [name for name, item in comparisons.items() if not item["exact_match"]]
+    return {
+        "status": "PASS" if not mismatches else "EVIDENCE_REPLAY_NONREPRODUCIBLE",
+        "comparison_rule": "exact equality of the persisted float64 summaries and frozen identity fields; no tolerance relaxation",
+        "comparisons": comparisons,
+        "q1_q7": q_metrics,
+        "mismatches": mismatches,
+    }
+
+
+def _threshold_margin_summary(evidence: Mapping[str, torch.Tensor]) -> dict[str, Any]:
+    before = evidence["threshold_margin_min_before"]
+    after = evidence["threshold_margin_min_after"]
+    return {
+        str(threshold): {
+            "minimum_margin_before": _summary(before[:, position]),
+            "minimum_margin_after": _summary(after[:, position]),
+        }
+        for position, threshold in enumerate(THRESHOLDS)
+    }
+
+
+def _attribution_report(evidence: Mapping[str, torch.Tensor], layout: Mapping[str, Any], fidelity: Mapping[str, Any], original: Mapping[str, Any]) -> dict[str, Any]:
+    hard = _hard_census(evidence)
+    soft = _soft_response(evidence)
+    paired = _paired_transitions(evidence)
+    hard_aggregate_matches_zero = fidelity["comparisons"].get("Q2_delta", {}).get("exact_match") is True
+    class8_aggregate_matches_zero = fidelity["comparisons"].get("Q3_delta", {}).get("exact_match") is True
+    secondary = []
+    if hard["hard_cancellation_observed"] and hard_aggregate_matches_zero:
+        secondary.append("HARD_FLOOR_TRANSITION_CANCELLATION_OBSERVED")
+    if hard["class8_hard_cancellation_observed"] and class8_aggregate_matches_zero:
+        secondary.append("CLASS8_HARD_FLOOR_TRANSITION_CANCELLATION_OBSERVED")
+    if soft["opposing_axis_mean_signs_present"]:
+        secondary.append("SOFT_AXIS_CANCELLATION_OBSERVED")
+    class1_soft = soft["class1_four_axis_aggregate"]["mean"]
+    class8_soft = soft["class8_four_axis_aggregate"]["mean"]
+    if hard["transition_state"] == "EXACT_HARD_FLOOR_PLATEAU":
+        primary = "EXACT_HARD_FLOOR_LOCAL_PLATEAU_SUPPORTED"
+        if bool((evidence["soft_raw_before"] != evidence["soft_raw_after"]).any()):
+            secondary.append("SOFT_TO_HARD_LOCAL_DISCRETIZATION_GAP_OBSERVED")
+        next_direction = "DESIGN_A_NEW_MODEL_ASSUMPTION_CLOSER_TO_THRESHOLD_SUPPORT_BOUNDARY_OR_SOFT_EXTREMA; DO_NOT_EXECUTE_IT_HERE"
+    elif hard["hard_cancellation_observed"] and hard_aggregate_matches_zero:
+        primary = "HARD_FLOOR_CHANGE_CANCELLATION_SUPPORTED"
+        next_direction = "INVESTIGATE_CLASS_AND_AXIS_HETEROGENEITY_BEFORE_CHANGING_FEATURE_REPRESENTATION"
+    elif soft["all_sample_axis_deltas_within_existing_tolerance"]:
+        primary = "SOFT_RESPONSE_TOO_WEAK_TO_RESOLVE_HARD_ALIGNMENT"
+        next_direction = "REVIEW_SOFT_FEATURE_LOCAL_SENSITIVITY_AND_JACOBIAN; DO_NOT_INCREASE_LAMBDA_OR_TRAINING_DURATION"
+    else:
+        primary = "MECHANISM_UNRESOLVED"
+        next_direction = "RETAIN_THE_EXACT_MISSING_EVIDENCE_LIST_AND_REQUEST_A_HUMAN_DESIGN_DECISION"
+    return {
+        "schema": "n3_floor_alignment_failure_evidence_replay_report.v1",
+        "replay_fidelity": dict(fidelity),
+        "hard_transition_state": hard["transition_state"],
+        "primary_mechanism": primary,
+        "hard_census": hard,
+        "soft_response_state": "DESCRIPTIVE_DISTRIBUTION_REPORTED; no new threshold applied",
+        "soft_response": soft,
+        "paired_soft_hard_transitions": paired,
+        "class1_class8_contrast": {
+            "class1_soft_floor_improvement_mean": class1_soft,
+            "class8_soft_floor_improvement_mean": class8_soft,
+            "class1_hard_floor_aggregate_unchanged": hard["by_class"]["1"]["contribution_unchanged_fraction"] == 1.0,
+            "class8_hard_floor_aggregate_unchanged": hard["by_class"]["8"]["contribution_unchanged_fraction"] == 1.0,
+            "per_sample_distribution_and_transition_details": {"class1": hard["by_class"]["1"], "class8": hard["by_class"]["8"]},
+        },
+        "optimizer_geometry_state": "QUANTIFIED_FROM_PERSISTED_COORDINATE_ALIGNED_VECTORS; no causal label assigned",
+        "optimizer_geometry": dict(layout["geometry"]),
+        "threshold_margin_evidence": _threshold_margin_summary(evidence),
+        "semantic_attribution": "SEMANTIC_FAILURE_CAUSAL_SOURCE_UNRESOLVED",
+        "semantic_control_original_fact": original["report"]["C_SEMANTIC"],
+        "secondary_findings": secondary,
+        "next_model_assumption_design_direction": next_direction,
+        "aggregate_hard_zero_reproduction": {
+            "Q2_macro_zero_exactly_reproduced": hard_aggregate_matches_zero,
+            "Q3_class8_zero_exactly_reproduced": class8_aggregate_matches_zero,
+        },
+        "post_replay_gate": OUTER_GATE,
+        "qualification_attempt_02_created": False,
+        "qualification_result_reclassified": False,
+        "persistent_updates": 0,
+        "temporary_updates": 1,
+        "automatic_follow_on_authorized": False,
+    }
+
+
+def _evidence_coverage(original: Mapping[str, Any]) -> dict[str, Any]:
+    report = original["report"]
+    return {
+        "per_sample_soft_floor_pre_post_values": {
+            "attempt_01": {"status": "NOT_PERSISTED"},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/sample_floor_evidence.npz", "fields": ["soft_loss_before", "soft_loss_after"]},
+        },
+        "per_axis_soft_feature_pre_post_values_74_165_256_285": {
+            "attempt_01": {"status": "NOT_PERSISTED"},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/sample_floor_evidence.npz", "fields": ["soft_raw_before", "soft_raw_after"]},
+        },
+        "per_sample_hard_floor_pre_post_contributions": {
+            "attempt_01": {"status": "NOT_PERSISTED"},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/sample_floor_evidence.npz", "fields": ["hard_axis_contribution_before", "hard_axis_contribution_after"]},
+        },
+        "raw_hard_feature_pre_post_values_74_165_256_285": {
+            "attempt_01": {"status": "NOT_PERSISTED"},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/sample_floor_evidence.npz", "fields": ["hard_raw_before", "hard_raw_after"]},
+        },
+        "per_sample_class_labels": {
+            "attempt_01": {"status": "NOT_PERSISTED"},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/sample_floor_evidence.npz", "fields": ["class_label"]},
+        },
+        "g336_raw_gfloor_and_aligned_gradient_vectors": {
+            "attempt_01": {"status": "NOT_PERSISTED", "available_summaries": list(report.get("lambda_calibration", {}))},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/parameter_vectors.npz", "fields": ["g336", "gfloor_raw", "lambda_floor_times_gfloor_raw", "g_aligned"]},
+        },
+        "actual_temporary_adam_parameter_displacement": {
+            "attempt_01": {"status": "NOT_PERSISTED", "available_summaries": list(report.get("adam_effective_update_geometry", {}))},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/parameter_vectors.npz", "fields": ["delta_theta_adam"]},
+        },
+        "parameter_layout_for_gradient_comparison": {
+            "attempt_01": {"status": "NOT_PERSISTED"},
+            "evidence_replay": {"status": "AVAILABLE", "path": "evidence/parameter_layout.json", "fields": ["B/A shapes", "dtypes", "flatten order", "offsets"]},
+        },
+        "semantic_before_after_summaries": {
+            "attempt_01": {"status": "AVAILABLE", "path": "report.json", "fields": ["C_SEMANTIC.metrics.L_S", "C_SEMANTIC.metrics.L_I", "C_SEMANTIC.metrics.L_C"]},
+            "evidence_replay": {"status": "AVAILABLE", "source": "exact-fidelity comparison from the frozen replay"},
+        },
+        "fixed_sample_and_reference_identities": {
+            "attempt_01": {"status": "AVAILABLE", "paths": ["population_manifest.json", "fixed_reference_targets.json"]},
+            "evidence_replay": {"status": "AVAILABLE", "source": "exact identities verified and rebound in replay artifacts"},
+        },
+        "semantic_gradient_vectors": {
+            "attempt_01": {"status": "NOT_REQUIRED", "reason": "semantic causal attribution is explicitly out of scope"},
+            "evidence_replay": {"status": "NOT_REQUIRED", "reason": "no semantic gradient or evaluator replay is authorized"},
+        },
+    }
+
+
+def _execute_replay(root: Path, context: Mapping[str, Any]) -> dict[str, Any]:
+    original = context["original"]
+    attempt = context["attempt"]
+    prepared = context["prepared"]
+    device = context["device"]
+    model, optimizer = prepared["model"], prepared["optimizer"]
+    authorities = context["authorities"]
+    read_ledger = context["read_ledger"]
+    reference, mean, scale = prepared["reference"], prepared["mean"], prepared["scale"]
+    sampler, evaluators, snapshot = prepared["sampler"], prepared["evaluators"], prepared["snapshot"]
+    process_rng = prepared["process_rng"]
+    torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    calibration: dict[str, Any] | None = None
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+    vectors: dict[str, torch.Tensor] | None = None
+    layout: dict[str, Any] | None = None
+    rollback: dict[str, Any] | None = None
+    error: BaseException | None = None
+    optical: dict[str, Any] | None = None
+    semantic: dict[str, Any] | None = None
+    adam_geometry: dict[str, Any] | None = None
+    try:
+        calibration = qualification._calibrate_lambda(
+            model,
+            authorities,
+            context["fit_indices"],
+            reference,
+            mean,
+            scale,
+            device,
+        )
+        before = qualification._measure_population(
+            model,
+            authorities,
+            context["qualification_indices"],
+            reference,
+            mean,
+            scale,
+            evaluators,
+            device,
+            fixed_reference_rows=None,
+            capture_replay_evidence=True,
+        )
+        old_fixed = original["fixed_reference_targets"]
+        source_rows = torch.as_tensor(reference["structural_fit"]["canonical_source_indices"], dtype=torch.long).cpu()
+        fit_sources = source_rows.index_select(0, calibration["fixed_reference_rows"].to(torch.long).cpu())
+        qualification_sources = source_rows.index_select(0, before["fixed_reference_rows"].to(torch.long).cpu())
+        fixed_targets = {
+            "schema": old_fixed["schema"],
+            "selection_basis": old_fixed["selection_basis"],
+            "fit_reference_row_indices": calibration["fixed_reference_rows"].to(torch.long).cpu().tolist(),
+            "fit_reference_source_indices": fit_sources.tolist(),
+            "qualification_reference_row_indices": before["fixed_reference_rows"].to(torch.long).cpu().tolist(),
+            "qualification_reference_source_indices": qualification_sources.tolist(),
+            "fit_source_indices_sha256": tensor_sha256(fit_sources),
+            "qualification_source_indices_sha256": tensor_sha256(qualification_sources),
+            "floor_indices": list(AXES),
+            "frozen_before_temporary_update": True,
+        }
+        optimizer.zero_grad(set_to_none=True)
+        model.B.grad = calibration["g_aligned"][0].to(device=device, dtype=model.B.dtype)
+        model.A.grad = calibration["g_aligned"][1].to(device=device, dtype=model.A.dtype)
+        optimizer.step()
+        n3._finite(model.A, "replay temporary updated A")
+        n3._finite(model.B, "replay temporary updated B")
+        vectors, layout = _parameter_vectors(model, calibration, snapshot)
+        adam_geometry = qualification._adam_update_geometry(
+            [model.B.grad.detach(), model.A.grad.detach()],
+            [model.B.detach() - snapshot["runtime"]["model"]["B"], model.A.detach() - snapshot["runtime"]["model"]["A"]],
+            names=("B", "A"),
+        )
+        after = qualification._measure_population(
+            model,
+            authorities,
+            context["qualification_indices"],
+            reference,
+            mean,
+            scale,
+            evaluators,
+            device,
+            fixed_reference_rows=before["fixed_reference_rows"],
+            capture_replay_evidence=True,
+        )
+        optical = qualification._optical_control(before, after)
+        semantic_before = {name: before["semantic"][name]["macro"] for name in ("L_S", "L_I", "L_C")}
+        semantic_after = {name: after["semantic"][name]["macro"] for name in ("L_S", "L_I", "L_C")}
+        semantic = qualification._semantic_control(semantic_before, semantic_after)
+    except BaseException as caught:
+        error = caught
+    finally:
+        try:
+            rollback = qualification._rollback_transaction(model, optimizer, sampler, evaluators, snapshot)
+        except BaseException as rollback_error:
+            error = rollback_error
+            rollback = {"passed": False, "error": f"{type(rollback_error).__name__}: {rollback_error}"}
+        try:
+            n3._restore_rng(process_rng)
+            rollback = {**(rollback or {}), "process_rng_exact": n3._rng_equal(n3._rng_snapshot(), process_rng)}
+            if not rollback["process_rng_exact"]:
+                error = ReplayError("process RNG exact rollback failed")
+        except BaseException as rng_error:
+            error = rng_error
+            rollback = {**(rollback or {}), "process_rng_exact": False, "rng_restore_error": str(rng_error), "passed": False}
+
+    elapsed = time.perf_counter() - started
+    peak_memory = n3._cuda_memory(device)
+    original_after_hashes = _attempt_inventory(root, root / ORIGINAL_ATTEMPT)
+    attempt_prefix = ORIGINAL_ATTEMPT.as_posix() + "/"
+    expected_original_attempt = {
+        key: value
+        for key, value in original["immutable_files"].items()
+        if key.startswith(attempt_prefix)
+    }
+    external_authority_hashes = {
+        key: value
+        for key, value in original["immutable_files"].items()
+        if not key.startswith(attempt_prefix)
+    }
+    external_authorities_unchanged = all(
+        (root / key).is_file() and file_sha256(root / key) == value
+        for key, value in external_authority_hashes.items()
+    )
+    original_unchanged = original_after_hashes == expected_original_attempt and external_authorities_unchanged
+    _require(original_unchanged, "immutable qualification attempt_01 changed during replay")
+    _require(rollback is not None and rollback.get("passed") is True and rollback.get("process_rng_exact") is True, "evidence replay exact rollback failed")
+    _require(error is None and calibration is not None and before is not None and after is not None and vectors is not None and layout is not None, f"evidence replay did not complete: {error}")
+
+    qualification._validate_q_evidence(before, after)
+    fidelity = _fidelity_report(original, calibration, before, after, optical or {}, semantic or {}, adam_geometry or {}, fixed_targets)
+    evidence = _build_sample_evidence(authorities, context["populations"], reference, before, after)
+    replay_report = _attribution_report(evidence, layout, fidelity, original) if fidelity["status"] == "PASS" else {
+        "schema": "n3_floor_alignment_failure_evidence_replay_report.v1",
+        "replay_fidelity": fidelity,
+        "status": "EVIDENCE_REPLAY_NONREPRODUCIBLE",
+        "mechanism_analysis_performed": False,
+        "mechanism_analysis_stop_reason": "frozen qualification aggregates did not reproduce exactly",
+        "post_replay_gate": OUTER_GATE,
+        "qualification_result_reclassified": False,
+        "persistent_updates": 0,
+        "temporary_updates": 1,
+    }
+    status = "EVIDENCE_REPLAY_COMPLETED" if fidelity["status"] == "PASS" else "EVIDENCE_REPLAY_NONREPRODUCIBLE"
+    source_rows = torch.as_tensor(reference["structural_fit"]["canonical_source_indices"], dtype=torch.long).cpu()
+    soft_reference_source = source_rows.index_select(0, before["fixed_reference_rows"].to(torch.long).cpu())
+    sample_identity = {
+        "qualification_population_sha256": context["populations"]["qualification_population_sha256"],
+        "qualification_rows": int(context["qualification_indices"].numel()),
+        "rows_per_class": qualification.ROWS_PER_CLASS,
+        "canonical_train_source_indices_sha256": tensor_sha256(context["qualification_indices"]),
+        "class_labels_sha256": tensor_sha256(before["labels"].to(torch.long).cpu()),
+        "soft_reference_source_indices_sha256": tensor_sha256(soft_reference_source),
+        "hard_reference_source_indices_before_sha256": tensor_sha256(torch.as_tensor(before["official_reference_source_rows"], dtype=torch.long)),
+        "hard_reference_source_indices_after_sha256": tensor_sha256(torch.as_tensor(after["official_reference_source_rows"], dtype=torch.long)),
+    }
+    population_manifest = {
+        "schema": "n3_floor_alignment_failure_evidence_replay_population.v1",
+        "data_role": "fixed N3 qualification population from canonical TRAIN",
+        "qualification_population_sha256": context["populations"]["qualification_population_sha256"],
+        "qualification_indices_sha256": context["populations"]["qualification_indices_sha256"],
+        "canonical_train_split_indices_sha256": context["populations"]["canonical_train_split_indices_sha256"],
+        "qualification_rows": 10240,
+        "rows_per_class": 1024,
+        "reference_overlap_rows": context["populations"]["reference_overlap_rows"],
+        "reference_independence_claim": False,
+        "qualification_indices": context["qualification_indices"].tolist(),
+        "future_paired_population_read": False,
+        "sample_identity_bundle_sha256": _sha_json(sample_identity),
+    }
+    parameter_layout = {
+        **layout,
+        "parameter_vectors_sha256": {name: tensor_sha256(value) for name, value in vectors.items()},
+    }
+    read_summary = read_ledger.summary()
+    replay_manifest = {
+        "schema": "n3_floor_alignment_failure_evidence_replay_manifest.v1",
+        "task_id": TASK_ID,
+        "replay_slot": REPLAY_SLOT,
+        "replay_id": REPLAY_ID,
+        "semantic_authority_id": SEMANTIC_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "authorization_sha256": context["authorization_sha256"],
+        "interrupted_replay_01_identity": context["previous_replay_identity"],
+        "source_manifest_id": context["source"]["source_manifest_id"],
+        "execution_source_semantics_id": context["source"]["execution_source_semantics_id"],
+        "original_attempt_01": _make_original_identity_record(original, context["original_hashes"]),
+        "N3_FIT_calibration_identity": context["fit_identity"],
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "qualification_population_sha256": context["populations"]["qualification_population_sha256"],
+        "same_frozen_qualification_path": True,
+        "qualification_attempt_02_created": False,
+        "replay_03_created": False,
+        "persistent_updates": 0,
+        "temporary_update_count": 1,
+        "checkpoint_writes": 0,
+        "N3_SELECT_reads": 0,
+        "N3_CONFIRM_reads": 0,
+    }
+    rollback_proof = {
+        "schema": "n3_floor_alignment_failure_evidence_replay_rollback.v1",
+        **rollback,
+        "original_attempt_01_unchanged": original_unchanged,
+        "process_rng_exact": rollback["process_rng_exact"],
+        "persistent_updates": 0,
+        "checkpoint_writes": 0,
+    }
+    terminal = {
+        "schema": "n3_floor_alignment_failure_evidence_replay_terminal.v1",
+        "state": status,
+        "replay_fidelity": fidelity["status"],
+        "post_replay_gate": OUTER_GATE,
+        "stop_unconditionally": True,
+        "automatic_follow_on_authorized": False,
+    }
+    json_artifacts = {
+        "replay_manifest.json": replay_manifest,
+        "source_manifest.json": context["source"],
+        "population_manifest.json": population_manifest,
+        "read_ledger.json": {"summary": read_summary, "protected": 0, "test": 0, "sealed": 0},
+        "parameter_layout.json": parameter_layout,
+        "aggregate_replay_report.json": {
+            **replay_report,
+            "evidence_coverage": _evidence_coverage(original),
+            "elapsed_seconds": elapsed,
+            "peak_cuda_memory": peak_memory,
+            "sample_identity": sample_identity,
+            "measurement_population": "N3 qualification; not N3_FIT calibration population",
+            "replay_slot": REPLAY_SLOT,
+            "replay_03_created": False,
+        },
+        "rollback_proof.json": rollback_proof,
+        "authorization_record.json": context["authorization"],
+        "terminal_lifecycle.json": terminal,
+    }
+    array_artifacts = {"sample_floor_evidence.npz": evidence, "parameter_vectors.npz": vectors}
+    artifact_manifest = _publish_evidence_transaction(attempt, json_artifacts, array_artifacts)
+    if fidelity["status"] == "PASS":
+        context["control"].complete()
+    else:
+        context["control"].valid_failed()
+    atomic_write_json(attempt / "status.json", {"state": status, "phase": "TERMINAL", "replay_fidelity": fidelity["status"], "post_replay_gate": OUTER_GATE})
+    return {
+        "status": status,
+        "replay_fidelity": fidelity["status"],
+        "replay_report": replay_report,
+        "source_manifest": context["source"],
+        "preflight_receipt": context["receipt"].to_dict(),
+        "artifact_manifest": artifact_manifest,
+        "elapsed_seconds": elapsed,
+        "peak_cuda_memory": peak_memory,
+        "read_ledger": read_summary,
+        "persistent_updates": 0,
+        "temporary_updates": 1,
+        "checkpoint_writes": 0,
+        "qualification_attempt_02_created": False,
+        "replay_03_created": False,
+        "paired_training_executed": False,
+        "N3_SELECT_reads": 0,
+        "N3_CONFIRM_reads": 0,
+        "protected_test_sealed_reads": 0,
+        "post_replay_gate": OUTER_GATE,
+    }
+
+
+def _record_resource_abort(context: Mapping[str, Any], late_guard: Mapping[str, Any], *, state: str = "RESOURCE_ABORTED") -> dict[str, Any]:
+    attempt = Path(context["attempt"])
+    attempt.mkdir(parents=False, exist_ok=False)
+    atomic_write_new_json(attempt / "source_manifest.json", context["source"], artifact_kind="replay_02 source manifest")
+    record = {
+        "schema": "n3_floor_alignment_failure_evidence_replay_resource_abort.v1",
+        "state": state,
+        "replay_slot": REPLAY_SLOT,
+        "replay_id": REPLAY_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "authorization_sha256": context["authorization_sha256"],
+        "preflight_sha256": file_sha256(Path(context["root"]) / PREFLIGHT_PATH),
+        "execution_source_semantics_id": context["source"]["execution_source_semantics_id"],
+        "initial_gpu_resource_guard": context["initial_gpu_guard"],
+        "late_gpu_quiescence": dict(late_guard),
+        "scientific_measurement_started": False,
+        "scientific_forward_count": 0,
+        "temporary_updates": 0,
+        "persistent_model_updates": 0,
+        "checkpoint_writes": 0,
+        "qualification_attempt_02_created": False,
+        "replay_03_created": False,
+        "N3_SELECT_reads": 0,
+        "N3_CONFIRM_reads": 0,
+        "protected_test_sealed_reads": 0,
+        "stop_unconditionally": True,
+    }
+    atomic_write_new_json(attempt / "resource_contention.json", record, artifact_kind="replay_02 resource terminal record")
+    atomic_write_new_json(attempt / "status.json", {"state": state, "phase": "PRE_MEASUREMENT_RESOURCE_GUARD"}, artifact_kind="replay_02 terminal status")
+    return {
+        "status": state,
+        "preflight": "READY",
+        "replay_slot": REPLAY_SLOT,
+        "resource_record": record,
+        "source_manifest": context["source"],
+        "scientific_measurement_started": False,
+        "persistent_model_updates": 0,
+        "checkpoint_writes": 0,
+        "qualification_attempt_02_created": False,
+        "replay_03_created": False,
+    }
+
+
+def execute(*, repo_root: Path | None = None) -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[4] if repo_root is None else repo_root.resolve()
+    started = time.perf_counter()
+    _verify_replay_02_slots_absent(root)
+    previous_identity: dict[str, Any] = {}
+    initial_gpu_guard: dict[str, Any] = {}
+    try:
+        previous_identity = _verify_interrupted_replay_01(root)
+        previous_preflight = _read_json(root / PREVIOUS_PREFLIGHT_PATH, "replay_01 READY preflight")
+        original, _ = _original_authorities(root)
+        peak_bytes, total_bytes, device_name = _measured_peak_bytes(original, previous_preflight)
+        initial_gpu_guard = _gpu_capacity_check(
+            _nvidia_smi_snapshot(),
+            expected_peak_bytes=peak_bytes,
+            qualified_total_bytes=total_bytes,
+            qualified_device_name=device_name,
+        )
+        if initial_gpu_guard["status"] != "PASS":
+            raise ResourceAbortedError("initial GPU resource guard lacks the frozen replay peak headroom")
+        context = _preflight(
+            root,
+            previous_replay_identity=previous_identity,
+            initial_gpu_guard=initial_gpu_guard,
+        )
+        context["root"] = root
+    except BaseException as error:
+        state = "INTERRUPTED" if isinstance(error, KeyboardInterrupt) else "RESOURCE_ABORTED" if isinstance(error, ResourceAbortedError) else "BLOCKED"
+        failure = {
+            "schema": "n3_floor_alignment_failure_evidence_replay_preflight_failure.v1",
+            "status": state,
+            "replay_slot": REPLAY_SLOT,
+            "authorization_id": AUTHORIZATION_ID,
+            "previous_interrupted_replay_identity": previous_identity,
+            "initial_gpu_resource_guard": initial_gpu_guard,
+            "error_type": type(error).__name__,
+            "reason": str(error),
+            "scientific_replay_started": False,
+            "qualification_attempt_created": False,
+            "persistent_updates": 0,
+            "checkpoint_writes": 0,
+            "replay_03_created": False,
+            "elapsed_seconds": time.perf_counter() - started,
+        }
+        atomic_write_new_json(root / PREFLIGHT_FAILURE_PATH, failure, artifact_kind="failure-evidence replay preflight failure")
+        return failure
+
+    try:
+        first = _nvidia_smi_snapshot()
+        time.sleep(1.0)
+        second = _nvidia_smi_snapshot()
+        late_guard = _late_gpu_quiescence_result(
+            first,
+            second,
+            expected_peak_bytes=context["expected_peak_bytes"],
+            qualified_total_bytes=context["qualified_total_bytes"],
+            qualified_device_name=context["qualified_device_name"],
+        )
+    except KeyboardInterrupt as error:
+        late_guard = {"status": "INTERRUPTED", "error_type": type(error).__name__, "reason": "interrupted during the late GPU quiescence check"}
+    except ReplayError as error:
+        late_guard = {"status": "RESOURCE_ABORTED", "error_type": type(error).__name__, "reason": str(error)}
+    if late_guard["status"] != "PASS":
+        terminal = "INTERRUPTED" if late_guard["status"] == "INTERRUPTED" else "RESOURCE_ABORTED"
+        return _record_resource_abort(context, late_guard, state=terminal)
+
+    try:
+        _open_attempt(context)
+        return _execute_replay(root, context)
+    except BaseException as error:
+        attempt = context["attempt"]
+        bookkeeping_errors: list[str] = []
+        if attempt.is_dir():
+            failure = {
+                "schema": "n3_floor_alignment_failure_evidence_replay_failure.v1",
+                "authorization_id": AUTHORIZATION_ID,
+                "error_type": type(error).__name__,
+                "reason": str(error),
+                "persistent_updates": 0,
+                "checkpoint_writes": 0,
+                "qualification_attempt_02_created": False,
+                "post_replay_gate": OUTER_GATE,
+            }
+            try:
+                atomic_write_new_json(attempt / "replay_failure.json", failure, artifact_kind="evidence replay failure record")
+            except FileExistsError:
+                pass
+            except BaseException as record_error:
+                bookkeeping_errors.append(f"failure record: {type(record_error).__name__}: {record_error}")
+            status_path = attempt / "status.json"
+            try:
+                current_status = _read_json(status_path, "active replay status") if status_path.is_file() else {}
+                if (
+                    current_status.get("state") not in {"EVIDENCE_REPLAY_COMPLETED", "EVIDENCE_REPLAY_NONREPRODUCIBLE"}
+                    and context["control"].state not in {RUN_COMPLETED, RUN_VALID_FAILED}
+                ):
+                    context["control"].invalid_harness()
+                    atomic_write_json(status_path, {"state": "INVALID_HARNESS", "phase": "REPLAY_ABORTED", "reason": str(error)})
+            except BaseException as status_error:
+                bookkeeping_errors.append(f"terminal status: {type(status_error).__name__}: {status_error}")
+        if bookkeeping_errors:
+            detail = "; ".join(bookkeeping_errors)
+            raise ReplayError(f"evidence replay failed: {error}; lifecycle bookkeeping also failed: {detail}") from error
+        raise
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    args = parser.parse_args(argv)
+    result = execute(repo_root=args.repo_root)
+    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0 if result["status"] == "EVIDENCE_REPLAY_COMPLETED" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,3395 @@
+"""Execute the frozen class-conditioned N3 low-rank model-order experiment."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import ctypes
+import hashlib
+import json
+import math
+import os
+import re
+import signal
+import sys
+import tempfile
+import threading
+import time
+from collections import Counter
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import LightGen2DAlignmentRuntimeConfig, LightGen2DSemanticGenerationInputOLSAlignment
+from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import TRAIN_ROLE, contracted_plane_powers
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, RESOURCE_ENVELOPE, HeartbeatWriter, PreflightReceipt, PREFLIGHT_RECHECK_ALLOWED, PREFLIGHT_ROOT_CAUSE_REVIEW_REQUIRED, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INVALID_HARNESS, RUN_PREPARING, RUN_SCIENTIFIC_ACTIVE, RUN_VALID_FAILED, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_json,
+    atomic_write_new_json,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from ldm_project.v2.optics.d2nn import FiniteCropPhaseStack
+from ldm_project.v2.optics.propagation import angular_spectrum_propagate, clear_production_transfer_cache
+from ldm_project.v2.contracts import ComplexField, OperationProvenance
+from ldm_project.v2.student.evaluator import (
+    SmoothMNISTEvaluator,
+    load_frozen_evaluator,
+)
+
+from scripts.research.lightgen import execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1 as structural_exec
+from scripts.research.lightgen import execute_lightgen_2d_establish_third_confirmation_evaluator_v1 as third_confirmation
+
+
+TASK_ID = "EXECUTE_LIGHTGEN_2D_N3_LOW_RANK_MODEL_ORDER_V1"
+AUTHORIZATION_ID = "AUTHORIZED_EXECUTE_LIGHTGEN_2D_N3_LOW_RANK_CLASS_CONDITIONED_STRUCTURAL_MODEL_ORDER_V1"
+SEMANTIC_AUTHORITY_ID = "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION"
+OUTER_GATE = "N3_LOW_RANK_MODEL_ORDER_EXECUTION_COMPLETED"
+CLASSIFICATION_ADEQUATE = "N3_LOW_RANK_MODEL_ORDER_CANDIDATE_ADEQUATE"
+CLASSIFICATION_NOT_ADEQUATE = "N3_LOW_RANK_MODEL_ORDER_CANDIDATE_NOT_ADEQUATE"
+
+CONTRACT_PATH = Path(
+    "outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1/runs/"
+    "contract_definition_01/lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract.v1.json"
+)
+CONTRACT_SHA256 = "a5c7c3ab6528871f33b58a965a6d89870749a4e3bf1028e27d062ac78c53ae16"
+PROTOCOL_PATH = Path(
+    "outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1/runs/"
+    "protocol_definition_02/lightgen_2d_n3_low_rank_fit_protocol.v2.json"
+)
+PROTOCOL_SHA256 = "8ffd43fae61cba9a02909c8bafb888156a4a933a27b5ffbcdf149a5fc5ae8da5"
+PROTOCOL_RECONCILIATION_ENTRYPOINT = Path("scripts/research/lightgen/n3/reconcile_lightgen_2d_n3_low_rank_fit_protocol_v1.py")
+START_CHECKPOINT = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/"
+    "attempt_03/scientific_step_009000.pt"
+)
+START_CHECKPOINT_SHA256 = "14e76f3273e6f794cbadaee63a881bd686645016c5c5aba62c727ce9860afcee"
+TRAINING_SOURCE = Path("data/MNIST/processed/training.pt")
+TRAINING_SOURCE_SHA256 = "8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd"
+STRUCTURAL_REFERENCE = Path(
+    "outputs/20260921_non_classifier_structural_semantic_confirmation_v1/runs/"
+    "attempt_04/structural_reference.pt"
+)
+STRUCTURAL_REFERENCE_SHA256 = "e6304ac70fafc7f5d5ecc61c0d91af6520fa257bc8fe50903cbe340a7bcae142"
+SURROGATE_NORMALIZATION = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/"
+    "attempt_03/surrogate_normalization.pt"
+)
+SURROGATE_NORMALIZATION_SHA256 = "63d0e11aefadd55acb7248b91b631a44a6a9aa4a6da4ca624e35b3276cd2cf98"
+
+OUTPUT_ROOT = Path("outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1")
+RUNS_ROOT = OUTPUT_ROOT / "runs"
+ATTEMPT_DIR = RUNS_ROOT / "attempt_01"
+PREFLIGHT_DIR = RUNS_ROOT / "preflight_01"
+PREFLIGHT_FAILURE_STATE = RUNS_ROOT / "execution_preflight_failure_state.json"
+CLASS_COUNT = 10
+PARAMETER_DIMENSION = 20_000
+PHASE_SHAPE = (2, 1, 100, 100)
+FIT_UPDATES = 300
+PREFLIGHT_UPDATE_COUNT = 3
+FIT_ROWS_PER_CLASS = 256
+RECOVERY_INTERVAL = 25
+INIT_ALPHA = 1.0e-6
+MASTER_SEED = 20_260_923
+RANK_SEED_STRIDE = 1_009
+LEARNING_RATE = 1.0e-3
+ADAM_BETAS = (0.9, 0.999)
+ADAM_EPS = 1.0e-8
+WEIGHT_DECAY = 0.0
+RECONSTRUCTION_MAX_DELTA = 0.005
+BOOTSTRAP_REPLICATES = 999
+BOOTSTRAP_SEED = 271828
+LOGICAL_BATCH_SIZE = 10
+CHECKPOINT_SCHEMA = "n3_low_rank_model_order_candidate_checkpoint.v1"
+RECOVERY_SCHEMA = "n3_low_rank_fit_recovery.v1"
+RECOVERY_LEDGER_SCHEMA = "n3_low_rank_fit_ledger_credential.v1"
+STAGE_RECOVERY_SCHEMA = "n3_low_rank_stage_recovery_credential.v1"
+REPORT_SCHEMA = "lightgen_2d_n3_low_rank_model_order_report.v1"
+PREFLIGHT_SCHEMA = "lightgen_2d_n3_low_rank_model_order_preflight.v1"
+ACTIVE_PROTOCOL_CLASSIFICATION = "N3_LOW_RANK_FIT_PROTOCOL_RECONCILED"
+ACTIVE_PROTOCOL_SEMANTIC_AUTHORITY_ID = "N3_LOW_RANK_FIT_PROTOCOL_CANONICAL_BASIS_RECONCILED_V2"
+SUPERSEDED_PROTOCOL_SHA256 = "69405fb30e43cb56a47b387a9e7b0231146f0839f7e35444d8a14bb21a81d747"
+
+_DLL_DIRECTORY_HANDLES: list[Any] = []
+_DLL_DIRECTORY_KEYS: set[str] = set()
+_NVRTC_BUILTINS_HANDLE: Any | None = None
+_INTERRUPT_REQUESTED = threading.Event()
+
+
+@dataclass(frozen=True)
+class N3ActiveAuthorityIdentity:
+    contract_sha256: str
+    protocol_sha256: str
+    protocol_classification: str
+    semantic_authority_id: str
+    superseded_protocol_sha256: str
+    superseded_protocol_active_for_execution: bool
+    canonical_b_normal_form_verified: bool
+
+
+class N3ExecutionError(RuntimeError):
+    """Raised when a frozen authority or execution invariant is invalid."""
+
+
+class N3RuntimeInitializationError(N3ExecutionError):
+    def __init__(self, message: str, runtime_provenance: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.runtime_provenance = dict(runtime_provenance)
+
+
+class N3ControlledInterruption(N3ExecutionError):
+    """Raised only after a complete, write-once recovery boundary is durable."""
+
+
+class N3PostReportStatusError(N3ExecutionError):
+    """The immutable report is valid, but an operational terminal write failed."""
+
+
+def _normalized_windows_path(path: Path) -> str:
+    return os.path.normcase(os.path.normpath(os.fspath(path.resolve())))
+
+
+def _bootstrap_windows_cuda_dll_search() -> dict[str, Any]:
+    """Make the active Python environment's CUDA DLLs visible to this process only."""
+    _require(sys.platform == "win32", "formal N3 CUDA runtime bootstrap requires Windows")
+    executable = Path(sys.executable).resolve()
+    prefix = Path(sys.prefix).resolve()
+    try:
+        executable.relative_to(prefix)
+    except ValueError as error:
+        raise N3ExecutionError("active Python executable is outside sys.prefix") from error
+
+    candidates = (
+        prefix,
+        prefix / "Library" / "bin",
+        prefix / "bin",
+        prefix / "Scripts",
+        executable.parent,
+    )
+    directories: list[Path] = []
+    keys: set[str] = set()
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        key = _normalized_windows_path(candidate)
+        if key not in keys:
+            keys.add(key)
+            directories.append(candidate.resolve())
+    _require(bool(directories), "active Python environment has no CUDA DLL search directories")
+
+    existing_path = os.environ.get("PATH", "")
+    merged: list[str] = []
+    path_keys: set[str] = set()
+    for raw in [*(os.fspath(path) for path in directories), *existing_path.split(os.pathsep)]:
+        if not raw.strip():
+            continue
+        candidate = Path(raw)
+        key = os.path.normcase(os.path.normpath(os.path.abspath(os.fspath(candidate))))
+        if key not in path_keys:
+            path_keys.add(key)
+            merged.append(os.fspath(candidate))
+    os.environ["PATH"] = os.pathsep.join(merged)
+
+    add_dll_directory = getattr(os, "add_dll_directory", None)
+    _require(callable(add_dll_directory), "Python os.add_dll_directory is unavailable")
+    for directory in directories:
+        key = _normalized_windows_path(directory)
+        if key not in _DLL_DIRECTORY_KEYS:
+            try:
+                handle = add_dll_directory(os.fspath(directory))
+            except OSError as error:
+                raise N3ExecutionError(f"cannot register CUDA DLL directory {directory}: {error}") from error
+            _DLL_DIRECTORY_HANDLES.append(handle)
+            _DLL_DIRECTORY_KEYS.add(key)
+    return {
+        "status": "PASS",
+        "python_executable": os.fspath(executable),
+        "python_prefix": os.fspath(prefix),
+        "dll_search_directories": [os.fspath(path) for path in directories],
+        "process_path_prepended": [os.fspath(path) for path in directories],
+        "dll_directory_handles_retained": len(_DLL_DIRECTORY_HANDLES),
+    }
+
+
+def _expected_nvrtc_builtins_name(cuda_version: str | None = None) -> str:
+    version = torch.version.cuda if cuda_version is None else cuda_version
+    _require(isinstance(version, str) and bool(re.fullmatch(r"\d+\.\d+", version)), "active PyTorch CUDA version is unavailable or malformed")
+    major, minor = version.split(".")
+    return f"nvrtc-builtins64_{major}{minor}.dll"
+
+
+def _resolve_and_probe_nvrtc_builtins(runtime: Mapping[str, Any]) -> dict[str, Any]:
+    global _NVRTC_BUILTINS_HANDLE
+    prefix = Path(str(runtime["python_prefix"])).resolve()
+    dll_name = _expected_nvrtc_builtins_name()
+    candidates = [Path(path).resolve() / dll_name for path in runtime["dll_search_directories"]]
+    dll_path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    _require(dll_path is not None, f"required CUDA NVRTC runtime DLL is missing: {dll_name}")
+    try:
+        dll_path.relative_to(prefix)
+    except ValueError as error:
+        raise N3ExecutionError("resolved NVRTC runtime DLL is outside the active Python environment") from error
+    win_dll = getattr(ctypes, "WinDLL", None)
+    _require(callable(win_dll), "Windows DLL loader is unavailable")
+    try:
+        _NVRTC_BUILTINS_HANDLE = win_dll(os.fspath(dll_path))
+    except OSError as error:
+        raise N3ExecutionError(f"NVRTC runtime DLL load probe failed for {dll_path}: {error}") from error
+    return {
+        "status": "PASS",
+        "dll_name": dll_name,
+        "dll_path": os.fspath(dll_path),
+        "dll_exists": dll_path.is_file(),
+        "inside_active_environment": True,
+        "dll_size_bytes": dll_path.stat().st_size,
+        "load_probe": "ctypes.WinDLL(full_path)",
+    }
+
+
+def _cuda_runtime_smoke(nvrtc: Mapping[str, Any]) -> dict[str, Any]:
+    _require(torch.cuda.is_available(), "CUDA runtime smoke found no visible CUDA device")
+    _require(torch.cuda.device_count() == 1, "CUDA runtime smoke requires exactly one visible CUDA device")
+    device = torch.device("cuda:0")
+    device_name = torch.cuda.get_device_name(device)
+    _require(device_name == "NVIDIA GeForce RTX 3060 Laptop GPU", "CUDA runtime smoke device identity changed")
+    try:
+        value = torch.tensor([complex(1.0, 0.0)], dtype=torch.complex64, device=device)
+        result = torch.exp(value)
+        torch.cuda.synchronize(device)
+        observed = complex(result.item())
+    except Exception as error:
+        raise N3ExecutionError(f"CUDA/NVRTC kernel smoke failed: {type(error).__name__}: {error}") from error
+    _require(
+        math.isfinite(observed.real)
+        and math.isfinite(observed.imag)
+        and math.isclose(observed.real, math.e, rel_tol=1.0e-6, abs_tol=1.0e-6)
+        and math.isclose(observed.imag, 0.0, rel_tol=0.0, abs_tol=1.0e-6),
+        "CUDA/NVRTC kernel smoke returned an invalid complex exponential",
+    )
+    return {
+        "status": "PASS",
+        "device": device_name,
+        "device_count": 1,
+        "kernel_probe": "torch.exp(complex64[1])",
+        "kernel_result": {"real": observed.real, "imag": observed.imag},
+        "synchronized": True,
+        "nvrtc_dll_path": nvrtc["dll_path"],
+    }
+
+
+def _prepare_cuda_runtime() -> dict[str, Any]:
+    runtime: dict[str, Any] = {"status": "NOT_STARTED"}
+    stage = "DLL_BOOTSTRAP"
+    try:
+        bootstrap = _bootstrap_windows_cuda_dll_search()
+        runtime = {"status": "DLL_BOOTSTRAP_PASS", "bootstrap": bootstrap}
+        stage = "NVRTC_RESOLVE_AND_LOAD"
+        nvrtc = _resolve_and_probe_nvrtc_builtins(bootstrap)
+        runtime = {**runtime, "status": "NVRTC_LOAD_PASS", "nvrtc": nvrtc}
+        stage = "CUDA_KERNEL_SMOKE"
+        smoke = _cuda_runtime_smoke(nvrtc)
+        return {**runtime, "status": "READY", "cuda_smoke": smoke}
+    except Exception as error:
+        failed = {
+            **runtime,
+            "status": "FAILED",
+            "failed_stage": stage,
+            "error_type": type(error).__name__,
+            "error": str(error),
+        }
+        raise N3RuntimeInitializationError(
+            f"N3 runtime initialization failed at {stage}: {error}", failed
+        ) from error
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise N3ExecutionError(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _tensor(value: object, name: str) -> torch.Tensor:
+    _require(isinstance(value, torch.Tensor), f"{name} must be a tensor")
+    return value
+
+
+def _finite(value: torch.Tensor, name: str) -> None:
+    _require(bool(torch.isfinite(value).all().item()), f"{name} is nonfinite")
+
+
+def _relative(root: Path, path: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def _file_ref(root: Path, path: str | Path, expected: str, role: str) -> dict[str, str]:
+    target = Path(path)
+    if not target.is_absolute():
+        target = root / target
+    _require(target.is_file(), f"{role} is missing: {target}")
+    observed = file_sha256(target).lower()
+    _require(observed == expected.lower(), f"{role} hash changed: {target}")
+    return {"path": _relative(root, target), "sha256": expected.lower(), "role": role}
+
+
+def _tensor_state_sha256(state: Mapping[str, torch.Tensor]) -> str:
+    digest = hashlib.sha256()
+    for name in sorted(state):
+        value = state[name].detach().cpu().contiguous()
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(tuple(value.shape)).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(value.dtype).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(value.numpy().tobytes())
+    return digest.hexdigest()
+
+
+def _exact_equal(left: Any, right: Any) -> bool:
+    """Compare nested rollback state without tensor truth-value coercion."""
+    if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
+        return isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor) and left.dtype == right.dtype and left.device == right.device and torch.equal(left, right)
+    if isinstance(left, Mapping) or isinstance(right, Mapping):
+        return (
+            isinstance(left, Mapping)
+            and isinstance(right, Mapping)
+            and set(left) == set(right)
+            and all(_exact_equal(left[key], right[key]) for key in left)
+        )
+    if isinstance(left, (tuple, list)) or isinstance(right, (tuple, list)):
+        return (
+            type(left) is type(right)
+            and len(left) == len(right)
+            and all(_exact_equal(a, b) for a, b in zip(left, right, strict=True))
+        )
+    return type(left) is type(right) and left == right
+
+
+def _rng_snapshot() -> dict[str, Any]:
+    return {
+        "cpu": torch.get_rng_state().clone(),
+        "cuda": [state.clone() for state in torch.cuda.get_rng_state_all()] if torch.cuda.is_available() else [],
+        "cuda_available": torch.cuda.is_available(),
+    }
+
+
+def _restore_rng(state: Mapping[str, Any]) -> None:
+    torch.set_rng_state(_tensor(state.get("cpu"), "CPU RNG state").cpu())
+    cuda_states = state.get("cuda")
+    _require(isinstance(cuda_states, list), "CUDA RNG state list is missing")
+    if state.get("cuda_available"):
+        _require(torch.cuda.is_available() and len(cuda_states) == torch.cuda.device_count(), "CUDA RNG device count changed")
+        torch.cuda.set_rng_state_all(cuda_states)
+
+
+def _rng_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    return (
+        bool(left.get("cuda_available")) == bool(right.get("cuda_available"))
+        and torch.equal(_tensor(left.get("cpu"), "CPU RNG"), _tensor(right.get("cpu"), "CPU RNG"))
+        and len(left.get("cuda", [])) == len(right.get("cuda", []))
+        and all(torch.equal(a, b) for a, b in zip(left.get("cuda", []), right.get("cuda", []), strict=True))
+    )
+
+
+def initialize_factors(rank: int, *, device: torch.device | str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the protocol-defined deterministic float32 B and A tensors."""
+    _require(rank in (0, 1, 2), "rank is outside the frozen domain")
+    selected = torch.device(device)
+    if rank == 0:
+        return (
+            torch.empty((PARAMETER_DIMENSION, 0), dtype=torch.float32, device=selected),
+            torch.empty((CLASS_COUNT, 0), dtype=torch.float32, device=selected),
+        )
+    columns = torch.arange(rank, device=selected, dtype=torch.int64)
+    basis = torch.zeros((PARAMETER_DIMENSION, rank), dtype=torch.float32, device=selected)
+    basis[columns, columns] = 1.0
+    classes = torch.arange(CLASS_COUNT, device=selected, dtype=torch.int64)
+    signs_a = 1.0 - 2.0 * ((classes[:, None] >> columns[None, :]) & 1).to(torch.float32)
+    coefficients = INIT_ALPHA * signs_a
+    _finite(basis, "initial B")
+    _finite(coefficients, "initial A")
+    return basis.contiguous(), coefficients.contiguous()
+
+
+def rank_seed(rank: int) -> int:
+    _require(rank in (0, 1, 2), "rank is outside the frozen domain")
+    return MASTER_SEED + RANK_SEED_STRIDE * rank
+
+
+class N3FitSampler:
+    """Protocol-defined class-major cyclic one-row-per-class sampler."""
+
+    def __init__(self, indices_by_class: Mapping[str, Any], *, cursor: int = 0) -> None:
+        _require(set(indices_by_class) == {str(value) for value in range(CLASS_COUNT)}, "N3_FIT class map changed")
+        self.indices = [torch.tensor(indices_by_class[str(digit)], dtype=torch.long) for digit in range(CLASS_COUNT)]
+        _require(all(value.shape == (FIT_ROWS_PER_CLASS,) for value in self.indices), "N3_FIT rows per class changed")
+        self.cursor = int(cursor)
+        _require(0 <= self.cursor < FIT_ROWS_PER_CLASS, "N3_FIT cursor is outside the cyclic bank")
+
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        indices = torch.stack([values[self.cursor] for values in self.indices])
+        labels = torch.arange(CLASS_COUNT, dtype=torch.long)
+        self.cursor = (self.cursor + 1) % FIT_ROWS_PER_CLASS
+        return indices, labels
+
+
+class ClassConditionedFiniteCropPhaseStack(FiniteCropPhaseStack):
+    """Existing phase stack with the frozen per-sample additive phase input."""
+
+    def __init__(self, source: FiniteCropPhaseStack) -> None:
+        super().__init__(
+            layers=source.layers,
+            active_shape=source.active_shape,
+            propagation_shape=source.propagation_shape,
+            spacing_m=source.spacing_m,
+        )
+        with torch.no_grad():
+            self.phase.copy_(source.phase.detach())
+        self.phase.requires_grad_(False)
+        self._phase_correction: torch.Tensor | None = None
+
+    def set_phase_correction(self, correction: torch.Tensor | None) -> None:
+        self._phase_correction = correction
+
+    def forward(
+        self, field: ComplexField, prefix: str
+    ) -> tuple[ComplexField, tuple[ComplexField, ...], dict[str, torch.Tensor]]:
+        if field.plane.shape != self.active_shape:
+            raise ValueError("finite-crop D2NN field does not match active shape")
+        correction = self._phase_correction
+        if correction is not None:
+            _require(tuple(correction.shape) == (field.tensor.shape[0], self.layers, 1, *self.active_shape), "class phase correction geometry changed")
+            _require(correction.device == self.phase.device and correction.dtype == self.phase.dtype, "class phase correction device/dtype changed")
+        records: list[ComplexField] = []
+        retention: list[torch.Tensor] = []
+        current = field
+        for index in range(self.layers):
+            phase = self.phase[index]
+            if correction is not None:
+                phase = phase.unsqueeze(0) + correction[:, index]
+            transfer = torch.polar(torch.ones_like(phase), phase).to(current.tensor.dtype)
+            modulated = ComplexField(
+                current.tensor * transfer,
+                current.plane,
+                OperationProvenance(
+                    "phase_only_modulation",
+                    current.plane.plane_id,
+                    None,
+                    {"layer": index + 1},
+                ),
+            )
+            padding_y = (self.propagation_shape[0] - self.active_shape[0]) // 2
+            padding_x = (self.propagation_shape[1] - self.active_shape[1]) // 2
+            padded_tensor = F.pad(modulated.tensor, (padding_x, padding_x, padding_y, padding_y))
+            padded_plane = current.plane.with_plane(
+                f"{prefix}_layer_{index + 1}_padded",
+                shape=self.propagation_shape,
+                coordinate_frame=f"{prefix}_propagation_grid",
+            )
+            padded = ComplexField(
+                padded_tensor,
+                padded_plane,
+                OperationProvenance("finite_crop_center_pad", current.plane.plane_id, None, {"active_shape": list(self.active_shape)}),
+            )
+            propagated = angular_spectrum_propagate(padded, self.spacing_m, f"{prefix}_layer_{index + 1}_propagated")
+            crop_y = (self.propagation_shape[0] - self.active_shape[0]) // 2
+            crop_x = (self.propagation_shape[1] - self.active_shape[1]) // 2
+            cropped_tensor = propagated.tensor[..., crop_y : crop_y + self.active_shape[0], crop_x : crop_x + self.active_shape[1]]
+            active_plane = current.plane.with_plane(f"{prefix}_layer_{index + 1}", z_m=propagated.plane.z_m)
+            current = ComplexField(
+                cropped_tensor,
+                active_plane,
+                OperationProvenance("finite_crop_hard_aperture", propagated.plane.plane_id, self.spacing_m, {"layer": index + 1, "active_shape": list(self.active_shape)}),
+            )
+            retention.append(
+                current.tensor.abs().square().sum(dim=(-3, -2, -1))
+                / propagated.tensor.abs().square().sum(dim=(-3, -2, -1)).clamp_min(1.0e-12)
+            )
+            records.append(current)
+        return current, tuple(records), {"crop_retention": torch.stack(retention, dim=1), "phase": self.phase}
+
+
+class N3ClassConditionedModel(nn.Module):
+    def __init__(self, rank: int, checkpoint: Mapping[str, Any], device: torch.device) -> None:
+        super().__init__()
+        _require(rank in (0, 1, 2), "rank is outside the frozen domain")
+        self.rank = rank
+        self.runtime = LightGen2DSemanticGenerationInputOLSAlignment(
+            LightGen2DAlignmentRuntimeConfig(propagation_grid_size=2048)
+        ).to(device)
+        original = self.runtime.generator
+        self.runtime.generator = ClassConditionedFiniteCropPhaseStack(original).to(device)
+        with torch.no_grad():
+            self.runtime.encoder.phase.copy_(_tensor(checkpoint["encoder_state"], "accepted encoder phase").to(device))
+            self.runtime.generator.phase.copy_(_tensor(checkpoint["generator_state"], "accepted generator phase").to(device))
+        for parameter in self.runtime.parameters():
+            parameter.requires_grad_(False)
+        basis, coefficients = initialize_factors(rank, device=device)
+        self.B = nn.Parameter(basis, requires_grad=rank > 0)
+        self.A = nn.Parameter(coefficients, requires_grad=rank > 0)
+
+    def correction(self, labels: torch.Tensor) -> torch.Tensor:
+        _require(labels.dtype == torch.long and labels.ndim == 1, "labels must be int64 with shape (N,)")
+        _require(labels.device == self.A.device, "labels and class coefficients are on different devices")
+        if labels.numel():
+            _require(bool(((labels >= 0) & (labels < CLASS_COUNT)).all().item()), "label outside frozen class range 0..9")
+        selected = self.A.index_select(0, labels)
+        flat = selected @ self.B.T
+        correction = flat.reshape(labels.numel(), *PHASE_SHAPE)
+        _finite(correction, "class phase correction")
+        return correction
+
+    def forward_from_image(self, images: torch.Tensor, labels: torch.Tensor) -> Any:
+        _require(images.ndim == 4 and images.shape[1:] == (1, 28, 28), "N3 image batch geometry changed")
+        _require(images.shape[0] == labels.numel(), "N3 image/label batch size changed")
+        correction = self.correction(labels)
+        stack = self.runtime.generator
+        _require(isinstance(stack, ClassConditionedFiniteCropPhaseStack), "class-conditioned phase stack was replaced")
+        stack.set_phase_correction(correction)
+        try:
+            return self.runtime.forward_from_image(images)
+        finally:
+            stack.set_phase_correction(None)
+
+    def trainable_state(self) -> dict[str, torch.Tensor]:
+        return {"n3_correction.B": self.B.detach().cpu().clone(), "n3_correction.A": self.A.detach().cpu().clone()}
+
+    def load_trainable_state(self, payload: Mapping[str, Any]) -> None:
+        _require(set(payload) == {"n3_correction.B", "n3_correction.A"}, "candidate factor state keys changed")
+        with torch.no_grad():
+            self.B.copy_(_tensor(payload["n3_correction.B"], "candidate B").to(self.B.device))
+            self.A.copy_(_tensor(payload["n3_correction.A"], "candidate A").to(self.A.device))
+
+
+class SampleReadLedger:
+    def __init__(self) -> None:
+        self.roles = ("N3_FIT", "N3_SELECT", "N3_CONFIRM")
+        self.phase = "PREFLIGHT"
+        self.selected_rank: int | None = None
+        self.canonical_train_backing_loaded = False
+        self.materialized_counts: Counter[tuple[str, str]] = Counter()
+        self.evaluated_counts: Counter[tuple[str, str]] = Counter()
+        self.materialized_ids: dict[str, set[int]] = {name: set() for name in self.roles}
+        self.evaluated_ids: dict[str, set[int]] = {name: set() for name in self.roles}
+        self.evaluation_by_rank: Counter[tuple[str, str, int, str]] = Counter()
+        self.completed_fit_ranks: set[int] = set()
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "schema": "n3_sample_read_ledger_state.v1",
+            "roles": list(self.roles),
+            "phase": self.phase,
+            "selected_rank": self.selected_rank,
+            "canonical_train_backing_loaded": self.canonical_train_backing_loaded,
+            "materialized_counts": [
+                {"phase": phase, "role": role, "rows": rows}
+                for (phase, role), rows in sorted(self.materialized_counts.items())
+            ],
+            "evaluated_counts": [
+                {"phase": phase, "role": role, "rows": rows}
+                for (phase, role), rows in sorted(self.evaluated_counts.items())
+            ],
+            "materialized_ids": {role: sorted(rows) for role, rows in self.materialized_ids.items()},
+            "evaluated_ids": {role: sorted(rows) for role, rows in self.evaluated_ids.items()},
+            "evaluation_by_rank": [
+                {"phase": phase, "role": role, "rank": rank, "purpose": purpose, "rows": rows}
+                for (phase, role, rank, purpose), rows in sorted(self.evaluation_by_rank.items())
+            ],
+            "completed_fit_ranks": sorted(self.completed_fit_ranks),
+        }
+
+    def merge(self, snapshot: Mapping[str, Any]) -> None:
+        """Merge one cumulative prior-process snapshot with this process's loader reads."""
+        _require(snapshot.get("schema") == "n3_sample_read_ledger_state.v1", "sample-read ledger snapshot schema changed")
+        _require(snapshot.get("roles") == list(self.roles), "sample-read ledger role set changed")
+        _require(snapshot.get("phase") in {"PREFLIGHT", "FIT", "SELECT", "CONFIRM"}, "sample-read ledger phase changed")
+        _require(snapshot.get("canonical_train_backing_loaded") is True, "sample-read ledger lost canonical backing-load identity")
+        _require(self.canonical_train_backing_loaded, "cannot merge ledger before canonical TRAIN backing load")
+
+        def merge_counts(key: str, target: Counter[tuple[str, str]]) -> None:
+            rows = snapshot.get(key)
+            _require(isinstance(rows, list), f"sample-read ledger {key} is malformed")
+            for item in rows:
+                row = _mapping(item, f"sample-read ledger {key} entry")
+                phase, role, count = row.get("phase"), row.get("role"), row.get("rows")
+                _require(phase in {"PREFLIGHT", "FIT", "SELECT", "CONFIRM"} and role in self.roles, f"sample-read ledger {key} identity changed")
+                _require(type(count) is int and count >= 0, f"sample-read ledger {key} count is invalid")
+                target[(phase, role)] += count
+
+        merge_counts("materialized_counts", self.materialized_counts)
+        merge_counts("evaluated_counts", self.evaluated_counts)
+
+        for key, target in (("materialized_ids", self.materialized_ids), ("evaluated_ids", self.evaluated_ids)):
+            groups = _mapping(snapshot.get(key), f"sample-read ledger {key}")
+            _require(set(groups) == set(self.roles), f"sample-read ledger {key} role set changed")
+            for role, values in groups.items():
+                _require(isinstance(values, list) and all(type(value) is int and value >= 0 for value in values), f"sample-read ledger {key} values are malformed")
+                target[role].update(values)
+
+        eval_rows = snapshot.get("evaluation_by_rank")
+        _require(isinstance(eval_rows, list), "sample-read ledger rank accounting is malformed")
+        for item in eval_rows:
+            row = _mapping(item, "sample-read ledger rank accounting entry")
+            phase, role, rank, purpose, count = (
+                row.get("phase"), row.get("role"), row.get("rank"), row.get("purpose"), row.get("rows")
+            )
+            _require(
+                phase in {"PREFLIGHT", "FIT", "SELECT", "CONFIRM"}
+                and role in self.roles
+                and type(rank) is int
+                and rank in (0, 1, 2)
+                and isinstance(purpose, str)
+                and type(count) is int
+                and count >= 0,
+                "sample-read ledger rank accounting identity changed",
+            )
+            self.evaluation_by_rank[(phase, role, rank, purpose)] += count
+
+        ranks = snapshot.get("completed_fit_ranks")
+        _require(isinstance(ranks, list) and all(type(rank) is int and rank in (1, 2) for rank in ranks), "sample-read ledger completed ranks changed")
+        self.completed_fit_ranks.update(ranks)
+        selected_rank = snapshot.get("selected_rank")
+        _require(selected_rank is None or (type(selected_rank) is int and selected_rank in (0, 1, 2)), "sample-read ledger selected rank changed")
+        _require(self.selected_rank is None or selected_rank is None or self.selected_rank == selected_rank, "sample-read ledger selected rank conflicts across processes")
+        if selected_rank is not None:
+            self.selected_rank = selected_rank
+        self.phase = str(snapshot["phase"])
+
+    def mark_backing_loaded(self) -> None:
+        _require(self.phase == "PREFLIGHT" and not self.canonical_train_backing_loaded, "canonical TRAIN backing load boundary changed")
+        self.canonical_train_backing_loaded = True
+
+    def _authorize(self, role: str, rank: int | None, purpose: str) -> None:
+        _require(role in self.roles, f"unexpected data role: {role}")
+        _require(self.canonical_train_backing_loaded, "role materialization preceded canonical TRAIN backing load")
+        if self.phase in {"PREFLIGHT", "FIT"}:
+            _require(role == "N3_FIT", f"{role} access is prohibited during {self.phase}")
+        elif self.phase == "SELECT":
+            _require(role == "N3_SELECT" and rank in (0, 1, 2) and purpose == "model_order_candidate", "invalid N3_SELECT access")
+        elif self.phase == "CONFIRM":
+            _require(role == "N3_CONFIRM", f"{role} access is prohibited during CONFIRM")
+            selected_candidate = purpose == "selected_candidate" and rank == self.selected_rank
+            shared_reference = purpose == "shared_baseline_reference" and rank == 0 and self.selected_rank != 0
+            _require(selected_candidate or shared_reference, "N3_CONFIRM may evaluate only the selected candidate and frozen theta_shared reference")
+        else:
+            raise N3ExecutionError(f"unknown N3 data phase: {self.phase}")
+
+    def record_materialized(
+        self,
+        role: str,
+        indices: torch.Tensor,
+        *,
+        rank: int | None = None,
+        purpose: str = "role_batch",
+    ) -> None:
+        self._authorize(role, rank, purpose)
+        rows = [int(item) for item in indices.detach().cpu().tolist()]
+        self.materialized_ids[role].update(rows)
+        self.materialized_counts[(self.phase, role)] += len(rows)
+
+    def record_evaluated(self, role: str, indices: torch.Tensor, *, rank: int, purpose: str) -> None:
+        self._authorize(role, rank, purpose)
+        rows = [int(item) for item in indices.detach().cpu().tolist()]
+        self.evaluated_ids[role].update(rows)
+        self.evaluated_counts[(self.phase, role)] += len(rows)
+        self.evaluation_by_rank[(self.phase, role, rank, purpose)] += len(rows)
+
+    def enter_fit(self) -> None:
+        _require(self.phase == "PREFLIGHT", "FIT phase transition is out of order")
+        self.phase = "FIT"
+
+    def record_fit_endpoint(self, rank: int, updates: int) -> None:
+        _require(self.phase == "FIT" and rank in (1, 2) and updates == FIT_UPDATES, "incomplete N3_FIT endpoint")
+        _require(rank not in self.completed_fit_ranks, "N3_FIT endpoint was recorded more than once")
+        self.completed_fit_ranks.add(rank)
+
+    def enter_selection(self) -> None:
+        _require(self.phase == "FIT" and self.completed_fit_ranks == {1, 2}, "N3_SELECT preceded valid rank-1/rank-2 FIT endpoints")
+        self.phase = "SELECT"
+
+    def verify_selection_evaluations(self, expected_rows: int) -> None:
+        for rank in (0, 1, 2):
+            observed = self.evaluation_by_rank[("SELECT", "N3_SELECT", rank, "model_order_candidate")]
+            _require(observed == expected_rows, f"rank {rank} was not evaluated exactly once on N3_SELECT")
+
+    def enter_confirmation(self, selection_path: Path) -> int:
+        _require(self.phase == "SELECT", "N3_CONFIRM preceded N3_SELECT")
+        selection = _mapping(json.loads(selection_path.read_text(encoding="utf-8")), "immutable N3_SELECT result")
+        selected_rank = int(selection.get("selected_rank", -1))
+        _require(
+            selection.get("domain") == "N3_SELECT"
+            and selection.get("selection_count") == 1
+            and selection.get("contract_sha256") == CONTRACT_SHA256
+            and selection.get("protocol_sha256") == PROTOCOL_SHA256
+            and selected_rank in (0, 1, 2),
+            "N3_CONFIRM requires one persisted N3_SELECT rank",
+        )
+        self.selected_rank = selected_rank
+        self.phase = "CONFIRM"
+        return selected_rank
+
+    def verify_confirmation_evaluations(self, expected_rows: int) -> None:
+        _require(self.phase == "CONFIRM" and self.selected_rank is not None, "N3_CONFIRM is not active")
+        candidate_rows = self.evaluation_by_rank[("CONFIRM", "N3_CONFIRM", self.selected_rank, "selected_candidate")]
+        reference_rows = self.evaluation_by_rank[("CONFIRM", "N3_CONFIRM", 0, "shared_baseline_reference")]
+        _require(candidate_rows == expected_rows, "selected rank was not evaluated exactly once on N3_CONFIRM")
+        _require(reference_rows == (expected_rows if self.selected_rank != 0 else 0), "N3_CONFIRM shared-reference evaluation changed")
+
+    def summary(self) -> dict[str, Any]:
+        phase_access = {
+            phase: {
+                role: {
+                    "role_rows_materialized": self.materialized_counts[(phase, role)],
+                    "role_rows_evaluated": self.evaluated_counts[(phase, role)],
+                }
+                for role in self.roles
+            }
+            for phase in ("PREFLIGHT", "FIT", "SELECT", "CONFIRM")
+        }
+        return {
+            "canonical_train_storage": "monolithic data/MNIST/processed/training.pt",
+            "canonical_train_backing_loaded": {
+                role: self.canonical_train_backing_loaded for role in self.roles
+            },
+            **{
+                role: {
+                    "rows_consumed": sum(self.evaluated_counts[(phase, role)] for phase in ("PREFLIGHT", "FIT", "SELECT", "CONFIRM")),
+                    "unique_source_indices": len(self.evaluated_ids[role]),
+                    "canonical_train_backing_loaded": self.canonical_train_backing_loaded,
+                    "role_rows_materialized": sum(self.materialized_counts[(phase, role)] for phase in ("PREFLIGHT", "FIT", "SELECT", "CONFIRM")),
+                    "role_rows_evaluated": sum(self.evaluated_counts[(phase, role)] for phase in ("PREFLIGHT", "FIT", "SELECT", "CONFIRM")),
+                    "unique_role_rows_materialized": len(self.materialized_ids[role]),
+                    "unique_role_rows_evaluated": len(self.evaluated_ids[role]),
+                }
+                for role in self.roles
+            },
+            "phase_access": phase_access,
+            "evaluation_by_phase_rank_purpose": [
+                {"phase": phase, "role": role, "rank": rank, "purpose": purpose, "rows": rows}
+                for (phase, role, rank, purpose), rows in sorted(self.evaluation_by_rank.items())
+            ],
+            "protected": 0,
+            "test": 0,
+            "sealed": 0,
+        }
+
+
+def _set_determinism(seed: int) -> torch.Generator:
+    _require(os.environ.get("CUBLAS_WORKSPACE_CONFIG") == ":4096:8", "CUBLAS workspace determinism is not configured")
+    torch.use_deterministic_algorithms(True, warn_only=False)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    return torch.Generator(device="cpu").manual_seed(seed)
+
+
+def _validate_b_initialization(contract: Mapping[str, Any], protocol: Mapping[str, Any]) -> bool:
+    """Require the protocol B tensor to normalize to the contract's basis."""
+    contract_family = _mapping(contract.get("model_family"), "contract model family")
+    contract_shape = _mapping(contract_family.get("parameter_shape"), "contract parameter shapes")
+    contract_initialization = _mapping(contract.get("candidate_fit_procedure", {}).get("initialization"), "contract factor initialization")
+    protocol_family = _mapping(protocol.get("model_family_binding"), "protocol model family")
+    protocol_initialization = _mapping(protocol.get("initialization"), "protocol factor initialization")
+    protocol_b = _mapping(protocol_initialization.get("B"), "protocol B initialization")
+
+    contract_b = contract_initialization.get("B")
+    _require(
+        contract_b == "first r canonical row-major unit vectors in R^20000",
+        f"contract B initialization semantics are not recognized: {contract_b!r}",
+    )
+    formula = re.sub(r"\s+", "", str(protocol_b.get("element_formula"))).lower()
+    formula = formula.replace("1.0", "1").replace("0.0", "0")
+    canonical_formulas = {
+        "b[j,k]=1ifj==kelse0",
+        "b[:,k]=e_k",
+        "b[:,k]=e[k]",
+    }
+    _require(
+        formula in canonical_formulas,
+        f"contract/protocol B initialization conflict: contract={contract_b!r}; protocol={protocol_b.get('element_formula')!r}",
+    )
+
+    expected_shape = [PARAMETER_DIMENSION, "r"]
+    _require(contract_shape.get("B") == expected_shape, "contract B shape changed")
+    _require(protocol_b.get("shape") == expected_shape, "protocol B shape conflicts with contract")
+    _require(protocol_family.get("parameter_dimension") == PARAMETER_DIMENSION, "protocol B dimension conflicts with contract")
+    _require(protocol_family.get("phase_shape") == contract_shape.get("theta_shared") == list(PHASE_SHAPE), "protocol phase layout conflicts with contract")
+    _require(protocol_family.get("rank_domain") == contract.get("candidate_domain", {}).get("ranks") == [0, 1, 2], "protocol rank mapping conflicts with contract")
+    _require(protocol_b.get("rank_order") in {"k=0..r-1", "k ascending from 0 through r-1"}, "protocol B rank-column ordering changed")
+    flattening = re.sub(r"\s+", "", str(protocol_initialization.get("flattening"))).lower()
+    _require(
+        flattening in {
+            "row-majorover(2,1,100,100),j=0..19999",
+            "row-majorflatteningof(2,1,100,100),j=0..19999",
+        },
+        "protocol B flattening conflicts with contract row-major phase layout",
+    )
+    _require("float32" in str(contract_family.get("parameter_dtype")).lower(), "contract phase dtype changed")
+    _require(protocol_initialization.get("parameter_dtype") == "torch.float32", "protocol B dtype conflicts with contract")
+    _require(protocol_initialization.get("device") == "cuda:0", "protocol B device binding changed")
+    _require(
+        protocol_b.get("tensor_layout")
+        == "contiguous torch.float32 matrix; j indexes row-major phase flattening and k indexes rank columns",
+        "protocol B tensor layout changed",
+    )
+    _require(protocol_b.get("requires_grad") is True, "positive-rank B is not trainable")
+    _require(protocol_b.get("rank_zero") == "empty (20000,0) tensor", "rank-zero B mapping changed")
+    return True
+
+
+def _validated_active_authority_identity(
+    contract: Mapping[str, Any],
+    protocol: Mapping[str, Any],
+    *,
+    contract_sha256: str,
+    protocol_sha256: str,
+) -> N3ActiveAuthorityIdentity:
+    _require(contract_sha256 == CONTRACT_SHA256, "active N3 contract SHA changed")
+    _require(protocol_sha256 == PROTOCOL_SHA256, "active N3 protocol SHA changed")
+    _require(contract.get("classification") == "N3_LOW_RANK_MODEL_ORDER_CONTRACT_DEFINED", "model-order contract classification changed")
+    _require(contract.get("result") == "READY" and contract.get("status") == "valid_completed", "model-order contract is not READY")
+    _require(protocol.get("schema") == "lightgen_2d_n3_low_rank_fit_protocol.v2", "fit protocol schema changed")
+    _require(protocol.get("classification") == ACTIVE_PROTOCOL_CLASSIFICATION, "active fit protocol classification changed")
+    _require(protocol.get("semantic_authority_id") == ACTIVE_PROTOCOL_SEMANTIC_AUTHORITY_ID, "active fit protocol semantic authority changed")
+    _require(protocol.get("result") == "READY" and protocol.get("status") == "valid_completed", "fit protocol is not READY")
+    reconciliation = _mapping(protocol.get("authority_reconciliation"), "protocol authority reconciliation")
+    _require(reconciliation.get("active_for_execution") is True, "reconciled protocol is not active")
+    _require(reconciliation.get("superseded_protocol_active_for_execution") is False, "superseded protocol is active for execution")
+    _require(reconciliation.get("supersedes_protocol_sha256") == SUPERSEDED_PROTOCOL_SHA256, "superseded protocol provenance changed")
+    _require(protocol.get("supersedes_protocol_sha256") == SUPERSEDED_PROTOCOL_SHA256, "protocol supersession identity is not consistently bound")
+    _require(reconciliation.get("supersession_reason") == "CONFLICT_WITH_IMMUTABLE_N3_CONTRACT_B_INITIALIZATION", "protocol supersession reason changed")
+    _require(protocol.get("supersession_reason") == reconciliation.get("supersession_reason"), "protocol supersession reason is not consistently bound")
+    _require(protocol.get("contract_authority", {}).get("sha256") == contract_sha256, "fit protocol contract binding changed")
+    execution_boundary = _mapping(protocol.get("execution_boundary"), "protocol execution boundary")
+    _require(execution_boundary.get("required_execution_authorization") == AUTHORIZATION_ID, "required authorization token changed")
+    _require(execution_boundary.get("authorization_consumed") is False, "N3 authorization is already consumed in the active protocol")
+    canonical_b_verified = _validate_b_initialization(contract, protocol)
+    return N3ActiveAuthorityIdentity(
+        contract_sha256=contract_sha256,
+        protocol_sha256=protocol_sha256,
+        protocol_classification=ACTIVE_PROTOCOL_CLASSIFICATION,
+        semantic_authority_id=ACTIVE_PROTOCOL_SEMANTIC_AUTHORITY_ID,
+        superseded_protocol_sha256=SUPERSEDED_PROTOCOL_SHA256,
+        superseded_protocol_active_for_execution=False,
+        canonical_b_normal_form_verified=canonical_b_verified,
+    )
+
+
+def _load_contract_and_protocol(root: Path) -> tuple[dict[str, Any], dict[str, Any], N3ActiveAuthorityIdentity]:
+    _file_ref(root, CONTRACT_PATH, CONTRACT_SHA256, "immutable N3 model-order contract")
+    _file_ref(root, PROTOCOL_PATH, PROTOCOL_SHA256, "immutable N3 fit protocol")
+    contract = json.loads((root / CONTRACT_PATH).read_text(encoding="utf-8"))
+    protocol = json.loads((root / PROTOCOL_PATH).read_text(encoding="utf-8"))
+    active_identity = _validated_active_authority_identity(
+        contract,
+        protocol,
+        contract_sha256=CONTRACT_SHA256,
+        protocol_sha256=PROTOCOL_SHA256,
+    )
+    definition_entrypoint = _mapping(protocol.get("definition_entrypoint"), "reconciled protocol definition entrypoint")
+    _require(definition_entrypoint.get("path") == PROTOCOL_RECONCILIATION_ENTRYPOINT.as_posix(), "reconciled protocol entrypoint changed")
+    _file_ref(root, PROTOCOL_RECONCILIATION_ENTRYPOINT, str(definition_entrypoint.get("sha256")), "reconciled protocol definition entrypoint")
+    _require(contract.get("candidate_domain", {}).get("ranks") == [0, 1, 2], "candidate rank domain changed")
+    _require(protocol.get("fit_budget", {}).get("max_updates") == FIT_UPDATES, "FIT budget changed")
+    _require(protocol.get("optimizer", {}).get("parameter_names") == ["n3_correction.B", "n3_correction.A"], "optimizer parameter boundary changed")
+    contract_initialization = _mapping(contract.get("candidate_fit_procedure", {}).get("initialization"), "contract factor initialization")
+    protocol_initialization = _mapping(protocol.get("initialization"), "protocol factor initialization")
+    _require(
+        contract_initialization.get("A") == "centered +/-1e-6 checkerboard by class/rank coordinate"
+        and _mapping(protocol_initialization.get("A"), "protocol A initialization").get("element_formula")
+        == "A[c,k] = 1e-6 * (-1)**bit_count(c & (1 << k))",
+        "contract/protocol A initialization semantics are not bound",
+    )
+    expected_preflight_ids = [
+        "authority_identity",
+        "rank_zero_exact_baseline",
+        "rank_initialization",
+        "class_lookup",
+        "finite_loss_and_gradients",
+        "trainable_frozen_firewall",
+        "optimizer_semantics",
+        "sampler_first_batch",
+        "temporary_update_rank_1",
+        "temporary_update_rank_2",
+        "exact_rollback",
+        "physical_validity",
+        "cuda_viability",
+        "data_firewall",
+    ]
+    _require(
+        [item.get("id") for item in protocol.get("strict_preflight", {}).get("ordered_checks", [])] == expected_preflight_ids,
+        "strict preflight check identities/order changed",
+    )
+    return dict(contract), dict(protocol), active_identity
+
+
+def _verify_authority_file_identities(root: Path, protocol: Mapping[str, Any]) -> None:
+    """Verify all frozen file identities before loading any scientific tensors."""
+    for source in protocol["source_implementations"].values():
+        ref = _mapping(source, "frozen source implementation")
+        _file_ref(root, ref["path"], ref["sha256"], str(ref.get("role", "frozen source implementation")))
+    for path, expected, role in (
+        (START_CHECKPOINT, START_CHECKPOINT_SHA256, "accepted step9000 checkpoint"),
+        (TRAINING_SOURCE, TRAINING_SOURCE_SHA256, "canonical TRAIN source"),
+        (STRUCTURAL_REFERENCE, STRUCTURAL_REFERENCE_SHA256, "frozen hard structural reference"),
+        (SURROGATE_NORMALIZATION, SURROGATE_NORMALIZATION_SHA256, "accepted surrogate normalization"),
+    ):
+        _file_ref(root, path, expected, role)
+    for authority_group in protocol["frozen_authorities"].values():
+        if isinstance(authority_group, Mapping) and "path" in authority_group and "sha256" in authority_group:
+            _file_ref(root, authority_group["path"], authority_group["sha256"], str(authority_group.get("role", "protocol authority")))
+        elif isinstance(authority_group, Mapping):
+            for name, reference in authority_group.items():
+                ref = _mapping(reference, name)
+                if "path" in ref and "sha256" in ref:
+                    _file_ref(root, ref["path"], ref["sha256"], name)
+
+
+def _load_authorities(
+    root: Path,
+    contract: Mapping[str, Any],
+    protocol: Mapping[str, Any],
+    ledger: SampleReadLedger,
+) -> dict[str, Any]:
+    for source in protocol["source_implementations"].values():
+        ref = _mapping(source, "frozen source implementation")
+        _file_ref(root, ref["path"], ref["sha256"], str(ref.get("role", "frozen source implementation")))
+    _file_ref(root, START_CHECKPOINT, START_CHECKPOINT_SHA256, "accepted step9000 checkpoint")
+    checkpoint = _mapping(safe_torch_load(root / START_CHECKPOINT, expected_sha256=START_CHECKPOINT_SHA256, map_location="cpu"), "accepted step9000 checkpoint")
+    _require(checkpoint.get("completed_updates") == 9000, "accepted starting step changed")
+    _require(checkpoint.get("trainable_parameter_names") == ["generator.phase"], "accepted checkpoint trainable boundary changed")
+    generator = _tensor(checkpoint.get("generator_state"), "accepted generator phase")
+    encoder = _tensor(checkpoint.get("encoder_state"), "accepted encoder phase")
+    _require(tuple(generator.shape) == PHASE_SHAPE and generator.dtype == torch.float32, "accepted generator phase geometry changed")
+    _require(tuple(encoder.shape) == PHASE_SHAPE and encoder.dtype == torch.float32, "accepted encoder phase geometry changed")
+    _finite(generator, "accepted generator phase")
+    _finite(encoder, "accepted encoder phase")
+    _require(tensor_sha256(generator) == protocol["accepted_step9000"]["generator_tensor_sha256"], "accepted generator tensor identity changed")
+    _require(checkpoint.get("frozen_runtime_state_sha256") == protocol["accepted_step9000"]["frozen_runtime_state_sha256"], "accepted frozen runtime identity changed")
+
+    _file_ref(root, TRAINING_SOURCE, TRAINING_SOURCE_SHA256, "canonical TRAIN source")
+    source = torch.load(root / TRAINING_SOURCE, map_location="cpu", weights_only=False)
+    _require(isinstance(source, (tuple, list)) and len(source) == 2, "canonical TRAIN source schema changed")
+    raw_images, labels = source
+    _require(tuple(raw_images.shape) == (60_000, 28, 28) and raw_images.dtype == torch.uint8, "canonical TRAIN image authority changed")
+    _require(tuple(labels.shape) == (60_000,) and labels.dtype == torch.long, "canonical TRAIN labels changed")
+    images = raw_images.unsqueeze(1).to(torch.float32).div_(255.0)
+    ledger.mark_backing_loaded()
+
+    roles = _mapping(_mapping(contract["data_roles"], "N3 data roles")["roles"], "N3 roles")
+    fit = _mapping(roles["N3_FIT"], "N3_FIT")
+    indices_by_class = _mapping(fit["indices_by_class"], "N3_FIT class rows")
+    index_tensors = {name: torch.tensor(_mapping(roles[name], name)["indices"], dtype=torch.long) for name in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")}
+    _require(index_tensors["N3_FIT"].numel() == 2560 and index_tensors["N3_SELECT"].numel() == 1280 and index_tensors["N3_CONFIRM"].numel() == 1280, "frozen N3 role counts changed")
+    combined = torch.cat(tuple(index_tensors.values()))
+    _require(torch.unique(combined).numel() == combined.numel(), "frozen N3 data roles overlap")
+    for name, count in (("N3_FIT", 256), ("N3_SELECT", 128), ("N3_CONFIRM", 128)):
+        role = _mapping(roles[name], name)
+        _require(role.get("data_role") == "TRAIN" and role.get("rows_per_class") == count, f"{name} frozen role metadata changed")
+        _require(role.get("classes") == list(range(CLASS_COUNT)), f"{name} frozen class ordering changed")
+        _require(role.get("label_histogram") == [count] * CLASS_COUNT, f"{name} frozen class histogram changed")
+    # Only N3_FIT labels are inspected before all candidate fits finish.  The
+    # selection and confirmation examples remain untouched until their one-shot
+    # stages, even though their immutable row identities are hash-bound here.
+    for digit in range(CLASS_COUNT):
+        class_rows = torch.tensor(indices_by_class[str(digit)], dtype=torch.long)
+        _require(class_rows.shape == (FIT_ROWS_PER_CLASS,), f"N3_FIT class {digit} order changed")
+        ledger.record_materialized("N3_FIT", class_rows, purpose="fit_label_identity")
+        class_labels = labels.index_select(0, class_rows)
+        _require(torch.equal(class_labels, torch.full_like(class_rows, digit)), f"N3_FIT class {digit} labels changed")
+
+    structural_reference = safe_torch_load(root / STRUCTURAL_REFERENCE, expected_sha256=STRUCTURAL_REFERENCE_SHA256, map_location="cpu")
+    normalization = safe_torch_load(root / SURROGATE_NORMALIZATION, expected_sha256=SURROGATE_NORMALIZATION_SHA256, map_location="cpu")
+    structural_reference = _mapping(structural_reference, "frozen hard structural reference")
+    normalization = _mapping(normalization, "accepted surrogate normalization")
+    _require(structural_reference.get("descriptor", {}).get("dimension") == 337, "hard structural descriptor changed")
+    _require(tuple(normalization["mean"].shape) == (336,) and tuple(normalization["scale"].shape) == (336,), "surrogate normalization shape changed")
+    _require(normalization.get("train_only") is True, "surrogate normalization no longer TRAIN-only")
+    _finite(_tensor(normalization["mean"], "surrogate mean"), "surrogate mean")
+    _finite(_tensor(normalization["scale"], "surrogate scale"), "surrogate scale")
+    _require(bool((_tensor(normalization["scale"], "surrogate scale") >= 1.0e-6).all().item()), "surrogate scale clamp changed")
+
+    for authority_group in protocol["frozen_authorities"].values():
+        if isinstance(authority_group, Mapping) and "path" in authority_group and "sha256" in authority_group:
+            _file_ref(root, authority_group["path"], authority_group["sha256"], str(authority_group.get("role", "protocol authority")))
+        elif isinstance(authority_group, Mapping):
+            for name, reference in authority_group.items():
+                ref = _mapping(reference, name)
+                _file_ref(root, ref["path"], ref["sha256"], name)
+
+    return {
+        "checkpoint": dict(checkpoint),
+        "images": images,
+        "labels": labels,
+        "roles": index_tensors,
+        "indices_by_class": indices_by_class,
+        "structural_reference": dict(structural_reference),
+        "mean": _tensor(normalization["mean"], "surrogate mean").to(torch.float64),
+        "scale": _tensor(normalization["scale"], "surrogate scale").to(torch.float64),
+        "authority_hashes": {
+            "contract": CONTRACT_SHA256,
+            "fit_protocol": PROTOCOL_SHA256,
+            "accepted_step9000": START_CHECKPOINT_SHA256,
+            "training_source": TRAINING_SOURCE_SHA256,
+            "structural_reference": STRUCTURAL_REFERENCE_SHA256,
+            "surrogate_normalization": SURROGATE_NORMALIZATION_SHA256,
+        },
+    }
+
+
+def _load_evaluators(root: Path, device: torch.device, protocol: Mapping[str, Any]) -> tuple[Any, Any, Any]:
+    refs = _mapping(protocol["frozen_authorities"]["evaluator_and_ols_authorities"], "frozen evaluator authorities")
+    es_ref = _mapping(refs["E_S_checkpoint"], "E_S checkpoint ref")
+    ei_ref = _mapping(refs["E_I_checkpoint"], "E_I checkpoint ref")
+    ec_ref = _mapping(refs["E_C_checkpoint"], "E_C checkpoint ref")
+    es_payload = _mapping(safe_torch_load(root / es_ref["path"], expected_sha256=es_ref["sha256"], map_location="cpu"), "E_S checkpoint")
+    _require(es_payload.get("architecture_kind") == SmoothMNISTEvaluator.architecture_kind, "E_S architecture changed")
+    smooth = SmoothMNISTEvaluator().to(device)
+    smooth.load_state_dict(_mapping(es_payload.get("state_dict"), "E_S state"), strict=True)
+    smooth.freeze()
+    independent, ei_payload = load_frozen_evaluator(root / ei_ref["path"], device=device, min_validation_accuracy=0.985)
+    _require(ei_payload.get("architecture_kind") == "frozen_mnist_evaluator_v1", "E_I architecture changed")
+    ec_payload = _mapping(safe_torch_load(root / ec_ref["path"], expected_sha256=ec_ref["sha256"], map_location="cpu"), "E_C checkpoint")
+    _require(ec_payload.get("semantic_authority_id") == third_confirmation.SEMANTIC_AUTHORITY_ID, "E_C semantic authority changed")
+    _require(ec_payload.get("architecture_kind") == third_confirmation.ThirdConfirmationEvaluator.architecture_kind, "E_C architecture changed")
+    ec = third_confirmation.ThirdConfirmationEvaluator().to(device)
+    ec.load_state_dict(_mapping(ec_payload.get("state_dict"), "E_C state"), strict=True)
+    ec.freeze()
+    _require(all(not parameter.requires_grad for model in (smooth, independent, ec) for parameter in model.parameters()), "frozen evaluator firewall changed")
+    return smooth, independent, ec
+
+
+def _make_source_manifest(root: Path) -> dict[str, Any]:
+    config = {"contract_sha256": CONTRACT_SHA256, "protocol_sha256": PROTOCOL_SHA256, "ranks": [0, 1, 2], "updates": FIT_UPDATES, "backend": "SCALAR_REFERENCE_VJP"}
+    paths = [
+        Path(__file__),
+        Path("scripts/research/lightgen/n3/define_lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract_v1.py"),
+        Path("scripts/research/lightgen/n3/define_lightgen_2d_n3_low_rank_fit_protocol_v1.py"),
+        PROTOCOL_RECONCILIATION_ENTRYPOINT,
+        Path("scripts/research/lightgen/execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1.py"),
+        Path("scripts/research/lightgen/execute_lightgen_2d_three_evaluator_robust_semantic_continuation_v1.py"),
+        Path("scripts/research/lightgen/execute_lightgen_2d_establish_third_confirmation_evaluator_v1.py"),
+        Path("src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py"),
+        Path("src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py"),
+        Path("src/ldm_project/v2/optics/d2nn.py"),
+        Path("src/ldm_project/v2/optics/propagation.py"),
+        Path("src/ldm_project/v2/application/research/shared/research_run_control.py"),
+        Path("src/ldm_project/v2/evidence/__init__.py"),
+        Path("src/ldm_project/v2/evidence/io.py"),
+    ]
+    manifest = capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        relevant_paths=paths,
+        config_identity=config,
+    )
+    return manifest.to_dict()
+
+
+def _source_identity_provenance(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    keys = (
+        "source_manifest_id",
+        "execution_source_semantics_id",
+        "dirty_patch_digest",
+        "relevant_source_identity",
+        "branch",
+        "head",
+        "dirty",
+    )
+    identity = {key: manifest.get(key) for key in keys}
+    _require(
+        all(identity[key] not in (None, "") for key in keys)
+        and type(identity["dirty"]) is bool,
+        "execution source provenance is incomplete",
+    )
+    return identity
+
+
+def _make_identity(manifest: Mapping[str, Any], *, attempt_id: str | None = None) -> ResearchRunIdentity:
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id="lightgen-2d-n3-low-rank-model-order-v1",
+        trajectory_id="lightgen-2d-n3-low-rank-model-order-trajectory-v1",
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role=TRAIN_ROLE,
+        config_identity={"contract_sha256": CONTRACT_SHA256, "protocol_sha256": PROTOCOL_SHA256, "rank_domain": [0, 1, 2], "updates_by_rank": {"0": 0, "1": 300, "2": 300}},
+        model_identity="LIGHTGEN_2D_CLASS_CONDITIONED_LOW_RANK_PHASE_CORRECTION_V1",
+        optimizer_identity={"name": "Adam", "parameters": ["n3_correction.B", "n3_correction.A"], "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS), "eps": ADAM_EPS, "weight_decay": WEIGHT_DECAY, "amsgrad": False, "state": "fresh zero for each positive rank"},
+        sampler_identity={"role": "N3_FIT", "batch_size": 10, "rows_per_class": FIT_ROWS_PER_CLASS, "starting_cursor": 0, "increment": 1, "modulo": FIT_ROWS_PER_CLASS},
+        execution_source_semantics_id=str(manifest["execution_source_semantics_id"]),
+        source_manifest_id=str(manifest["source_manifest_id"]),
+        scientific_attempt_id=attempt_id,
+    )
+
+
+def _receipt(
+    manifest: Mapping[str, Any],
+    result: Mapping[str, Any],
+    runtime_provenance: Mapping[str, Any],
+) -> PreflightReceipt:
+    checks = result["check_groups"]
+    resource = dict(_mapping(result["resource"], "preflight resource envelope"))
+    resource["execution_source_identity"] = _source_identity_provenance(manifest)
+    resource["runtime_provenance"] = dict(runtime_provenance)
+    return PreflightReceipt(
+        source_semantics_id=str(manifest["execution_source_semantics_id"]),
+        authorization_id=AUTHORIZATION_ID,
+        checks=checks,
+        selected_engine="SCALAR_REFERENCE_VJP",
+        resource=resource,
+    )
+
+
+def _new_model(rank: int, checkpoint: Mapping[str, Any], device: torch.device) -> N3ClassConditionedModel:
+    model = N3ClassConditionedModel(rank, checkpoint, device)
+    _require(model.runtime.generator.phase.requires_grad is False and model.runtime.encoder.phase.requires_grad is False, "frozen phase boundary changed")
+    if rank == 0:
+        _require(not model.A.requires_grad and not model.B.requires_grad, "rank-zero correction unexpectedly trainable")
+    else:
+        _require(model.A.requires_grad and model.B.requires_grad, "positive-rank A/B are not trainable")
+    return model
+
+
+def _adaptive_pool_axis_weights(input_size: int, output_size: int, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    output_indices = torch.arange(output_size, device=device, dtype=torch.int64)
+    input_indices = torch.arange(input_size, device=device, dtype=torch.int64)
+    starts = torch.div(output_indices * input_size, output_size, rounding_mode="floor")
+    ends = torch.div((output_indices + 1) * input_size + output_size - 1, output_size, rounding_mode="floor")
+    counts = (ends - starts).to(dtype=dtype)
+    membership = (input_indices.unsqueeze(0) >= starts.unsqueeze(1)) & (input_indices.unsqueeze(0) < ends.unsqueeze(1))
+    return membership.to(dtype=dtype) / counts.unsqueeze(1)
+
+
+class _DeterministicCMOSView(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx: Any, raw: torch.Tensor) -> torch.Tensor:
+        _require(
+            raw.ndim == 4 and raw.shape[1] == 1 and tuple(raw.shape[-2:]) == (200, 200),
+            "deterministic FIT CMOS input geometry changed",
+        )
+        _require(raw.dtype in (torch.float32, torch.float64), "deterministic FIT CMOS dtype changed")
+        raw_view = structural_exec.prior._cmos_view(raw)
+        _require(
+            tuple(raw_view.shape) == (raw.shape[0], 1, 28, 28)
+            and raw_view.dtype == raw.dtype
+            and raw_view.device == raw.device,
+            "deterministic FIT CMOS output identity changed",
+        )
+        ctx.save_for_backward(raw)
+        return raw_view
+
+    @staticmethod
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor]:
+        (raw,) = ctx.saved_tensors
+        _require(
+            tuple(grad_output.shape) == (raw.shape[0], 1, 28, 28)
+            and grad_output.dtype == raw.dtype
+            and grad_output.device == raw.device,
+            "deterministic FIT CMOS upstream gradient identity changed",
+        )
+        height_weights = _adaptive_pool_axis_weights(200, 28, device=raw.device, dtype=raw.dtype)
+        width_weights = _adaptive_pool_axis_weights(200, 28, device=raw.device, dtype=raw.dtype)
+        gradient = torch.matmul(torch.matmul(height_weights.transpose(0, 1), grad_output), width_weights)
+        gradient = gradient * ((raw >= 0.0) & (raw <= 1.0)).to(dtype=raw.dtype)
+        _require(
+            gradient.shape == raw.shape and gradient.dtype == raw.dtype and gradient.device == raw.device,
+            "deterministic FIT CMOS gradient identity changed",
+        )
+        return (gradient,)
+
+
+def _deterministic_cmos_view(raw: torch.Tensor) -> torch.Tensor:
+    return _DeterministicCMOSView.apply(raw)
+
+
+def _optimizer(model: N3ClassConditionedModel) -> torch.optim.Adam:
+    _require(model.rank in (1, 2), "rank zero has no optimizer")
+    optimizer = torch.optim.Adam(
+        [model.B, model.A],
+        lr=LEARNING_RATE,
+        betas=ADAM_BETAS,
+        eps=ADAM_EPS,
+        weight_decay=WEIGHT_DECAY,
+        amsgrad=False,
+    )
+    _require(not optimizer.state, "new candidate Adam state is not empty")
+    group = optimizer.param_groups[0]
+    _require(group["params"] == [model.B, model.A], "candidate Adam parameter order changed")
+    return optimizer
+
+
+def _structural_loss(
+    model: N3ClassConditionedModel,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    mean: torch.Tensor,
+    scale: torch.Tensor,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    result = model.forward_from_image(images, labels)
+    raw = result.raw_intensity
+    _finite(raw, "FIT raw CMOS")
+    raw_view = _deterministic_cmos_view(raw)
+    target_view = structural_exec.prior._cmos_view(images)
+    generated = structural_exec._normalized_surrogate(structural_exec._structural_surrogate(raw_view), mean, scale)
+    with torch.no_grad():
+        target = structural_exec._normalized_surrogate(structural_exec._structural_surrogate(target_view), mean, scale)
+    per_row = (generated - target.detach()).square().mean(dim=1)
+    loss = per_row.mean()
+    _finite(loss.reshape(1), "FIT L_struct")
+    return loss, {"per_row_L_struct": per_row, "raw": raw, "target_image": result.image_input.slm_intensity, "result": result}
+
+
+def _semantic_row_losses(
+    raw_view: torch.Tensor,
+    target_view: torch.Tensor,
+    smooth: Any,
+    independent: Any,
+    ec: Any,
+) -> dict[str, torch.Tensor]:
+    s_features, _ = smooth(raw_view)
+    i_features, _ = independent(raw_view)
+    c_features, _ = ec(raw_view)
+    with torch.no_grad():
+        s_target = smooth(target_view)[0]
+        i_target = independent(target_view)[0]
+        c_target = ec(target_view)[0]
+    values = {}
+    for name, generated, target in (("L_S", s_features, s_target), ("L_I", i_features, i_target), ("L_C", c_features, c_target)):
+        generated64 = generated.to(torch.float64)
+        target64 = target.detach().to(torch.float64)
+        difference = F.normalize(generated64, dim=1, eps=1.0e-12) - F.normalize(target64, dim=1, eps=1.0e-12)
+        values[name] = difference.square().sum(dim=1)
+        _finite(values[name], name)
+    return values
+
+
+def _apply_update(model: N3ClassConditionedModel, optimizer: torch.optim.Adam, images: torch.Tensor, labels: torch.Tensor) -> dict[str, Any]:
+    optimizer.zero_grad(set_to_none=True)
+    loss, bundle = _structural_loss(model, images, labels, _ACTIVE_MEAN, _ACTIVE_SCALE)
+    gradients = torch.autograd.grad(loss, (model.B, model.A), allow_unused=False)
+    for name, gradient in zip(("g_B", "g_A"), gradients, strict=True):
+        _finite(gradient, name)
+    optimizer.zero_grad(set_to_none=True)
+    model.B.grad = gradients[0].detach()
+    model.A.grad = gradients[1].detach()
+    optimizer.step()
+    _finite(model.B, "updated B")
+    _finite(model.A, "updated A")
+    return {
+        "L_struct": float(loss.detach().cpu()),
+        "L_struct_by_row": bundle["per_row_L_struct"].detach().cpu().tolist(),
+        "gradient_norm_B": float(torch.linalg.vector_norm(gradients[0].detach().to(torch.float64)).cpu()),
+        "gradient_norm_A": float(torch.linalg.vector_norm(gradients[1].detach().to(torch.float64)).cpu()),
+    }
+
+
+def _preflight_resource_envelope(
+    *,
+    rank1_update_seconds: list[float],
+    rank2_update_seconds: list[float],
+    recovery_write_seconds: float,
+    preflight_elapsed_seconds: float,
+    peak_reserved_gb: float,
+    total_vram_gb: float,
+    cuda_available: bool,
+) -> dict[str, Any]:
+    _require(
+        len(rank1_update_seconds) == len(rank2_update_seconds) == PREFLIGHT_UPDATE_COUNT,
+        "resource estimate requires three timed updates for each positive rank",
+    )
+    timings = [*rank1_update_seconds, *rank2_update_seconds, recovery_write_seconds, preflight_elapsed_seconds]
+    _require(all(math.isfinite(value) and value >= 0.0 for value in timings), "preflight resource timing is invalid")
+    _require(
+        math.isfinite(peak_reserved_gb)
+        and math.isfinite(total_vram_gb)
+        and peak_reserved_gb >= 0.0
+        and total_vram_gb > 0.0,
+        "preflight CUDA memory measurement is invalid",
+    )
+
+    rank1_median = sorted(rank1_update_seconds)[len(rank1_update_seconds) // 2]
+    rank2_median = sorted(rank2_update_seconds)[len(rank2_update_seconds) // 2]
+    projected_rank1_seconds = rank1_median * FIT_UPDATES
+    projected_rank2_seconds = rank2_median * FIT_UPDATES
+    projected_recovery_seconds = recovery_write_seconds * 2 * (FIT_UPDATES // RECOVERY_INTERVAL)
+    projected_run_seconds = projected_rank1_seconds + projected_rank2_seconds + projected_recovery_seconds
+    preflight_budget_seconds = min(600.0, projected_run_seconds * 0.10)
+    cuda_viability_passed = bool(cuda_available and peak_reserved_gb < total_vram_gb)
+    budget_passed = preflight_elapsed_seconds <= preflight_budget_seconds
+    failure_reasons = []
+    if not cuda_available:
+        failure_reasons.append("CUDA_DEVICE_UNAVAILABLE")
+    if peak_reserved_gb >= total_vram_gb:
+        failure_reasons.append("CUDA_MEMORY_ENVELOPE_FAILED")
+    if not budget_passed:
+        failure_reasons.append("PREFLIGHT_BUDGET_EXCEEDED")
+    return {
+        "rank1_update_seconds": list(rank1_update_seconds),
+        "rank2_update_seconds": list(rank2_update_seconds),
+        "rank1_median_update_seconds": rank1_median,
+        "rank2_median_update_seconds": rank2_median,
+        "recovery_write_seconds": recovery_write_seconds,
+        "projected_rank1_fit_seconds": projected_rank1_seconds,
+        "projected_rank2_fit_seconds": projected_rank2_seconds,
+        "projected_recovery_write_seconds": projected_recovery_seconds,
+        "projected_fit_seconds": projected_rank1_seconds + projected_rank2_seconds,
+        "projected_run_seconds": projected_run_seconds,
+        "preflight_elapsed_seconds": preflight_elapsed_seconds,
+        "preflight_budget_seconds": preflight_budget_seconds,
+        "peak_reserved_gb": peak_reserved_gb,
+        "total_vram_gb": total_vram_gb,
+        "cuda_available": bool(cuda_available),
+        "cuda_viability_passed": cuda_viability_passed,
+        "budget_passed": budget_passed,
+        "passed": cuda_viability_passed and budget_passed,
+        "failure_reasons": failure_reasons,
+    }
+
+
+def _verify_preflight_state_roundtrip(
+    *,
+    authorities: Mapping[str, Any],
+    model: N3ClassConditionedModel,
+    optimizer: torch.optim.Adam,
+    sampler: N3FitSampler,
+    history: list[Mapping[str, Any]],
+    manifest: Mapping[str, Any],
+    device: torch.device,
+    ledger: SampleReadLedger,
+) -> dict[str, Any]:
+    _require(
+        len(history) == PREFLIGHT_UPDATE_COUNT
+        and sampler.cursor == PREFLIGHT_UPDATE_COUNT % FIT_ROWS_PER_CLASS,
+        "preflight temporary state is not at the expected three-update boundary",
+    )
+    state = {
+        "schema": "n3_preflight_temporary_state.v1",
+        "rank": model.rank,
+        "completed_updates": len(history),
+        "A": model.A.detach().cpu().clone(),
+        "B": model.B.detach().cpu().clone(),
+        "optimizer_state": copy.deepcopy(optimizer.state_dict()),
+        "sampler_cursor": sampler.cursor,
+        "rng_state": _rng_snapshot(),
+        "history": copy.deepcopy(history),
+        "contract_sha256": CONTRACT_SHA256,
+        "protocol_sha256": PROTOCOL_SHA256,
+        "source_manifest": dict(manifest),
+    }
+    with tempfile.TemporaryDirectory(prefix="n3-preflight-state-") as temporary_root:
+        state_path = Path(temporary_root) / "temporary_state.pt"
+        write_started = time.perf_counter()
+        atomic_torch_save_new(state_path, state, artifact_kind="N3 temporary preflight state")
+        state_write_seconds = time.perf_counter() - write_started
+        restored = _mapping(safe_torch_load(state_path, map_location="cpu"), "temporary preflight state")
+        _require(
+            restored.get("schema") == "n3_preflight_temporary_state.v1"
+            and restored.get("rank") == model.rank == 1
+            and restored.get("completed_updates") == PREFLIGHT_UPDATE_COUNT
+            and restored.get("contract_sha256") == CONTRACT_SHA256
+            and restored.get("protocol_sha256") == PROTOCOL_SHA256
+            and restored.get("source_manifest") == dict(manifest),
+            "temporary preflight state identity changed",
+        )
+        resumed_model = _new_model(1, authorities["checkpoint"], device).train()
+        resumed_optimizer = _optimizer(resumed_model)
+        resumed_sampler = N3FitSampler(authorities["indices_by_class"])
+        resumed_model.load_trainable_state(
+            {"n3_correction.A": restored["A"], "n3_correction.B": restored["B"]}
+        )
+        resumed_optimizer.load_state_dict(dict(restored["optimizer_state"]))
+        resumed_sampler.cursor = int(restored["sampler_cursor"])
+        _restore_rng(_mapping(restored.get("rng_state"), "temporary preflight RNG"))
+
+        state_equal = _tensor_state_sha256(resumed_model.state_dict()) == _tensor_state_sha256(model.state_dict())
+        optimizer_equal = _exact_equal(resumed_optimizer.state_dict(), optimizer.state_dict())
+        cursor_equal = resumed_sampler.cursor == sampler.cursor
+        rng_equal = _rng_equal(_rng_snapshot(), restored["rng_state"])
+        history_equal = _exact_equal(restored["history"], history)
+
+        expected_indices, expected_labels = sampler.next_batch()
+        resumed_indices, resumed_labels = resumed_sampler.next_batch()
+        next_batch_equal = torch.equal(expected_indices, resumed_indices) and torch.equal(expected_labels, resumed_labels)
+        _require(next_batch_equal, "temporary preflight resumed N3_FIT batch changed")
+        ledger.record_materialized("N3_FIT", expected_indices, rank=1, purpose="preflight_state_roundtrip")
+        ledger.record_materialized("N3_FIT", resumed_indices, rank=1, purpose="preflight_state_roundtrip")
+        expected_images = authorities["images"].index_select(0, expected_indices).to(device)
+        resumed_images = authorities["images"].index_select(0, resumed_indices).to(device)
+        ledger.record_evaluated("N3_FIT", expected_indices, rank=1, purpose="preflight_state_roundtrip_expected")
+        _restore_rng(_mapping(restored.get("rng_state"), "temporary preflight RNG"))
+        expected_trace = _apply_update(model, optimizer, expected_images, expected_labels.to(device))
+        ledger.record_evaluated("N3_FIT", resumed_indices, rank=1, purpose="preflight_state_roundtrip_resumed")
+        _restore_rng(_mapping(restored.get("rng_state"), "temporary preflight RNG"))
+        resumed_trace = _apply_update(resumed_model, resumed_optimizer, resumed_images, resumed_labels.to(device))
+        next_update_equal = (
+            _exact_equal(expected_trace, resumed_trace)
+            and _tensor_state_sha256(model.state_dict()) == _tensor_state_sha256(resumed_model.state_dict())
+            and _exact_equal(optimizer.state_dict(), resumed_optimizer.state_dict())
+            and sampler.cursor == resumed_sampler.cursor
+        )
+        passed = all((state_equal, optimizer_equal, cursor_equal, rng_equal, history_equal, next_batch_equal, next_update_equal))
+    return {
+        "passed": passed,
+        "completed_updates_before_roundtrip": PREFLIGHT_UPDATE_COUNT,
+        "state_equal": state_equal,
+        "optimizer_equal": optimizer_equal,
+        "cursor_equal": cursor_equal,
+        "rng_equal": rng_equal,
+        "history_equal": history_equal,
+        "next_batch_equal": next_batch_equal,
+        "next_update_equal": next_update_equal,
+        "state_write_seconds": state_write_seconds,
+        "temporary_state_removed": not state_path.exists(),
+    }
+
+
+_ACTIVE_MEAN: torch.Tensor | None = None
+_ACTIVE_SCALE: torch.Tensor | None = None
+
+
+def _cuda_memory(device: torch.device) -> dict[str, float | int]:
+    torch.cuda.synchronize(device)
+    return {
+        "allocated_gb": torch.cuda.memory_allocated(device) / (1024**3),
+        "reserved_gb": torch.cuda.memory_reserved(device) / (1024**3),
+        "peak_allocated_gb": torch.cuda.max_memory_allocated(device) / (1024**3),
+        "peak_reserved_gb": torch.cuda.max_memory_reserved(device) / (1024**3),
+    }
+
+
+def _runtime_snapshot(model: N3ClassConditionedModel) -> dict[str, Any]:
+    return {
+        "model": {name: value.detach().clone() for name, value in model.state_dict().items()},
+        "training": {name: module.training for name, module in model.named_modules()},
+        "input_diagnostics": copy.deepcopy(model.runtime.input_relay.last_diagnostic),
+        "output_diagnostics": copy.deepcopy(model.runtime.output_relay.last_diagnostic),
+    }
+
+
+def _restore_runtime(model: N3ClassConditionedModel, snapshot: Mapping[str, Any]) -> None:
+    model.load_state_dict(snapshot["model"], strict=True)
+    for name, module in model.named_modules():
+        module.training = bool(snapshot["training"][name])
+    model.runtime.input_relay.last_diagnostic = copy.deepcopy(snapshot["input_diagnostics"])
+    model.runtime.output_relay.last_diagnostic = copy.deepcopy(snapshot["output_diagnostics"])
+    for parameter in model.parameters():
+        parameter.grad = None
+
+
+def _first_fit_batch(authorities: Mapping[str, Any], device: torch.device, ledger: SampleReadLedger) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    sampler = N3FitSampler(authorities["indices_by_class"])
+    indices, labels = sampler.next_batch()
+    _require(sampler.cursor == 1, "N3_FIT cursor increment changed")
+    ledger.record_materialized("N3_FIT", indices, purpose="preflight_first_batch")
+    _require(torch.equal(authorities["labels"].index_select(0, indices), labels.cpu()), "N3_FIT first batch labels changed")
+    return indices, authorities["images"].index_select(0, indices).to(device), labels.to(device)
+
+
+def _preflight(
+    root: Path,
+    authorities: Mapping[str, Any],
+    contract: Mapping[str, Any],
+    protocol: Mapping[str, Any],
+    active_identity: N3ActiveAuthorityIdentity,
+    manifest: Mapping[str, Any],
+    device: torch.device,
+    smooth: Any,
+    independent: Any,
+    ec: Any,
+    preflight_started: float,
+    ledger: SampleReadLedger,
+) -> dict[str, Any]:
+    global _ACTIVE_MEAN, _ACTIVE_SCALE
+    _ACTIVE_MEAN = authorities["mean"].to(device)
+    _ACTIVE_SCALE = authorities["scale"].to(device)
+    checks: list[dict[str, Any]] = []
+    all_groups = {
+        CORRECTNESS_INVARIANTS: {"status": "PASS", "checks": {}},
+        RESOURCE_ENVELOPE: {"status": "PASS", "checks": {}},
+        IMPLEMENTATION_SELECTION: {"status": "PASS", "checks": {}},
+    }
+    process_rng = _rng_snapshot()
+    determinism = {
+        "algorithms": torch.are_deterministic_algorithms_enabled(),
+        "warn_only": torch.is_deterministic_algorithms_warn_only_enabled(),
+        "cudnn_deterministic": torch.backends.cudnn.deterministic,
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+        "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+        "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+    }
+    torch.cuda.reset_peak_memory_stats(device)
+
+    def record(
+        order: int,
+        check_id: str,
+        passed: bool,
+        details: Mapping[str, Any],
+        group: str = CORRECTNESS_INVARIANTS,
+    ) -> None:
+        item = {"order": order, "id": check_id, "status": "PASS" if passed else "FAIL", **dict(details)}
+        checks.append(item)
+        all_groups[group]["checks"][check_id] = item
+        if not passed:
+            all_groups[group]["status"] = "FAIL"
+            error = N3ExecutionError(f"strict preflight {check_id} failed")
+            error.preflight_evidence = {
+                "failure_family": "RESOURCE_ENVELOPE" if group == RESOURCE_ENVELOPE else "PREFLIGHT_CHECK",
+                "classification": "INVALID_HARNESS",
+                "failed_check": item,
+                "ordered_checks_completed": list(checks),
+                "check_groups": copy.deepcopy(all_groups),
+            }
+            raise error
+
+    # 1. This identity was validated by the pure bootstrap before any tensor
+    # loading or CUDA setup; its receipt entry preserves frozen protocol order.
+    record(
+        1,
+        "authority_identity",
+        active_identity.contract_sha256 == CONTRACT_SHA256
+        and active_identity.protocol_sha256 == PROTOCOL_SHA256
+        and active_identity.canonical_b_normal_form_verified
+        and authorities["authority_hashes"]["accepted_step9000"] == START_CHECKPOINT_SHA256
+        and manifest.get("execution_source_semantics_id")
+        and not (root / ATTEMPT_DIR).exists(),
+        {
+            "active_authority_identity": asdict(active_identity),
+            "accepted_step9000_sha256": START_CHECKPOINT_SHA256,
+            "authorization_id": AUTHORIZATION_ID,
+            "consumer_branch": manifest.get("branch"),
+            "consumer_head": manifest.get("head"),
+            "execution_source_semantics_id": manifest.get("execution_source_semantics_id"),
+            "attempt_01_absent": not (root / ATTEMPT_DIR).exists(),
+        },
+        IMPLEMENTATION_SELECTION,
+    )
+    indices, batch, labels = _first_fit_batch(authorities, device, ledger)
+
+    # 2. Exact shared rank-zero reproduction against the unconditioned runtime.
+    # The production optical kernel cache is process-global and its key does
+    # not encode inference-tensor status.  Start this preflight boundary with
+    # ordinary cached tensors so later autograd cannot inherit an inference
+    # kernel from earlier application work in the same process.
+    clear_production_transfer_cache()
+    baseline = _new_model(0, authorities["checkpoint"], device).eval()
+    candidate0 = _new_model(0, authorities["checkpoint"], device).eval()
+    ledger.record_evaluated("N3_FIT", indices, rank=0, purpose="preflight_shared_baseline")
+    ledger.record_evaluated("N3_FIT", indices, rank=0, purpose="preflight_rank_zero_equivalence")
+    with torch.no_grad():
+        shared_raw = baseline.runtime.forward_from_image(batch).raw_intensity
+        rank0_raw = candidate0.forward_from_image(batch, labels).raw_intensity
+    record(2, "rank_zero_exact_baseline", torch.equal(shared_raw, rank0_raw), {"max_abs_raw_difference": float((shared_raw - rank0_raw).abs().max().cpu())})
+    del baseline, candidate0, shared_raw, rank0_raw
+    torch.cuda.empty_cache()
+
+    # 3. Formula, shape, dtype, nested basis and deterministic initialization.
+    factor_hashes = {}
+    initialization_details: dict[str, Any] = {}
+    initialization_passed = True
+    for rank in (1, 2):
+        first = initialize_factors(rank, device=device)
+        second = initialize_factors(rank, device=device)
+        passed = all(torch.equal(a, b) for a, b in zip(first, second, strict=True))
+        passed = passed and first[0].shape == (PARAMETER_DIMENSION, rank) and first[1].shape == (CLASS_COUNT, rank)
+        passed = passed and first[0].dtype == first[1].dtype == torch.float32
+        factor_hashes[str(rank)] = {"B": tensor_sha256(first[0]), "A": tensor_sha256(first[1])}
+        initialization_passed = initialization_passed and passed
+        initialization_details[str(rank)] = {"B_shape": list(first[0].shape), "A_shape": list(first[1].shape), "dtype": "torch.float32", "device": str(device), "tensor_sha256": factor_hashes[str(rank)]}
+    record(3, "rank_initialization", initialization_passed, {"ranks": initialization_details})
+
+    # 4. Exercise the actual sample-conditioned phase injection and verify its
+    # exact label-to-row mapping before the optimizer is created.
+    model2 = _new_model(2, authorities["checkpoint"], device)
+    ledger.record_evaluated("N3_FIT", indices, rank=2, purpose="preflight_class_lookup")
+    with torch.no_grad():
+        correction = model2.correction(labels)
+        expected = model2.A.index_select(0, labels) @ model2.B.T
+        expected = expected.reshape(labels.numel(), *PHASE_SHAPE)
+        rank2_result = model2.forward_from_image(batch, labels)
+    lookup_ok = (
+        correction.shape == (CLASS_COUNT, *PHASE_SHAPE)
+        and correction.dtype == model2.runtime.generator.phase.dtype
+        and correction.device == model2.runtime.generator.phase.device
+        and torch.equal(correction, expected)
+        and torch.equal(labels, torch.arange(CLASS_COUNT, device=device, dtype=torch.long))
+        and tuple(rank2_result.raw_intensity.shape) == (CLASS_COUNT, 1, 200, 200)
+        and bool(torch.isfinite(rank2_result.raw_intensity).all().item())
+    )
+    record(4, "class_lookup", lookup_ok, {"labels": labels.detach().cpu().tolist(), "correction_shape": list(correction.shape), "class_order": "0..9", "phase_axes": list(PHASE_SHAPE), "exact_formula_match": torch.equal(correction, expected), "rank2_forward_finite": bool(torch.isfinite(rank2_result.raw_intensity).all().item())})
+    del model2, correction, expected, rank2_result
+
+    # 5. Exact frozen FIT objective and finite scalar-reference gradients.
+    _set_determinism(rank_seed(1))
+    model1 = _new_model(1, authorities["checkpoint"], device).train()
+    model1_snapshot = _runtime_snapshot(model1)
+    model1_frozen_sha = _tensor_state_sha256(structural_exec.prior._frozen_runtime_state(model1))
+    ledger.record_evaluated("N3_FIT", indices, rank=1, purpose="preflight_finite_gradient")
+    loss, bundle = _structural_loss(model1, batch, labels, _ACTIVE_MEAN, _ACTIVE_SCALE)
+    grads = torch.autograd.grad(loss, (model1.B, model1.A), allow_unused=False)
+    finite = bool(torch.isfinite(loss).item()) and all(bool(torch.isfinite(value).all().item()) for value in grads)
+    record(5, "finite_loss_and_gradients", finite, {"L_struct": float(loss.detach().cpu()), "gradient_norm_B": float(torch.linalg.vector_norm(grads[0].detach().to(torch.float64)).cpu()), "gradient_norm_A": float(torch.linalg.vector_norm(grads[1].detach().to(torch.float64)).cpu()), "fit_terms": ["L_struct"], "backend": "SCALAR_REFERENCE_VJP"})
+
+    # 6. Only A/B are trainable; the accepted optical state is unchanged.
+    trainable = [name for name, parameter in model1.named_parameters() if parameter.requires_grad]
+    frozen_after_forward = _tensor_state_sha256(structural_exec.prior._frozen_runtime_state(model1))
+    nontrainable_matches = all(torch.equal(value, model1.state_dict()[name]) for name, value in model1_snapshot["model"].items() if name not in {"A", "B"})
+    frozen_identity_matches = model1_frozen_sha == protocol["accepted_step9000"]["frozen_runtime_state_sha256"]
+    record(6, "trainable_frozen_firewall", trainable == ["B", "A"] and nontrainable_matches and frozen_identity_matches, {"trainable_parameters": trainable, "frozen_runtime_state_sha256": frozen_after_forward, "all_nontrainable_state_unchanged": nontrainable_matches, "accepted_frozen_runtime_identity_matches": frozen_identity_matches})
+
+    # 7. Fresh-zero Adam semantics are checked independently for each positive rank.
+    optimizer1 = _optimizer(model1)
+    optimizer_group = optimizer1.param_groups[0]
+    optimizer_ok = (
+        not optimizer1.state
+        and optimizer_group["params"] == [model1.B, model1.A]
+        and optimizer_group["lr"] == LEARNING_RATE
+        and tuple(optimizer_group["betas"]) == ADAM_BETAS
+        and optimizer_group["eps"] == ADAM_EPS
+        and optimizer_group["weight_decay"] == WEIGHT_DECAY
+        and optimizer_group["amsgrad"] is False
+    )
+    record(7, "optimizer_semantics", optimizer_ok, {"state_entries_before_first_step": len(optimizer1.state), "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS), "eps": ADAM_EPS, "weight_decay": WEIGHT_DECAY, "amsgrad": False, "historical_step9000_adam_consumed": False}, IMPLEMENTATION_SELECTION)
+
+    # 8. The first training batch is one TRAIN row/class from cursor zero.
+    sampler = N3FitSampler(authorities["indices_by_class"])
+    batch_indices, batch_labels = sampler.next_batch()
+    role_ok = torch.equal(batch_indices, indices) and torch.equal(batch_labels, labels.cpu()) and sampler.cursor == 1
+    record(8, "sampler_first_batch", role_ok, {"role": "N3_FIT", "indices": batch_indices.tolist(), "labels": batch_labels.tolist(), "cursor_after_one": sampler.cursor, "N3_SELECT_reads": 0, "N3_CONFIRM_reads": 0, "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0}}, IMPLEMENTATION_SELECTION)
+
+    # 9-11. Exercise the real update path for each positive rank, then restore
+    # model, optimizer, sampler, evaluator gradients and process RNG exactly.
+    rank1_rng = _rng_snapshot()
+    evaluator_grads = [parameter.grad for evaluator in (smooth, independent, ec) for parameter in evaluator.parameters()]
+    initial_cursor = sampler.cursor
+    rank1_optimizer_snapshot = copy.deepcopy(optimizer1.state_dict())
+    rank1_trial_trace: list[dict[str, Any]] = []
+    rank1_state_roundtrip: dict[str, Any] = {}
+    rank1_changed = False
+    rank1_rollback = False
+    try:
+        sampler.cursor = 0
+        _restore_rng(rank1_rng)
+        rank1_started = time.perf_counter()
+        for update in range(1, PREFLIGHT_UPDATE_COUNT + 1):
+            torch.cuda.synchronize(device)
+            update_started = time.perf_counter()
+            trial_indices, trial_labels = sampler.next_batch()
+            ledger.record_materialized("N3_FIT", trial_indices, rank=1, purpose="preflight_update_batch")
+            _require(torch.equal(authorities["labels"].index_select(0, trial_indices), trial_labels), f"rank-1 preflight labels changed at temporary update {update}")
+            trial_images = authorities["images"].index_select(0, trial_indices).to(device)
+            ledger.record_evaluated("N3_FIT", trial_indices, rank=1, purpose="preflight_update")
+            trace = _apply_update(model1, optimizer1, trial_images, trial_labels.to(device))
+            torch.cuda.synchronize(device)
+            trace["elapsed_seconds"] = time.perf_counter() - update_started
+            rank1_trial_trace.append(trace)
+        rank1_changed = not torch.equal(model1_snapshot["model"]["A"], model1.A.detach()) and not torch.equal(model1_snapshot["model"]["B"], model1.B.detach())
+        rank1_frozen_unchanged = all(torch.equal(value, model1.state_dict()[name]) for name, value in model1_snapshot["model"].items() if name not in {"A", "B"})
+        rank1_state_roundtrip = _verify_preflight_state_roundtrip(
+            authorities=authorities,
+            model=model1,
+            optimizer=optimizer1,
+            sampler=sampler,
+            history=rank1_trial_trace,
+            manifest=manifest,
+            device=device,
+            ledger=ledger,
+        )
+        rank1_seconds = time.perf_counter() - rank1_started
+        record(9, "temporary_update_rank_1", rank1_changed and rank1_frozen_unchanged and rank1_state_roundtrip["passed"], {"temporary_updates": PREFLIGHT_UPDATE_COUNT + 2, "rank1_update_seconds": [item["elapsed_seconds"] for item in rank1_trial_trace], "first_update": rank1_trial_trace[0], "last_update": rank1_trial_trace[-1], "A_B_changed": rank1_changed, "frozen_unchanged": rank1_frozen_unchanged, "temporary_state_roundtrip": rank1_state_roundtrip, "elapsed_seconds": rank1_seconds})
+    finally:
+        _restore_runtime(model1, model1_snapshot)
+        optimizer1.load_state_dict(rank1_optimizer_snapshot)
+        sampler.cursor = initial_cursor
+        _restore_rng(rank1_rng)
+    rank1_rollback = (
+        _tensor_state_sha256(model1.state_dict()) == _tensor_state_sha256(model1_snapshot["model"])
+        and _exact_equal(optimizer1.state_dict(), rank1_optimizer_snapshot)
+        and sampler.cursor == initial_cursor
+        and _rng_equal(_rng_snapshot(), rank1_rng)
+    )
+
+    _set_determinism(rank_seed(2))
+    model2 = _new_model(2, authorities["checkpoint"], device).train()
+    model2_snapshot = _runtime_snapshot(model2)
+    optimizer2 = _optimizer(model2)
+    rank2_optimizer_snapshot = copy.deepcopy(optimizer2.state_dict())
+    rank2_rng = _rng_snapshot()
+    rank2_cursor = sampler.cursor
+    rank2_trial_trace: list[dict[str, Any]] = []
+    rank2_changed = False
+    rank2_rollback = False
+    try:
+        sampler.cursor = 0
+        for update in range(1, PREFLIGHT_UPDATE_COUNT + 1):
+            torch.cuda.synchronize(device)
+            update_started = time.perf_counter()
+            trial_indices, trial_labels = sampler.next_batch()
+            ledger.record_materialized("N3_FIT", trial_indices, rank=2, purpose="preflight_update_batch")
+            _require(torch.equal(authorities["labels"].index_select(0, trial_indices), trial_labels), f"rank-2 preflight labels changed at temporary update {update}")
+            trial_images = authorities["images"].index_select(0, trial_indices).to(device)
+            ledger.record_evaluated("N3_FIT", trial_indices, rank=2, purpose="preflight_update")
+            trace = _apply_update(model2, optimizer2, trial_images, trial_labels.to(device))
+            torch.cuda.synchronize(device)
+            trace["elapsed_seconds"] = time.perf_counter() - update_started
+            rank2_trial_trace.append(trace)
+        rank2_changed = not torch.equal(model2_snapshot["model"]["A"], model2.A.detach()) and not torch.equal(model2_snapshot["model"]["B"], model2.B.detach())
+        rank2_frozen_unchanged = all(torch.equal(value, model2.state_dict()[name]) for name, value in model2_snapshot["model"].items() if name not in {"A", "B"})
+        record(10, "temporary_update_rank_2", rank2_changed and rank2_frozen_unchanged and bool(optimizer2.state), {"first_update": rank2_trial_trace[0], "last_update": rank2_trial_trace[-1], "rank2_update_seconds": [item["elapsed_seconds"] for item in rank2_trial_trace], "A_B_changed": rank2_changed, "frozen_unchanged": rank2_frozen_unchanged, "temporary_updates": PREFLIGHT_UPDATE_COUNT})
+    finally:
+        _restore_runtime(model2, model2_snapshot)
+        optimizer2.load_state_dict(rank2_optimizer_snapshot)
+        sampler.cursor = rank2_cursor
+        _restore_rng(rank2_rng)
+    rank2_rollback = (
+        _tensor_state_sha256(model2.state_dict()) == _tensor_state_sha256(model2_snapshot["model"])
+        and _exact_equal(optimizer2.state_dict(), rank2_optimizer_snapshot)
+        and sampler.cursor == rank2_cursor
+        and _rng_equal(_rng_snapshot(), rank2_rng)
+    )
+
+    # 11. Exact full-state rollback for both rank trials and process RNG.
+    _restore_rng(process_rng)
+    torch.use_deterministic_algorithms(determinism["algorithms"], warn_only=determinism["warn_only"])
+    torch.backends.cudnn.deterministic = determinism["cudnn_deterministic"]
+    torch.backends.cudnn.benchmark = determinism["cudnn_benchmark"]
+    torch.backends.cuda.matmul.allow_tf32 = determinism["cuda_matmul_allow_tf32"]
+    torch.backends.cudnn.allow_tf32 = determinism["cudnn_allow_tf32"]
+    determinism_restored = (
+        torch.are_deterministic_algorithms_enabled() == determinism["algorithms"]
+        and torch.is_deterministic_algorithms_warn_only_enabled() == determinism["warn_only"]
+        and torch.backends.cudnn.deterministic == determinism["cudnn_deterministic"]
+        and torch.backends.cudnn.benchmark == determinism["cudnn_benchmark"]
+        and torch.backends.cuda.matmul.allow_tf32 == determinism["cuda_matmul_allow_tf32"]
+        and torch.backends.cudnn.allow_tf32 == determinism["cudnn_allow_tf32"]
+    )
+    process_rng_restored = _rng_equal(_rng_snapshot(), process_rng)
+    rollback = rank1_rollback and rank2_rollback and process_rng_restored and determinism_restored and all(value is None for value in evaluator_grads)
+    record(11, "exact_rollback", rollback, {"rank1_model": rank1_rollback, "rank1_optimizer": _exact_equal(optimizer1.state_dict(), rank1_optimizer_snapshot), "rank2_model": rank2_rollback, "rank2_optimizer": _exact_equal(optimizer2.state_dict(), rank2_optimizer_snapshot), "sampler_cursor": sampler.cursor, "process_rng": process_rng_restored, "determinism_runtime": determinism_restored, "evaluator_grads_unchanged": all(value is None for value in evaluator_grads), "rank1_temporary_state_roundtrip": rank1_state_roundtrip})
+
+    # 12. Physical and optical outputs remain finite, nonconstant and in the
+    # frozen real-path geometry; no surrogate optical replacement is used.
+    physical_result = bundle["result"]
+    _require(physical_result.image_input is not None and physical_result.ols_input_field is not None, "physical optical path is incomplete")
+    target_image = physical_result.image_input.slm_intensity
+    raw = bundle["raw"]
+    powers = contracted_plane_powers(physical_result)
+    raw_validity = structural_exec.prior._raw_validity(raw)
+    reconstruction_mse = float((raw - target_image).square().mean().to(torch.float64).cpu())
+    physical_ok = (
+        physical_result.image_input is not None
+        and physical_result.ols_input_field is not None
+        and raw.shape == target_image.shape
+        and tuple(raw.shape) == (CLASS_COUNT, 1, 200, 200)
+        and raw.dtype == target_image.dtype == torch.float32
+        and bool(torch.isfinite(target_image).all().item())
+        and bool(torch.isfinite(powers).all().item())
+        and bool((powers >= 0.0).all().item())
+        and raw_validity["nonconstant_fraction"] == 1.0
+        and raw_validity["zero_image_count"] == 0
+        and math.isfinite(reconstruction_mse)
+    )
+    record(12, "physical_validity", physical_ok, {"finite_raw_cmos": raw_validity["finite"], "raw_cmos": raw_validity, "finite_nonnegative_five_plane_power": bool(torch.isfinite(powers).all().item() and (powers >= 0.0).all().item()), "reconstruction_mse": reconstruction_mse, "phase_only": True, "clip_wrap_projection": False})
+
+    # Free autograd graph/memory before final resource and firewall checks.
+    del loss, bundle, grads, raw, target_image, powers, physical_result, model1, model2, optimizer1, optimizer2, model1_snapshot, model2_snapshot, rank1_optimizer_snapshot, rank2_optimizer_snapshot
+    torch.cuda.synchronize(device)
+    memory = _cuda_memory(device)
+    total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+    cuda_available = torch.cuda.is_available()
+    device_name = torch.cuda.get_device_name(device) if cuda_available else None
+    cuda_viability_passed = cuda_available and memory["peak_reserved_gb"] < total
+    cuda_details = {
+        "device": device_name,
+        "logical_device": str(device),
+        "total_vram_gb": total,
+        **memory,
+        "oom": False,
+        "rank1_temporary_updates": PREFLIGHT_UPDATE_COUNT,
+        "rank2_temporary_updates": PREFLIGHT_UPDATE_COUNT,
+        "temporary_update_failures": 0,
+        "rank1_update_seconds": [float(item["elapsed_seconds"]) for item in rank1_trial_trace],
+        "rank2_update_seconds": [float(item["elapsed_seconds"]) for item in rank2_trial_trace],
+    }
+    record(13, "cuda_viability", cuda_viability_passed, cuda_details, RESOURCE_ENVELOPE)
+    firewall = ledger.summary()
+    record(
+        14,
+        "data_firewall",
+        firewall["protected"] == firewall["test"] == firewall["sealed"] == 0
+        and firewall["N3_SELECT"]["role_rows_materialized"] == firewall["N3_SELECT"]["role_rows_evaluated"] == 0
+        and firewall["N3_CONFIRM"]["role_rows_materialized"] == firewall["N3_CONFIRM"]["role_rows_evaluated"] == 0,
+        firewall,
+    )
+    _require(_rng_equal(_rng_snapshot(), process_rng), "preflight process RNG changed after rollback")
+    preflight_resource = _preflight_resource_envelope(
+        rank1_update_seconds=cuda_details["rank1_update_seconds"],
+        rank2_update_seconds=cuda_details["rank2_update_seconds"],
+        recovery_write_seconds=rank1_state_roundtrip["state_write_seconds"],
+        preflight_elapsed_seconds=time.perf_counter() - preflight_started,
+        peak_reserved_gb=memory["peak_reserved_gb"],
+        total_vram_gb=total,
+        cuda_available=cuda_available,
+    )
+    budget_check = {
+        "status": "PASS" if preflight_resource["budget_passed"] else "FAIL",
+        **preflight_resource,
+    }
+    checks[12]["resource_estimate"] = preflight_resource
+    all_groups[RESOURCE_ENVELOPE]["checks"]["operational_preflight_budget"] = budget_check
+    if not preflight_resource["budget_passed"]:
+        all_groups[RESOURCE_ENVELOPE]["status"] = "FAIL"
+        error = N3ExecutionError("strict preflight operational resource budget failed")
+        error.preflight_evidence = {
+            "failure_family": "RESOURCE_ENVELOPE",
+            "classification": "RESOURCE_ABORTED",
+            "failed_check": {"id": "operational_preflight_budget", **budget_check},
+            "ordered_checks_completed": list(checks),
+            "check_groups": copy.deepcopy(all_groups),
+            "resource": preflight_resource,
+        }
+        raise error
+    return {
+        "schema": PREFLIGHT_SCHEMA,
+        "status": "READY",
+        "ordered_checks": checks,
+        "check_groups": all_groups,
+        "resource": {"device": device_name, "total_vram_gb": total, **memory, **preflight_resource},
+        "sample_reads": ledger.summary(),
+        "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+        "updates_persisted": 0,
+        "temporary_updates_rolled_back": PREFLIGHT_UPDATE_COUNT * 2 + 2,
+        "temporary_state_roundtrip": rank1_state_roundtrip,
+        "rollback": {"rank1": rank1_rollback, "rank2": rank2_rollback, "process_rng": _rng_equal(_rng_snapshot(), process_rng)},
+        "backend": "SCALAR_REFERENCE_VJP",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _preflight_identity(root: Path, manifest: Mapping[str, Any]) -> ResearchRunControl:
+    identity = _make_identity(manifest)
+    counts = {}
+    failure_path = root / PREFLIGHT_FAILURE_STATE
+    if failure_path.is_file():
+        stored = json.loads(failure_path.read_text(encoding="utf-8"))
+        _require(stored.get("schema") == "n3_execution_preflight_failure_state.v1", "preflight failure lifecycle schema changed")
+        raw_counts = _mapping(stored.get("failure_counts"), "preflight failure counts")
+        _require(
+            all(isinstance(key, str) and type(value) is int and value > 0 for key, value in raw_counts.items()),
+            "preflight failure lifecycle counts are malformed",
+        )
+        counts = dict(raw_counts)
+        if counts:
+            _require(
+                stored.get("last_decision") in {PREFLIGHT_RECHECK_ALLOWED, PREFLIGHT_ROOT_CAUSE_REVIEW_REQUIRED},
+                "preflight failure lifecycle decision is missing",
+            )
+    return ResearchRunControl(identity, AUTHORIZATION_ID, preflight_failure_counts=counts)
+
+
+def _write_preflight_failure(
+    root: Path,
+    control: ResearchRunControl,
+    error: BaseException,
+    component: str,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+    runtime_provenance: Mapping[str, Any] | None = None,
+    preflight_evidence: Mapping[str, Any] | None = None,
+    sample_read_ledger: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    evidence = {} if preflight_evidence is None else dict(preflight_evidence)
+    if evidence.get("failure_family") == "RESOURCE_ENVELOPE":
+        # preflight_failure_05 used this umbrella signature before its resource
+        # operands were persisted; keep the same failure family fail-closed.
+        signature = hashlib.sha256(
+            b"N3ExecutionError:strict preflight cuda_viability failed"
+        ).hexdigest()
+    else:
+        signature = hashlib.sha256(f"{type(error).__name__}:{error}".encode("utf-8")).hexdigest()
+    decision = control.record_preflight_failure(component, signature)
+    prior = {}
+    if (root / PREFLIGHT_FAILURE_STATE).is_file():
+        prior = json.loads((root / PREFLIGHT_FAILURE_STATE).read_text(encoding="utf-8"))
+    failures = dict(prior.get("failure_counts", {}))
+    failures[f"{component}:{signature}"] = int(failures.get(f"{component}:{signature}", 0)) + 1
+    (root / PREFLIGHT_FAILURE_STATE).parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(root / PREFLIGHT_FAILURE_STATE, {"schema": "n3_execution_preflight_failure_state.v1", "failure_counts": failures, "last_decision": decision})
+    failure_dir = RUNS_ROOT / f"preflight_failure_{sum(failures.values()):02d}"
+    failure_dir = root / failure_dir
+    failure_dir.mkdir(parents=True, exist_ok=False)
+    source_identity = {} if manifest is None else _source_identity_provenance(manifest)
+    atomic_write_new_json(
+        failure_dir / "failure.json",
+        {
+            "schema": "n3_execution_preflight_failure.v1",
+            "result": "BLOCKED",
+            "classification": evidence.get("classification", "INVALID_HARNESS"),
+            "component": component,
+            "signature": signature,
+            "decision": decision,
+            "error_type": type(error).__name__,
+            "message": str(error),
+            "execution_source_identity": source_identity,
+            "runtime_provenance": dict(runtime_provenance or {"status": "NOT_STARTED"}),
+            "scientific_attempt_created": False,
+            "optimizer_updates": 0,
+            "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+            "preflight_evidence": evidence or None,
+            "sample_read_ledger": None if sample_read_ledger is None else dict(sample_read_ledger),
+        },
+        artifact_kind="N3 preflight failure evidence",
+    )
+    return {"decision": decision, "component": component, "signature": signature}
+
+
+def _recovery_ledger_path(recovery_path: Path) -> Path:
+    return recovery_path.with_name(f"{recovery_path.name}.ledger.json")
+
+
+def _fit_ledger_path(artifact_path: Path) -> Path:
+    return artifact_path.with_name(f"{artifact_path.name}.ledger.json")
+
+
+def _write_fit_ledger_credential(
+    artifact_path: Path,
+    ledger: SampleReadLedger,
+    manifest: Mapping[str, Any],
+    attempt_id: str,
+    *,
+    rank: int,
+    completed_updates: int,
+    artifact_kind: str,
+) -> Path:
+    _require(artifact_path.is_file(), "cannot credential a missing FIT artifact")
+    _require(bool(attempt_id), "FIT credential attempt identity is missing")
+    path = _fit_ledger_path(artifact_path)
+    atomic_write_new_json(
+        path,
+        {
+            "schema": RECOVERY_LEDGER_SCHEMA,
+            "artifact_kind": artifact_kind,
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": attempt_id,
+            "rank": rank,
+            "completed_updates": completed_updates,
+            "artifact_sha256": file_sha256(artifact_path),
+            "contract_sha256": CONTRACT_SHA256,
+            "protocol_sha256": PROTOCOL_SHA256,
+            "source_semantics_id": manifest.get("execution_source_semantics_id"),
+            "source_identity": _source_identity_provenance(manifest),
+            "ledger_state": ledger.snapshot(),
+        },
+        artifact_kind="N3 FIT recovery ledger credential",
+    )
+    return path
+
+
+def _write_recovery_ledger(
+    recovery_path: Path,
+    ledger: SampleReadLedger,
+    manifest: Mapping[str, Any],
+    attempt_id: str,
+) -> Path:
+    rank_match = re.search(r"recovery_rank_(\d+)_", recovery_path.name)
+    step_match = re.search(r"step_(\d+)", recovery_path.name)
+    _require(rank_match is not None and step_match is not None, "FIT recovery filename identity is malformed")
+    return _write_fit_ledger_credential(
+        recovery_path,
+        ledger,
+        manifest,
+        attempt_id,
+        rank=int(rank_match.group(1)),
+        completed_updates=int(step_match.group(1)),
+        artifact_kind="FIT_RECOVERY_LEDGER_CREDENTIAL",
+    )
+
+
+def _load_recovery_ledger(
+    recovery_path: Path,
+    manifest: Mapping[str, Any],
+    *,
+    attempt_id: str,
+) -> Mapping[str, Any]:
+    path = _fit_ledger_path(recovery_path)
+    _require(path.is_file(), "FIT recovery ledger credential is missing")
+    credential = _mapping(json.loads(path.read_text(encoding="utf-8")), "FIT recovery ledger credential")
+    rank_match = re.search(r"recovery_rank_(\d+)_", recovery_path.name)
+    step_match = re.search(r"step_(\d+)", recovery_path.name)
+    _require(rank_match is not None and step_match is not None, "FIT recovery filename identity is malformed")
+    _require(
+        credential.get("schema") == RECOVERY_LEDGER_SCHEMA
+        and credential.get("artifact_kind") == "FIT_RECOVERY_LEDGER_CREDENTIAL"
+        and credential.get("authorization_id") == AUTHORIZATION_ID
+        and credential.get("attempt_id") == attempt_id,
+        "FIT recovery ledger credential identity changed",
+    )
+    _require(credential.get("rank") == int(rank_match.group(1)) and credential.get("completed_updates") == int(step_match.group(1)), "FIT recovery ledger rank/step changed")
+    _require(
+        credential.get("contract_sha256") == CONTRACT_SHA256
+        and credential.get("protocol_sha256") == PROTOCOL_SHA256
+        and credential.get("source_semantics_id") == manifest.get("execution_source_semantics_id"),
+        "FIT recovery ledger source semantics or authority changed",
+    )
+    _require(credential.get("source_identity") == _source_identity_provenance(manifest), "FIT recovery ledger source provenance changed")
+    _require(credential.get("artifact_sha256") == file_sha256(recovery_path), "FIT recovery artifact hash changed")
+    state = _mapping(credential.get("ledger_state"), "FIT recovery ledger state")
+    validator = SampleReadLedger()
+    validator.canonical_train_backing_loaded = True
+    validator.merge(state)
+    return credential
+
+
+def _load_endpoint_ledger(root: Path, rank: int, manifest: Mapping[str, Any], attempt_id: str) -> Mapping[str, Any]:
+    endpoint_path = root / ATTEMPT_DIR / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{FIT_UPDATES:05d}.pt"
+    path = _fit_ledger_path(endpoint_path)
+    _require(path.is_file(), f"rank {rank} FIT endpoint ledger credential is missing")
+    credential = _mapping(json.loads(path.read_text(encoding="utf-8")), "FIT endpoint ledger credential")
+    _require(
+        credential.get("schema") == RECOVERY_LEDGER_SCHEMA
+        and credential.get("artifact_kind") == "FIT_ENDPOINT_LEDGER_CREDENTIAL"
+        and credential.get("authorization_id") == AUTHORIZATION_ID
+        and credential.get("attempt_id") == attempt_id
+        and credential.get("rank") == rank
+        and credential.get("completed_updates") == FIT_UPDATES,
+        "FIT endpoint ledger credential identity changed",
+    )
+    _require(
+        credential.get("source_semantics_id") == manifest.get("execution_source_semantics_id")
+        and credential.get("source_identity") == _source_identity_provenance(manifest)
+        and credential.get("contract_sha256") == CONTRACT_SHA256
+        and credential.get("protocol_sha256") == PROTOCOL_SHA256
+        and credential.get("artifact_sha256") == file_sha256(endpoint_path),
+        "FIT endpoint ledger credential authority/source/artifact changed",
+    )
+    state = _mapping(credential.get("ledger_state"), "FIT endpoint ledger state")
+    validator = SampleReadLedger()
+    validator.canonical_train_backing_loaded = True
+    validator.merge(state)
+    return credential
+
+
+def _write_endpoint_ledger(
+    root: Path,
+    rank: int,
+    ledger: SampleReadLedger,
+    manifest: Mapping[str, Any],
+    attempt_id: str,
+) -> Path:
+    endpoint_path = root / ATTEMPT_DIR / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{FIT_UPDATES:05d}.pt"
+    return _write_fit_ledger_credential(
+        endpoint_path,
+        ledger,
+        manifest,
+        attempt_id,
+        rank=rank,
+        completed_updates=FIT_UPDATES,
+        artifact_kind="FIT_ENDPOINT_LEDGER_CREDENTIAL",
+    )
+
+
+def _role_index_hashes(authorities: Mapping[str, Any]) -> dict[str, str]:
+    roles = _mapping(authorities.get("roles"), "frozen role indices")
+    _require(set(roles) == {"N3_FIT", "N3_SELECT", "N3_CONFIRM"}, "frozen role index set changed")
+    return {role: tensor_sha256(_tensor(roles[role], f"{role} indices")) for role in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")}
+
+
+def _stage_recovery_path(attempt: Path, stage: str) -> Path:
+    _require(stage in {"selection", "confirmation"}, "unknown one-shot stage recovery name")
+    return attempt / f"{stage}_recovery.json"
+
+
+def _write_stage_recovery(
+    root: Path,
+    attempt: Path,
+    stage: str,
+    evidence_path: Path,
+    endpoint_paths: Mapping[int, Path],
+    role_indices: Mapping[str, torch.Tensor],
+    ledger: SampleReadLedger,
+    manifest: Mapping[str, Any],
+    attempt_id: str,
+) -> Path:
+    _require(evidence_path.is_file(), f"cannot credential missing {stage} science evidence")
+    endpoint_refs = []
+    for rank, path in sorted(endpoint_paths.items()):
+        _require(path.is_file(), f"cannot credential missing rank {rank} FIT endpoint")
+        endpoint_refs.append({"rank": rank, "path": _relative(root, path), "sha256": file_sha256(path)})
+    role_hashes = {role: tensor_sha256(_tensor(indices, f"{role} indices")) for role, indices in role_indices.items()}
+    _require(set(role_hashes) == {"N3_FIT", "N3_SELECT", "N3_CONFIRM"}, "stage recovery role index set changed")
+    state = ledger.snapshot()
+    _require(
+        (stage == "selection" and state["phase"] == "SELECT" and set(state["completed_fit_ranks"]) == {1, 2})
+        or (stage == "confirmation" and state["phase"] == "CONFIRM" and state["selected_rank"] in (0, 1, 2)),
+        f"{stage} recovery ledger is not at a complete one-shot boundary",
+    )
+    path = _stage_recovery_path(attempt, stage)
+    atomic_write_new_json(
+        path,
+        {
+            "schema": STAGE_RECOVERY_SCHEMA,
+            "artifact_kind": f"N3_{stage.upper()}_RECOVERY_CREDENTIAL",
+            "task_id": TASK_ID,
+            "stage": stage.upper(),
+            "attempt_id": attempt_id,
+            "authorization_id": AUTHORIZATION_ID,
+            "contract_sha256": CONTRACT_SHA256,
+            "protocol_sha256": PROTOCOL_SHA256,
+            "source_semantics_id": manifest.get("execution_source_semantics_id"),
+            "source_identity": _source_identity_provenance(manifest),
+            "evidence": {"path": _relative(root, evidence_path), "sha256": file_sha256(evidence_path)},
+            "rank_endpoints": endpoint_refs,
+            "role_index_sha256": role_hashes,
+            "ledger_state": state,
+        },
+        artifact_kind=f"N3 {stage} operational recovery credential",
+    )
+    return path
+
+
+def _load_stage_recovery(
+    root: Path,
+    attempt: Path,
+    stage: str,
+    evidence_path: Path,
+    expected_endpoint_paths: Mapping[int, Path],
+    authorities: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    attempt_id: str,
+) -> Mapping[str, Any]:
+    marker_path = _stage_recovery_path(attempt, stage)
+    _require(marker_path.is_file(), f"{stage} stage recovery credential is missing")
+    marker = _mapping(json.loads(marker_path.read_text(encoding="utf-8")), f"{stage} stage recovery credential")
+    _require(
+        marker.get("schema") == STAGE_RECOVERY_SCHEMA
+        and marker.get("artifact_kind") == f"N3_{stage.upper()}_RECOVERY_CREDENTIAL"
+        and marker.get("task_id") == TASK_ID
+        and marker.get("stage") == stage.upper()
+        and marker.get("attempt_id") == attempt_id
+        and marker.get("authorization_id") == AUTHORIZATION_ID
+        and marker.get("contract_sha256") == CONTRACT_SHA256
+        and marker.get("protocol_sha256") == PROTOCOL_SHA256,
+        f"{stage} stage recovery identity changed",
+    )
+    _require(
+        marker.get("source_semantics_id") == manifest.get("execution_source_semantics_id")
+        and marker.get("source_identity") == _source_identity_provenance(manifest),
+        f"{stage} stage recovery source semantics changed",
+    )
+    _require(evidence_path.is_file(), f"{stage} science evidence is missing")
+    evidence_ref = _mapping(marker.get("evidence"), f"{stage} evidence reference")
+    _require(
+        evidence_ref.get("path") == _relative(root, evidence_path)
+        and evidence_ref.get("sha256") == file_sha256(evidence_path),
+        f"{stage} science evidence hash/path changed",
+    )
+    expected_roles = _role_index_hashes(authorities)
+    _require(marker.get("role_index_sha256") == expected_roles, f"{stage} frozen role indices changed")
+    refs = marker.get("rank_endpoints")
+    _require(isinstance(refs, list), f"{stage} FIT endpoint references are malformed")
+    observed: dict[int, tuple[str, str]] = {}
+    for value in refs:
+        ref = _mapping(value, f"{stage} FIT endpoint reference")
+        rank = ref.get("rank")
+        _require(type(rank) is int and rank in (0, 1, 2), f"{stage} FIT endpoint rank changed")
+        _require(rank not in observed, f"{stage} FIT endpoint rank is duplicated")
+        relative_path, digest = ref.get("path"), ref.get("sha256")
+        _require(isinstance(relative_path, str) and isinstance(digest, str), f"{stage} FIT endpoint reference is malformed")
+        target = (root / relative_path).resolve()
+        try:
+            target.relative_to(root.resolve())
+        except ValueError as error:
+            raise N3ExecutionError(f"{stage} FIT endpoint escaped the attempt root") from error
+        _require(target.is_file() and file_sha256(target) == digest, f"{stage} FIT endpoint hash changed")
+        observed[rank] = (relative_path, digest)
+    expected = {
+        rank: (_relative(root, path), file_sha256(path))
+        for rank, path in expected_endpoint_paths.items()
+    }
+    _require(observed == expected, f"{stage} FIT endpoint set/identity changed")
+    state = _mapping(marker.get("ledger_state"), f"{stage} ledger state")
+    validator = SampleReadLedger()
+    validator.canonical_train_backing_loaded = True
+    validator.merge(state)
+    document = _mapping(json.loads(evidence_path.read_text(encoding="utf-8")), f"{stage} science evidence")
+    if stage == "selection":
+        _require(
+            document.get("schema") == "n3_low_rank_model_order_selection.v1"
+            and document.get("domain") == "N3_SELECT"
+            and document.get("selection_count") == 1
+            and document.get("contract_sha256") == CONTRACT_SHA256
+            and document.get("protocol_sha256") == PROTOCOL_SHA256
+            and document.get("selected_rank") in (0, 1, 2),
+            "persisted N3_SELECT evidence is invalid",
+        )
+        _require(
+            set(_mapping(document.get("rank_results"), "N3_SELECT rank results")) == {"0", "1", "2"}
+            and set(_mapping(document.get("semantic_feasibility"), "N3_SELECT semantic feasibility")) == {"0", "1", "2"}
+            and isinstance(document.get("lexicographic_trace"), list)
+            and len(document["lexicographic_trace"]) == 3,
+            "persisted N3_SELECT evidence is incomplete",
+        )
+    else:
+        selection = _mapping(json.loads((attempt / "selection.json").read_text(encoding="utf-8")), "persisted N3_SELECT evidence")
+        _require(
+            document.get("schema") == "n3_low_rank_model_order_confirmation.v1"
+            and document.get("domain") == "N3_CONFIRM"
+            and document.get("contract_sha256") == CONTRACT_SHA256
+            and document.get("protocol_sha256") == PROTOCOL_SHA256
+            and document.get("selected_rank") == selection.get("selected_rank")
+            and document.get("evaluations") == 1,
+            "persisted N3_CONFIRM evidence is invalid",
+        )
+    return marker
+
+
+def _mark_attempt_interrupted(
+    *,
+    attempt_dir: Path,
+    control: ResearchRunControl,
+    heartbeat: HeartbeatWriter,
+    phase: str,
+    step: int,
+    recovery_path: Path | None = None,
+    stage_credential: Path | None = None,
+) -> None:
+    _require((recovery_path is None) != (stage_credential is None), "interruption requires exactly one durable boundary credential")
+    credential_path = recovery_path if recovery_path is not None else stage_credential
+    _require(credential_path is not None and credential_path.is_file(), "cannot interrupt without a durable boundary credential")
+    atomic_write_json(
+        attempt_dir / "status.json",
+        {
+            "state": "INTERRUPTED",
+            "phase": phase,
+            "step": step,
+            "authorization_id": AUTHORIZATION_ID,
+            "execution_source_semantics_id": control.identity.execution_source_semantics_id,
+            "boundary_credential": credential_path.name,
+            "boundary_credential_sha256": file_sha256(credential_path),
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    control.interrupted()
+    try:
+        heartbeat.update(state="INTERRUPTED", phase="INTERRUPTED", step=step, latest_losses={"execution_phase": phase}, force=True)
+    except BaseException as error:
+        raise N3ControlledInterruption(
+            f"controlled interruption is durable at {phase}; heartbeat update failed: {error}"
+        ) from error
+    raise N3ControlledInterruption(f"controlled interruption after durable {phase} boundary")
+
+
+def _inspect_interrupted_attempt(
+    root: Path,
+    attempt: Path,
+    manifest: Mapping[str, Any],
+    authorities: Mapping[str, Any],
+    attempt_id: str,
+    resume_from: Path | None,
+) -> dict[str, Any]:
+    status_path = attempt / "status.json"
+    _require(status_path.is_file(), "same-attempt resume status is missing")
+    status = _mapping(json.loads(status_path.read_text(encoding="utf-8")), "same-attempt resume status")
+    report_path = attempt / "report.json"
+    report_repair = report_path.is_file() and status.get("state") == RUN_SCIENTIFIC_ACTIVE
+    _require(
+        (status.get("state") == "INTERRUPTED" or report_repair)
+        and status.get("authorization_id") == AUTHORIZATION_ID
+        and status.get("execution_source_semantics_id") == manifest.get("execution_source_semantics_id"),
+        "same-attempt resume requires matching INTERRUPTED status or a published report awaiting operational finalization",
+    )
+    execution_manifest = _mapping(json.loads((attempt / "execution_manifest.json").read_text(encoding="utf-8")), "saved N3 execution manifest")
+    saved_run_identity = _mapping(execution_manifest.get("run_identity"), "saved attempt run identity")
+    _require(
+        execution_manifest.get("authorization_id") == AUTHORIZATION_ID
+        and execution_manifest.get("contract_sha256") == CONTRACT_SHA256
+        and execution_manifest.get("protocol_sha256") == PROTOCOL_SHA256
+        and execution_manifest.get("source_manifest") == manifest
+        and saved_run_identity.get("scientific_attempt_id") == attempt_id,
+        "saved attempt source/authority identity changed",
+    )
+
+    selection_path = attempt / "selection.json"
+    selection_marker_path = _stage_recovery_path(attempt, "selection")
+    confirmation_path = attempt / "confirmation.json"
+    confirmation_marker_path = _stage_recovery_path(attempt, "confirmation")
+    _require(selection_path.exists() == selection_marker_path.exists(), "N3_SELECT evidence/credential pair is incomplete; one-shot domain will not be reread")
+    _require(confirmation_path.exists() == confirmation_marker_path.exists(), "N3_CONFIRM evidence/credential pair is incomplete; one-shot domain will not be reread")
+    _require(not confirmation_marker_path.exists() or selection_marker_path.exists(), "N3_CONFIRM recovery exists without N3_SELECT recovery")
+
+    baseline_path = attempt / "rank_0" / "shared_baseline_rank_0_step_00000.pt"
+    endpoint_paths: dict[int, Path] = {0: baseline_path}
+    endpoint_states: dict[int, Mapping[str, Any]] = {}
+    for rank in (1, 2):
+        endpoint_path = attempt / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{FIT_UPDATES:05d}.pt"
+        sidecar = _fit_ledger_path(endpoint_path)
+        _require(endpoint_path.exists() == sidecar.exists(), f"rank {rank} FIT endpoint/ledger credential pair is incomplete")
+        if endpoint_path.exists():
+            _load_endpoint(root, rank)
+            credential = _load_endpoint_ledger(root, rank, manifest, attempt_id)
+            endpoint_paths[rank] = endpoint_path
+            endpoint_states[rank] = credential
+
+    recovery_candidates: dict[int, list[Path]] = {1: [], 2: []}
+    recovery_states: dict[tuple[int, int], Mapping[str, Any]] = {}
+    for rank in (1, 2):
+        rank_dir = attempt / f"rank_{rank}"
+        files = sorted(rank_dir.glob(f"recovery_rank_{rank}_step_*.pt"), key=lambda item: int(re.search(r"step_(\d+)", item.name).group(1)))
+        sidecars = sorted(rank_dir.glob(f"recovery_rank_{rank}_step_*.pt.ledger.json"))
+        _require(len(files) == len(sidecars), f"rank {rank} recovery/ledger credential inventory is incomplete")
+        for path in files:
+            step_match = re.search(r"step_(\d+)", path.name)
+            _require(step_match is not None, f"rank {rank} recovery filename is malformed")
+            step = int(step_match.group(1))
+            recovery = _load_recovery(path, rank, manifest, attempt_id=attempt_id)
+            credential = _load_recovery_ledger(path, manifest, attempt_id=attempt_id)
+            _require(int(recovery["completed_updates"]) == step, f"rank {rank} recovery filename/payload step changed")
+            recovery_candidates[rank].append(path)
+            recovery_states[(rank, step)] = credential
+        if files:
+            observed_steps = [int(re.search(r"step_(\d+)", path.name).group(1)) for path in files]
+            _require(observed_steps == list(range(RECOVERY_INTERVAL, observed_steps[-1] + 1, RECOVERY_INTERVAL)), f"rank {rank} recovery cadence has a gap")
+
+    if selection_marker_path.exists():
+        _require(set(endpoint_paths) == {0, 1, 2}, "N3_SELECT recovery lacks a completed candidate endpoint")
+        selection_marker = _load_stage_recovery(
+            root, attempt, "selection", selection_path, endpoint_paths, authorities, manifest, attempt_id
+        )
+        selection_state = _mapping(selection_marker.get("ledger_state"), "N3_SELECT ledger state")
+        _require(selection_state.get("phase") == "SELECT" and set(selection_state.get("completed_fit_ranks", [])) == {1, 2}, "N3_SELECT recovery ledger is not a complete selection boundary")
+
+    selected_rank = None
+    if confirmation_marker_path.exists():
+        selection_doc = _mapping(json.loads(selection_path.read_text(encoding="utf-8")), "persisted N3_SELECT evidence")
+        selected_rank = int(selection_doc["selected_rank"])
+        confirm_paths = {0: baseline_path}
+        if selected_rank > 0:
+            confirm_paths[selected_rank] = endpoint_paths[selected_rank]
+        confirmation_marker = _load_stage_recovery(
+            root, attempt, "confirmation", confirmation_path, confirm_paths, authorities, manifest, attempt_id
+        )
+        confirmation_state = _mapping(confirmation_marker.get("ledger_state"), "N3_CONFIRM ledger state")
+        _require(confirmation_state.get("phase") == "CONFIRM" and confirmation_state.get("selected_rank") == selected_rank, "N3_CONFIRM recovery ledger rank/phase changed")
+
+    if report_path.exists():
+        _require(confirmation_marker_path.exists(), "final report exists without one-shot confirmation credential")
+        report = _mapping(json.loads(report_path.read_text(encoding="utf-8")), "persisted final report")
+        _require(
+            report.get("schema") == REPORT_SCHEMA
+            and report.get("contract", {}).get("sha256") == CONTRACT_SHA256
+            and report.get("fit_protocol", {}).get("sha256") == PROTOCOL_SHA256
+            and report.get("selected_rank") == selected_rank,
+            "persisted final report does not match the active N3 result",
+        )
+        saved_confirmation = _mapping(report.get("confirmation"), "persisted report confirmation")
+        _require(
+            report.get("result") in {RUN_COMPLETED, RUN_VALID_FAILED}
+            and report.get("source_manifest") == manifest
+            and _mapping(report.get("run_identity"), "persisted report run identity").get("scientific_attempt_id") == attempt_id
+            and bool(saved_confirmation.get("passed")) == bool(report.get("outer_gate_passed")),
+            "persisted final report source/attempt/classification identity changed",
+        )
+        latest_credential = confirmation_marker_path
+        snapshot = _mapping(confirmation_marker["ledger_state"], "N3_CONFIRM ledger state")
+        stage = "REPORT"
+        checkpoint = None
+    elif confirmation_marker_path.exists():
+        latest_credential = confirmation_marker_path
+        snapshot = _mapping(confirmation_marker["ledger_state"], "N3_CONFIRM ledger state")
+        stage = "CONFIRM"
+        checkpoint = None
+    elif selection_marker_path.exists():
+        latest_credential = selection_marker_path
+        snapshot = _mapping(selection_marker["ledger_state"], "N3_SELECT ledger state")
+        stage = "SELECT"
+        checkpoint = None
+    else:
+        _require(not selection_path.exists() and not confirmation_path.exists(), "uncredentialed one-shot evidence blocks resume")
+        _require(0 in endpoint_paths and baseline_path.is_file(), "rank-zero shared baseline artifact is missing")
+        latest_rank: int | None = None
+        checkpoint = None
+        if recovery_candidates[2] and 2 not in endpoint_paths:
+            _require(1 in endpoint_paths, "rank-2 recovery exists before rank-1 endpoint")
+            latest_rank = 2
+            checkpoint = recovery_candidates[2][-1]
+            credential = recovery_states[(2, int(re.search(r"step_(\d+)", checkpoint.name).group(1)))]
+        elif 2 in endpoint_paths and 1 in endpoint_paths:
+            latest_rank = 2
+            credential = endpoint_states[2]
+        elif 1 in endpoint_paths:
+            latest_rank = 1
+            credential = endpoint_states[1]
+        elif recovery_candidates[1]:
+            latest_rank = 1
+            checkpoint = recovery_candidates[1][-1]
+            credential = recovery_states[(1, int(re.search(r"step_(\d+)", checkpoint.name).group(1)))]
+        else:
+            raise N3ExecutionError("INTERRUPTED attempt has no complete FIT recovery boundary")
+        if resume_from is not None:
+            _require(checkpoint is not None and resume_from.resolve() == checkpoint.resolve(), "explicit recovery path is not the latest validated same-attempt checkpoint")
+        elif checkpoint is None:
+            _require(latest_rank in endpoint_states, "same-attempt FIT endpoint credential is missing")
+        latest_credential = _fit_ledger_path(checkpoint) if checkpoint is not None else _fit_ledger_path(endpoint_paths[latest_rank])
+        snapshot = _mapping(credential.get("ledger_state"), "FIT resume ledger state")
+        stage = "FIT"
+
+    if stage != "FIT":
+        _require(resume_from is None, "explicit FIT recovery path is invalid after a completed FIT/one-shot stage")
+    if report_repair:
+        _require(stage == "REPORT", "published-report status repair requires a complete confirmation boundary")
+    else:
+        expected_boundary = status.get("boundary_credential")
+        _require(expected_boundary == latest_credential.name, "INTERRUPTED status points to a different durable boundary")
+        _require(status.get("boundary_credential_sha256") == file_sha256(latest_credential), "INTERRUPTED status boundary credential hash changed")
+    state_validator = SampleReadLedger()
+    state_validator.canonical_train_backing_loaded = True
+    state_validator.merge(snapshot)
+    if stage == "FIT":
+        _require(state_validator.phase == "FIT", "FIT recovery snapshot has the wrong ledger phase")
+    elif stage == "SELECT":
+        _require(state_validator.phase == "SELECT", "SELECT recovery snapshot has the wrong ledger phase")
+    elif stage == "CONFIRM":
+        _require(state_validator.phase == "CONFIRM", "CONFIRM recovery snapshot has the wrong ledger phase")
+    return {"stage": stage, "ledger_state": snapshot, "resume_checkpoint": checkpoint, "selection_rank": selected_rank, "report": report if report_path.exists() else None, "status": status}
+
+
+def _publish_report_then_terminal_status(
+    attempt: Path,
+    report: Mapping[str, Any],
+    control: ResearchRunControl,
+    heartbeat: HeartbeatWriter,
+) -> None:
+    """Publish immutable science first; operational status cannot relabel it."""
+    passed = bool(report["outer_gate_passed"])
+    final_status = RUN_COMPLETED if passed else RUN_VALID_FAILED
+    selected_rank = int(report["selected_rank"])
+    atomic_write_new_json(attempt / "report.json", report, artifact_kind="N3 low-rank model-order final report")
+    try:
+        if passed:
+            control.complete()
+        else:
+            control.valid_failed()
+        atomic_write_json(
+            attempt / "status.json",
+            {
+                "state": final_status,
+                "phase": "CONFIRMATION_COMPLETE",
+                "selected_rank": selected_rank,
+                "classification": report["classification"],
+                "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        heartbeat.update(
+            state=final_status,
+            phase="COMPLETED" if passed else "VALID_FAILED",
+            step=2 * FIT_UPDATES,
+            latest_losses={"selected_rank": selected_rank, "confirmation_passed": passed},
+            force=True,
+        )
+    except BaseException as error:
+        raise N3PostReportStatusError(
+            f"final N3 report is durable; operational terminal status update failed: {error}"
+        ) from error
+
+
+def _save_recovery(
+    rank_dir: Path,
+    model: N3ClassConditionedModel,
+    optimizer: torch.optim.Adam,
+    sampler: N3FitSampler,
+    step: int,
+    manifest: Mapping[str, Any],
+    history: list[Mapping[str, Any]],
+    *,
+    ledger: SampleReadLedger,
+    attempt_id: str,
+) -> Path:
+    payload = {
+        "schema": RECOVERY_SCHEMA,
+        "artifact_kind": "OPERATIONAL_RECOVERY_CHECKPOINT",
+        "scientific_artifact": False,
+        "operational_artifact": True,
+        "authorization_id": AUTHORIZATION_ID,
+        "rank": model.rank,
+        "completed_updates": step,
+        "A": model.A.detach().cpu().clone(),
+        "B": model.B.detach().cpu().clone(),
+        "optimizer_state": copy.deepcopy(optimizer.state_dict()),
+        "sampler_cursor": sampler.cursor,
+        "rng_state": _rng_snapshot(),
+        "history": copy.deepcopy(history),
+        "rank_seed": rank_seed(model.rank),
+        "contract_sha256": CONTRACT_SHA256,
+        "protocol_sha256": PROTOCOL_SHA256,
+        "source_manifest": dict(manifest),
+    }
+    path = rank_dir / f"recovery_rank_{model.rank}_step_{step:05d}.pt"
+    atomic_torch_save_new(path, payload, artifact_kind="N3 low-rank operational recovery")
+    _write_recovery_ledger(path, ledger, manifest, attempt_id)
+    return path
+
+
+def _load_recovery(path: Path, rank: int, manifest: Mapping[str, Any], *, attempt_id: str) -> Mapping[str, Any]:
+    payload = _mapping(safe_torch_load(path, map_location="cpu"), "rank recovery")
+    _require(payload.get("schema") == RECOVERY_SCHEMA and payload.get("artifact_kind") == "OPERATIONAL_RECOVERY_CHECKPOINT", "recovery schema/role changed")
+    _require(payload.get("scientific_artifact") is False and payload.get("operational_artifact") is True, "recovery artifact role changed")
+    _require(payload.get("authorization_id") == AUTHORIZATION_ID and payload.get("rank") == rank, "recovery authorization/rank changed")
+    _require(payload.get("contract_sha256") == CONTRACT_SHA256 and payload.get("protocol_sha256") == PROTOCOL_SHA256, "recovery contract/protocol changed")
+    _require(payload.get("source_manifest") == manifest, "recovery execution source changed")
+    step = int(payload.get("completed_updates", -1))
+    _require(0 < step <= FIT_UPDATES and step % RECOVERY_INTERVAL == 0, "recovery cursor is off cadence")
+    _require(int(payload.get("sampler_cursor", -1)) == step % FIT_ROWS_PER_CLASS, "recovery sampler cursor changed")
+    _require(isinstance(payload.get("history"), list) and len(payload["history"]) == step, "recovery fit history is incomplete")
+    _load_recovery_ledger(path, manifest, attempt_id=attempt_id)
+    return payload
+
+
+def _verify_recovery_roundtrip(
+    *,
+    authorities: Mapping[str, Any],
+    model: N3ClassConditionedModel,
+    optimizer: torch.optim.Adam,
+    sampler: N3FitSampler,
+    history: list[Mapping[str, Any]],
+    manifest: Mapping[str, Any],
+    device: torch.device,
+    ledger: SampleReadLedger,
+) -> dict[str, Any]:
+    """Exercise the frozen 25-step recovery boundary and one resumed update."""
+    completed = len(history)
+    _require(completed == RECOVERY_INTERVAL and sampler.cursor == completed % FIT_ROWS_PER_CLASS, "recovery preflight is not at the frozen cadence")
+    with tempfile.TemporaryDirectory(prefix="n3-fit-recovery-") as temporary_root:
+        rank_dir = Path(temporary_root) / "rank_1"
+        rank_dir.mkdir()
+        recovery_path = _save_recovery(
+            rank_dir, model, optimizer, sampler, completed, manifest, history,
+            ledger=ledger, attempt_id="PREFLIGHT_TEMP",
+        )
+        recovery = _load_recovery(recovery_path, 1, manifest, attempt_id="PREFLIGHT_TEMP")
+        resumed_model = _new_model(1, authorities["checkpoint"], device).train()
+        resumed_optimizer = _optimizer(resumed_model)
+        resumed_sampler = N3FitSampler(authorities["indices_by_class"])
+        resumed_model.load_trainable_state({"n3_correction.A": recovery["A"], "n3_correction.B": recovery["B"]})
+        resumed_optimizer.load_state_dict(dict(recovery["optimizer_state"]))
+        resumed_sampler.cursor = int(recovery["sampler_cursor"])
+        _restore_rng(_mapping(recovery["rng_state"], "recovery RNG"))
+
+        state_equal = _tensor_state_sha256(resumed_model.state_dict()) == _tensor_state_sha256(model.state_dict())
+        optimizer_equal = _exact_equal(resumed_optimizer.state_dict(), optimizer.state_dict())
+        cursor_equal = resumed_sampler.cursor == sampler.cursor
+        rng_equal = _rng_equal(_rng_snapshot(), recovery["rng_state"])
+        history_equal = _exact_equal(recovery["history"], history)
+
+        expected_indices, expected_labels = sampler.next_batch()
+        resumed_indices, resumed_labels = resumed_sampler.next_batch()
+        next_batch_equal = torch.equal(expected_indices, resumed_indices) and torch.equal(expected_labels, resumed_labels)
+        _require(next_batch_equal, "resumed N3_FIT next batch changed")
+        ledger.record_materialized("N3_FIT", expected_indices, rank=1, purpose="preflight_recovery_resume_batch")
+        ledger.record_materialized("N3_FIT", resumed_indices, rank=1, purpose="preflight_recovery_resume_batch")
+        expected_images = authorities["images"].index_select(0, expected_indices).to(device)
+        resumed_images = authorities["images"].index_select(0, resumed_indices).to(device)
+        ledger.record_evaluated("N3_FIT", expected_indices, rank=1, purpose="preflight_recovery_resume_expected")
+        expected_trace = _apply_update(model, optimizer, expected_images, expected_labels.to(device))
+        ledger.record_evaluated("N3_FIT", resumed_indices, rank=1, purpose="preflight_recovery_resume_actual")
+        resumed_trace = _apply_update(resumed_model, resumed_optimizer, resumed_images, resumed_labels.to(device))
+        next_update_equal = (
+            _exact_equal(expected_trace, resumed_trace)
+            and _tensor_state_sha256(model.state_dict()) == _tensor_state_sha256(resumed_model.state_dict())
+            and _exact_equal(optimizer.state_dict(), resumed_optimizer.state_dict())
+            and sampler.cursor == resumed_sampler.cursor
+        )
+        details = {
+            "passed": state_equal and optimizer_equal and cursor_equal and rng_equal and history_equal and next_batch_equal and next_update_equal,
+            "completed_updates_at_recovery": completed,
+            "state_equal": state_equal,
+            "optimizer_equal": optimizer_equal,
+            "cursor_equal": cursor_equal,
+            "rng_equal": rng_equal,
+            "history_equal": history_equal,
+            "next_batch_equal": next_batch_equal,
+            "next_update_equal": next_update_equal,
+        }
+    details["temporary_recovery_removed"] = not recovery_path.exists() and not _recovery_ledger_path(recovery_path).exists()
+    details["passed"] = bool(details["passed"] and details["temporary_recovery_removed"])
+    return details
+
+
+def _fit_rank(
+    root: Path,
+    rank: int,
+    authorities: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    device: torch.device,
+    heartbeat: HeartbeatWriter,
+    ledger: SampleReadLedger,
+    *,
+    attempt_id: str,
+    control: ResearchRunControl,
+    resume_from: Path | None = None,
+) -> dict[str, Any]:
+    global _ACTIVE_MEAN, _ACTIVE_SCALE
+    seed = rank_seed(rank)
+    rank_rng = _rng_snapshot()
+    cpu_generator = _set_determinism(seed)
+    _require(torch.initial_seed() == seed and torch.randint(0, 2**31, (1,), generator=cpu_generator).numel() == 1, "rank RNG initialization failed")
+    model = _new_model(rank, authorities["checkpoint"], device).train()
+    optimizer = _optimizer(model)
+    sampler = N3FitSampler(authorities["indices_by_class"])
+    completed = 0
+    history: list[dict[str, Any]] = []
+    rank_dir = root / ATTEMPT_DIR / f"rank_{rank}"
+    rank_dir.mkdir(parents=True, exist_ok=True)
+    if resume_from is not None:
+        recovery = _load_recovery(resume_from, rank, manifest, attempt_id=attempt_id)
+        model.load_trainable_state({"n3_correction.A": recovery["A"], "n3_correction.B": recovery["B"]})
+        optimizer.load_state_dict(dict(recovery["optimizer_state"]))
+        completed = int(recovery["completed_updates"])
+        sampler.cursor = int(recovery["sampler_cursor"])
+        _restore_rng(_mapping(recovery["rng_state"], "recovery RNG state"))
+        history = list(recovery.get("history", []))
+    elif any(rank_dir.glob(f"recovery_rank_{rank}_step_*.pt")):
+        candidates = sorted(rank_dir.glob(f"recovery_rank_{rank}_step_*.pt"), key=lambda item: int(re.search(r"step_(\d+)", item.name).group(1)))
+        recovery = _load_recovery(candidates[-1], rank, manifest, attempt_id=attempt_id)
+        model.load_trainable_state({"n3_correction.A": recovery["A"], "n3_correction.B": recovery["B"]})
+        optimizer.load_state_dict(dict(recovery["optimizer_state"]))
+        completed = int(recovery["completed_updates"])
+        sampler.cursor = int(recovery["sampler_cursor"])
+        _restore_rng(_mapping(recovery["rng_state"], "recovery RNG state"))
+        history = list(recovery.get("history", []))
+    started = time.perf_counter()
+    for update in range(completed + 1, FIT_UPDATES + 1):
+        indices, labels = sampler.next_batch()
+        ledger.record_materialized("N3_FIT", indices, rank=rank, purpose="fit_update_batch")
+        _require(torch.equal(authorities["labels"].index_select(0, indices), labels), f"rank {rank} N3_FIT labels changed at update {update}")
+        batch = authorities["images"].index_select(0, indices).to(device)
+        ledger.record_evaluated("N3_FIT", indices, rank=rank, purpose="persistent_fit_update")
+        trace = _apply_update(model, optimizer, batch, labels.to(device))
+        trace.update({"rank": rank, "update": update, "cursor": sampler.cursor, "indices": indices.tolist()})
+        history.append(trace)
+        if update % RECOVERY_INTERVAL == 0:
+            recovery_path = _save_recovery(
+                rank_dir, model, optimizer, sampler, update, manifest, history,
+                ledger=ledger, attempt_id=attempt_id,
+            )
+            heartbeat.remember_recovery_checkpoint(recovery_path.name)
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="SCIENTIFIC_ACTIVE", step=(rank - 1) * FIT_UPDATES + update, latest_losses={"L_struct": trace["L_struct"], "rank": rank, "execution_phase": f"FIT_RANK_{rank}"}, force=(update % 25 == 0))
+        heartbeat.raise_liveness_error()
+        if update % RECOVERY_INTERVAL == 0 and _INTERRUPT_REQUESTED.is_set():
+            _mark_attempt_interrupted(
+                attempt_dir=root / ATTEMPT_DIR,
+                control=control,
+                heartbeat=heartbeat,
+                phase=f"FIT_RANK_{rank}",
+                step=(rank - 1) * FIT_UPDATES + update,
+                stage_credential=_fit_ledger_path(recovery_path),
+            )
+    endpoint = {
+        "schema": CHECKPOINT_SCHEMA,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "rank": rank,
+        "completed_updates": FIT_UPDATES,
+        "trainable_parameter_names": ["n3_correction.B", "n3_correction.A"],
+        "trainable_parameter_count": (PARAMETER_DIMENSION + CLASS_COUNT) * rank,
+        "A": model.A.detach().cpu().clone(),
+        "B": model.B.detach().cpu().clone(),
+        "shared_generator_sha256": tensor_sha256(_tensor(authorities["checkpoint"]["generator_state"], "accepted generator phase")),
+        "optimizer_state": copy.deepcopy(optimizer.state_dict()),
+        "optimizer_configuration": {"name": "Adam", "lr": LEARNING_RATE, "betas": list(ADAM_BETAS), "eps": ADAM_EPS, "weight_decay": WEIGHT_DECAY, "amsgrad": False, "internal_step": FIT_UPDATES},
+        "sampler_cursor": sampler.cursor,
+        "sampler_seed": None,
+        "rank_seed": seed,
+        "source_manifest": dict(manifest),
+        "contract_sha256": CONTRACT_SHA256,
+        "protocol_sha256": PROTOCOL_SHA256,
+        "fit_metrics": {"first_update_L_struct": history[0]["L_struct"], "last_update_L_struct": history[-1]["L_struct"], "mean_update_L_struct": sum(item["L_struct"] for item in history) / len(history), "updates": FIT_UPDATES},
+        "timing_seconds": time.perf_counter() - started,
+        "peak_cuda_memory": _cuda_memory(device),
+        "history": history,
+        "scientific_artifact": True,
+        "operational_artifact": False,
+    }
+    endpoint_path = rank_dir / f"fit_final_rank_{rank}_step_{FIT_UPDATES:05d}.pt"
+    atomic_torch_save_new(endpoint_path, endpoint, artifact_kind=f"N3 rank {rank} final fit endpoint")
+    _restore_rng(rank_rng)
+    return {"rank": rank, "updates": FIT_UPDATES, "fit_metrics": endpoint["fit_metrics"], "endpoint": {"path": _relative(root, endpoint_path), "sha256": file_sha256(endpoint_path)}, "recovery_paths": [item.name for item in sorted(rank_dir.glob(f"recovery_rank_{rank}_step_*.pt"))], "timing_seconds": endpoint["timing_seconds"], "peak_cuda_memory": endpoint["peak_cuda_memory"]}
+
+
+def _load_endpoint(root: Path, rank: int) -> Mapping[str, Any]:
+    path = root / ATTEMPT_DIR / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{FIT_UPDATES:05d}.pt"
+    _require(path.is_file(), f"rank {rank} final FIT endpoint is missing")
+    payload = _mapping(safe_torch_load(path, map_location="cpu"), f"rank {rank} endpoint")
+    _require(payload.get("schema") == CHECKPOINT_SCHEMA and payload.get("rank") == rank and payload.get("completed_updates") == FIT_UPDATES, f"rank {rank} endpoint identity changed")
+    _require(payload.get("scientific_artifact") is True and payload.get("operational_artifact") is False, f"rank {rank} endpoint role changed")
+    _require(payload.get("contract_sha256") == CONTRACT_SHA256 and payload.get("protocol_sha256") == PROTOCOL_SHA256, f"rank {rank} endpoint authority changed")
+    return payload
+
+
+def _evaluate_domain(
+    rank: int,
+    model: N3ClassConditionedModel,
+    indices: torch.Tensor,
+    authorities: Mapping[str, Any],
+    evaluators: tuple[Any, Any, Any],
+    device: torch.device,
+    ledger: SampleReadLedger,
+    role: str,
+    purpose: str,
+) -> dict[str, Any]:
+    global _ACTIVE_MEAN, _ACTIVE_SCALE
+    smooth, independent, ec = evaluators
+    model.eval()
+    class_struct: list[list[float]] = [[] for _ in range(CLASS_COUNT)]
+    class_semantic: dict[str, list[list[float]]] = {name: [[] for _ in range(CLASS_COUNT)] for name in ("L_S", "L_I", "L_C")}
+    reconstruction_sum = 0.0
+    raw_nonconstant = 0
+    raw_zero = 0
+    raw_views: list[torch.Tensor] = []
+    for start in range(0, int(indices.numel()), LOGICAL_BATCH_SIZE):
+        batch_indices = indices[start : start + LOGICAL_BATCH_SIZE]
+        ledger.record_materialized(role, batch_indices, rank=rank, purpose=purpose)
+        images = authorities["images"].index_select(0, batch_indices).to(device)
+        labels = authorities["labels"].index_select(0, batch_indices).to(device)
+        _require(torch.equal(labels.cpu(), authorities["labels"].index_select(0, batch_indices)), f"{role} labels changed")
+        ledger.record_evaluated(role, batch_indices, rank=rank, purpose=purpose)
+        with torch.inference_mode():
+            result = model.forward_from_image(images, labels)
+            raw = result.raw_intensity
+            _finite(raw, f"{role} raw CMOS")
+            raw_view = structural_exec.prior._cmos_view(raw)
+            target_view = structural_exec.prior._cmos_view(images)
+            generated = structural_exec._normalized_surrogate(structural_exec._structural_surrogate(raw_view), _ACTIVE_MEAN, _ACTIVE_SCALE)
+            target = structural_exec._normalized_surrogate(structural_exec._structural_surrogate(target_view), _ACTIVE_MEAN, _ACTIVE_SCALE)
+            row_struct = (generated - target).square().mean(dim=1)
+            semantic = _semantic_row_losses(raw_view, target_view, smooth, independent, ec)
+            target_image = result.image_input.slm_intensity
+            reconstruction_sum += float((raw - target_image).square().mean(dim=(1, 2, 3)).sum().to(torch.float64).cpu())
+            flat = raw.to(torch.float64).flatten(1)
+            raw_nonconstant += int((flat.std(dim=1, unbiased=False) > 0.0).sum().item())
+            raw_zero += int((flat.abs().sum(dim=1) == 0.0).sum().item())
+            raw_views.append(raw_view.cpu())
+            for position, digit in enumerate(labels.detach().cpu().tolist()):
+                class_struct[digit].append(float(row_struct[position].to(torch.float64).cpu()))
+                for name, values in semantic.items():
+                    class_semantic[name][digit].append(float(values[position].to(torch.float64).cpu()))
+    count = int(indices.numel())
+    structural_by_class = [sum(values) / len(values) for values in class_struct]
+    semantic_by_class = {name: [sum(values) / len(values) for values in rows] for name, rows in class_semantic.items()}
+    result: dict[str, Any] = {
+        "rank": rank,
+        "data_role": role,
+        "rows": count,
+        "class_counts": [len(value) for value in class_struct],
+        "L_struct_by_class": structural_by_class,
+        "L_struct_macro": sum(structural_by_class) / CLASS_COUNT,
+        "L_S_by_class": semantic_by_class["L_S"],
+        "L_I_by_class": semantic_by_class["L_I"],
+        "L_C_by_class": semantic_by_class["L_C"],
+        "L_S": sum(semantic_by_class["L_S"]) / CLASS_COUNT,
+        "semantic": {name: sum(values) / CLASS_COUNT for name, values in semantic_by_class.items()},
+        "reconstruction_mse": reconstruction_sum / count,
+        "raw_cmos": {"finite": True, "nonconstant_fraction": raw_nonconstant / count, "zero_image_count": raw_zero},
+        "_raw_views": torch.cat(raw_views),
+        "_labels": authorities["labels"].index_select(0, indices).cpu(),
+    }
+    if role == "N3_CONFIRM":
+        source, public = structural_exec._hard_structural_source(f"n3_confirm_rank_{rank}", result["_raw_views"], result["_labels"], authorities["structural_reference"], device)
+        result["hard_structural"] = {key: value for key, value in public.items() if not key.startswith("_")}
+        result["_log_rho"] = public["_log_rho"]
+        result["_hard_source"] = source
+    return result
+
+
+def _semantic_metrics(selection: Mapping[str, Any]) -> dict[int, dict[str, float]]:
+    return {
+        rank: {name: float(selection[rank]["semantic"][name]) for name in ("L_S", "L_I", "L_C")}
+        for rank in selection
+    }
+
+
+def _select_rank(results: Mapping[int, Mapping[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
+    baseline = results[0]
+    trace = []
+    for rank in (0, 1, 2):
+        current = results[rank]
+        semantic = current["semantic"]
+        feasible = all(float(semantic[name]) <= float(baseline["semantic"][name]) for name in ("L_S", "L_I", "L_C"))
+        deltas = [float(current["L_struct_by_class"][digit]) - float(baseline["L_struct_by_class"][digit]) for digit in range(CLASS_COUNT)]
+        improvement = -sum(deltas) / CLASS_COUNT
+        favorable = sum(delta <= 0.0 for delta in deltas) / CLASS_COUNT
+        worst = max(deltas)
+        reversals = sum(delta > 0.0 for delta in deltas)
+        trace.append({"rank": rank, "semantic_feasible": feasible, "semantic_metrics": dict(semantic), "structural_improvement": improvement, "favorable_class_fraction": favorable, "worst_class_degradation": worst, "reversal_count": reversals, "lexicographic_key": [int(not feasible), -improvement, -favorable, worst, reversals, rank]})
+    selected = min(trace, key=lambda item: tuple(item["lexicographic_key"]))
+    return int(selected["rank"]), trace
+
+
+def _confirm(
+    selected_rank: int,
+    candidate: N3ClassConditionedModel,
+    baseline: N3ClassConditionedModel,
+    indices: torch.Tensor,
+    authorities: Mapping[str, Any],
+    evaluators: tuple[Any, Any, Any],
+    device: torch.device,
+    ledger: SampleReadLedger,
+) -> dict[str, Any]:
+    if selected_rank == 0:
+        candidate_metrics = _evaluate_domain(0, candidate, indices, authorities, evaluators, device, ledger, "N3_CONFIRM", "selected_candidate")
+        baseline_metrics = candidate_metrics
+    else:
+        baseline_metrics = _evaluate_domain(0, baseline, indices, authorities, evaluators, device, ledger, "N3_CONFIRM", "shared_baseline_reference")
+        candidate_metrics = _evaluate_domain(selected_rank, candidate, indices, authorities, evaluators, device, ledger, "N3_CONFIRM", "selected_candidate")
+    bootstrap = structural_exec._paired_bootstrap_log_rho(
+        candidate_metrics["_labels"],
+        baseline_metrics["_log_rho"],
+        candidate_metrics["_log_rho"],
+    )
+    semantic_pass = all(candidate_metrics["semantic"][name] <= baseline_metrics["semantic"][name] for name in ("L_S", "L_I", "L_C"))
+    reversal_pass = all(float(item["ci95"]["upper"]) >= 0.0 for item in bootstrap["per_class"].values())
+    reconstruction_delta = candidate_metrics["reconstruction_mse"] - baseline_metrics["reconstruction_mse"]
+    reconstruction_pass = reconstruction_delta <= RECONSTRUCTION_MAX_DELTA
+    optical_pass = (
+        candidate_metrics["raw_cmos"]["finite"]
+        and candidate_metrics["raw_cmos"]["nonconstant_fraction"] == 1.0
+        and candidate_metrics["raw_cmos"]["zero_image_count"] == 0
+        and baseline_metrics["raw_cmos"]["nonconstant_fraction"] == 1.0
+        and baseline_metrics["raw_cmos"]["zero_image_count"] == 0
+    )
+    ci_pass = float(bootstrap["ci95"]["lower"]) > 0.0
+    return {
+        "selected_rank": selected_rank,
+        "baseline": {key: value for key, value in baseline_metrics.items() if not key.startswith("_")},
+        "candidate": {key: value for key, value in candidate_metrics.items() if not key.startswith("_")},
+        "macro_log_rho_improvement": bootstrap["estimate"],
+        "macro_log_rho_ci95": bootstrap["ci95"],
+        "per_class_log_rho_improvement": bootstrap["per_class"],
+        "checks": {
+            "structural_ci_lower_positive": ci_pass,
+            "no_severe_per_class_reversal": reversal_pass,
+            "semantic_nonincrease": semantic_pass,
+            "reconstruction_valid": reconstruction_pass,
+            "reconstruction_delta": reconstruction_delta,
+            "reconstruction_max_delta": RECONSTRUCTION_MAX_DELTA,
+            "optical_validity": optical_pass,
+            "protected_test_sealed_reads_zero": True,
+        },
+        "passed": ci_pass and reversal_pass and semantic_pass and reconstruction_pass and optical_pass,
+        "bootstrap": {key: value for key, value in bootstrap.items() if key != "macro_values"},
+    }
+
+
+def _ordered_preflight_source() -> list[dict[str, Any]]:
+    return list(json.loads((Path(__file__).resolve().parents[4] / PROTOCOL_PATH).read_text(encoding="utf-8"))["strict_preflight"]["ordered_checks"])
+
+
+def _run_preflight(
+    root: Path,
+    authorities: Mapping[str, Any],
+    contract: Mapping[str, Any],
+    protocol: Mapping[str, Any],
+    active_identity: N3ActiveAuthorityIdentity,
+    manifest: Mapping[str, Any],
+    device: torch.device,
+    preflight_started: float,
+    ledger: SampleReadLedger,
+    runtime_provenance: Mapping[str, Any],
+) -> tuple[dict[str, Any], PreflightReceipt]:
+    global _ACTIVE_MEAN, _ACTIVE_SCALE
+    initial_rng = _rng_snapshot()
+    initial_mean, initial_scale = _ACTIVE_MEAN, _ACTIVE_SCALE
+    initial_determinism = {
+        "algorithms": torch.are_deterministic_algorithms_enabled(),
+        "warn_only": torch.is_deterministic_algorithms_warn_only_enabled(),
+        "cudnn_deterministic": torch.backends.cudnn.deterministic,
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+        "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+        "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+    }
+    try:
+        smooth, independent, ec = _load_evaluators(root, device, protocol)
+        preflight = _preflight(
+            root,
+            authorities,
+            contract,
+            protocol,
+            active_identity,
+            manifest,
+            device,
+            smooth,
+            independent,
+            ec,
+            preflight_started,
+            ledger,
+        )
+        _require([item["id"] for item in preflight["ordered_checks"]] == [item["id"] for item in _ordered_preflight_source()], "strict preflight order differs from frozen protocol")
+        preflight["runtime_provenance"] = dict(runtime_provenance)
+        preflight["execution_source_identity"] = _source_identity_provenance(manifest)
+        receipt = _receipt(manifest, preflight, runtime_provenance)
+    finally:
+        _ACTIVE_MEAN, _ACTIVE_SCALE = initial_mean, initial_scale
+        torch.use_deterministic_algorithms(initial_determinism["algorithms"], warn_only=initial_determinism["warn_only"])
+        torch.backends.cudnn.deterministic = initial_determinism["cudnn_deterministic"]
+        torch.backends.cudnn.benchmark = initial_determinism["cudnn_benchmark"]
+        torch.backends.cuda.matmul.allow_tf32 = initial_determinism["cuda_matmul_allow_tf32"]
+        torch.backends.cudnn.allow_tf32 = initial_determinism["cudnn_allow_tf32"]
+        _restore_rng(initial_rng)
+    _require(_rng_equal(_rng_snapshot(), initial_rng), "strict preflight changed process RNG")
+    _require(
+        torch.are_deterministic_algorithms_enabled() == initial_determinism["algorithms"]
+        and torch.is_deterministic_algorithms_warn_only_enabled() == initial_determinism["warn_only"]
+        and torch.backends.cudnn.deterministic == initial_determinism["cudnn_deterministic"]
+        and torch.backends.cudnn.benchmark == initial_determinism["cudnn_benchmark"]
+        and torch.backends.cuda.matmul.allow_tf32 == initial_determinism["cuda_matmul_allow_tf32"]
+        and torch.backends.cudnn.allow_tf32 == initial_determinism["cudnn_allow_tf32"],
+        "strict preflight changed deterministic runtime flags",
+    )
+    return preflight, receipt
+
+
+def _execute(
+    *,
+    repo_root: Path | None = None,
+    resume: bool = False,
+    resume_from: Path | None = None,
+) -> dict[str, Any]:
+    global _ACTIVE_MEAN, _ACTIVE_SCALE
+    root = Path(__file__).resolve().parents[4] if repo_root is None else repo_root.resolve()
+    attempt = root / ATTEMPT_DIR
+    preflight_started = time.perf_counter()
+
+    authority_error: Exception | None = None
+    try:
+        contract, protocol, active_identity = _load_contract_and_protocol(root)
+    except Exception as error:
+        contract, protocol, active_identity = {}, {}, None
+        authority_error = error
+
+    # Capture the repaired consumer source identity and consult lifecycle/auth
+    # state before loading tensors, touching role rows, or initializing CUDA.
+    manifest = _make_source_manifest(root)
+    identity = _make_identity(manifest)
+    config_identity = _mapping(manifest.get("config_identity"), "execution source config identity")
+    _require(
+        bool(manifest.get("branch"))
+        and bool(manifest.get("head"))
+        and bool(manifest.get("execution_source_semantics_id"))
+        and bool(manifest.get("source_manifest_id"))
+        and config_identity.get("contract_sha256") == CONTRACT_SHA256
+        and config_identity.get("protocol_sha256") == PROTOCOL_SHA256,
+        "current execution source identity is incomplete or authority-mismatched",
+    )
+    if authority_error is None:
+        execution_boundary = _mapping(protocol.get("execution_boundary"), "active protocol execution boundary")
+        _require(
+            execution_boundary.get("required_execution_authorization") == AUTHORIZATION_ID
+            and execution_boundary.get("authorization_consumed") is False,
+            "active N3 execution authorization is invalid or already consumed",
+        )
+    # Read the prior-failure/recheck lifecycle only after the current authority,
+    # source, and authorization identities have passed their pure checks.
+    control = _preflight_identity(root, manifest)
+    _require(control.authorization_id == AUTHORIZATION_ID, "current N3 authorization identity changed")
+    _require(control.state == RUN_PREPARING, "N3 run-control is not in PREPARING state")
+    _require(
+        control.identity.execution_source_semantics_id == manifest["execution_source_semantics_id"],
+        "N3 run-control did not bind the current source semantics",
+    )
+
+    runtime_provenance: dict[str, Any] = {"status": "NOT_STARTED"}
+    ledger: SampleReadLedger | None = None
+    resume_plan: dict[str, Any] | None = None
+    if not resume:
+        _require(not any(count >= 2 for count in control.preflight_failure_counts.values()), "ROOT_CAUSE_REVIEW_REQUIRED after repeated preflight failure")
+        _require(not attempt.exists(), "scientific attempt_01 already exists; use exact same-attempt resume only")
+        _require(not (root / PREFLIGHT_DIR).exists(), "preflight_01 already exists and is write-once")
+        try:
+            if authority_error is not None:
+                raise authority_error
+            runtime_provenance = _prepare_cuda_runtime()
+            _verify_authority_file_identities(root, protocol)
+            ledger = SampleReadLedger()
+            authorities = _load_authorities(root, contract, protocol, ledger)
+            device = torch.device("cuda:0")
+            preflight, receipt = _run_preflight(
+                root,
+                authorities,
+                contract,
+                protocol,
+                active_identity,
+                manifest,
+                device,
+                preflight_started,
+                ledger,
+                runtime_provenance,
+            )
+            _require(preflight.get("status") == "READY", "strict N3 preflight did not return READY")
+            preflight["ledger_state"] = ledger.snapshot()
+            control.mark_preflight_ready(receipt)
+            preflight_path = root / PREFLIGHT_DIR / "preflight.json"
+            try:
+                atomic_write_new_json(
+                    preflight_path,
+                    {**preflight, "preflight_receipt": receipt.to_dict(), "source_manifest": manifest},
+                    artifact_kind="N3 strict preflight receipt",
+                )
+            except Exception:
+                parent = preflight_path.parent
+                if parent.is_dir() and not any(parent.iterdir()):
+                    parent.rmdir()
+                raise
+        except Exception as error:
+            runtime_provenance = getattr(error, "runtime_provenance", runtime_provenance)
+            _write_preflight_failure(
+                root,
+                control,
+                error,
+                "N3_STRICT_PREFLIGHT",
+                manifest=manifest,
+                runtime_provenance=runtime_provenance,
+                preflight_evidence=getattr(error, "preflight_evidence", None),
+                sample_read_ledger=None if ledger is None else ledger.snapshot(),
+            )
+            raise
+        control.open_scientific_attempt(attempt, "lightgen-2d-n3-low-rank-model-order-v1:attempt_01", receipt)
+        ledger.enter_fit()
+        atomic_write_new_json(attempt / "source_manifest.json", manifest, artifact_kind="N3 execution source manifest")
+        atomic_write_new_json(attempt / "execution_manifest.json", {"schema": "n3_low_rank_model_order_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "active_authority_identity": asdict(active_identity), "contract_sha256": CONTRACT_SHA256, "protocol_sha256": PROTOCOL_SHA256, "run_identity": control.identity.to_dict(), "source_manifest": manifest, "execution_source_identity": _source_identity_provenance(manifest), "runtime_provenance": runtime_provenance, "starting_checkpoint": {"path": START_CHECKPOINT.as_posix(), "sha256": START_CHECKPOINT_SHA256}, "cuda_device": runtime_provenance["cuda_smoke"]["device"], "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0}}, artifact_kind="N3 execution manifest")
+        atomic_write_json(attempt / "status.json", {"state": RUN_SCIENTIFIC_ACTIVE, "phase": "OPENED", "authorization_id": AUTHORIZATION_ID, "execution_source_semantics_id": manifest["execution_source_semantics_id"], "updated_at_utc": datetime.now(timezone.utc).isoformat()})
+    else:
+        _require(authority_error is None, "active N3 authority could not be resolved for recovery")
+        _require(attempt.is_dir(), "same-attempt resume requested but attempt_01 is missing")
+        preflight_path = root / PREFLIGHT_DIR / "preflight.json"
+        _require(preflight_path.is_file(), "same-attempt resume preflight receipt is missing")
+        preflight_doc = _mapping(json.loads(preflight_path.read_text(encoding="utf-8")), "saved READY preflight")
+        _require(preflight_doc.get("status") == "READY" and preflight_doc.get("source_manifest") == manifest, "same-attempt resume READY preflight/source identity changed")
+        _require(isinstance(preflight_doc.get("ledger_state"), Mapping), "same-attempt resume preflight ledger state is missing")
+        receipt = PreflightReceipt.from_mapping(_mapping(preflight_doc["preflight_receipt"], "saved READY receipt"))
+        _require(receipt.authorization_id == AUTHORIZATION_ID and receipt.source_semantics_id == manifest["execution_source_semantics_id"], "same-attempt resume authorization/source mismatch")
+        saved_source = _mapping(receipt.resource.get("execution_source_identity"), "saved READY source identity")
+        _require(saved_source.get("execution_source_semantics_id") == manifest["execution_source_semantics_id"], "same-attempt resume source provenance semantics mismatch")
+        saved_status = _mapping(json.loads((attempt / "status.json").read_text(encoding="utf-8")), "same-attempt resume status")
+        report_status_repair = (attempt / "report.json").is_file() and saved_status.get("state") == RUN_SCIENTIFIC_ACTIVE
+        _require(
+            (saved_status.get("state") == "INTERRUPTED" or report_status_repair)
+            and saved_status.get("authorization_id") == AUTHORIZATION_ID
+            and saved_status.get("execution_source_semantics_id") == manifest["execution_source_semantics_id"],
+            "same-attempt resume requires matching INTERRUPTED status or a published report awaiting operational finalization",
+        )
+        control = ResearchRunControl(identity, AUTHORIZATION_ID, preflight_status="READY", state="INTERRUPTED", receipt=receipt)
+        control.open_scientific_attempt(attempt, "lightgen-2d-n3-low-rank-model-order-v1:attempt_01", receipt, resume=True)
+        role_documents = _mapping(_mapping(contract.get("data_roles"), "contract N3 data roles").get("roles"), "contract N3 role definitions")
+        role_indices = {name: torch.tensor(_mapping(role_documents[name], name)["indices"], dtype=torch.long) for name in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")}
+        resume_plan = _inspect_interrupted_attempt(
+            root,
+            attempt,
+            manifest,
+            {"roles": role_indices},
+            control.identity.scientific_attempt_id,
+            resume_from,
+        )
+        if resume_plan["stage"] == "REPORT":
+            report = _mapping(resume_plan["report"], "persisted final report")
+            final_state = report.get("result")
+            _require(final_state in {RUN_COMPLETED, RUN_VALID_FAILED}, "persisted report has a nonterminal science result")
+            if final_state == RUN_COMPLETED:
+                control.complete()
+            else:
+                control.valid_failed()
+            atomic_write_json(
+                attempt / "status.json",
+                {"state": final_state, "phase": "CONFIRMATION_COMPLETE", "selected_rank": report["selected_rank"], "classification": report["classification"], "updated_at_utc": datetime.now(timezone.utc).isoformat()},
+            )
+            return dict(report)
+        runtime_provenance = _prepare_cuda_runtime()
+        _verify_authority_file_identities(root, protocol)
+        ledger = SampleReadLedger()
+        authorities = _load_authorities(root, contract, protocol, ledger)
+        ledger.merge(_mapping(resume_plan["ledger_state"], "interrupted attempt ledger snapshot"))
+        device = torch.device("cuda:0")
+
+    smooth, independent, ec = _load_evaluators(root, device, protocol)
+    _ACTIVE_MEAN = authorities["mean"].to(device)
+    _ACTIVE_SCALE = authorities["scale"].to(device)
+    if resume_plan is not None:
+        atomic_write_json(
+            attempt / "status.json",
+            {
+                "state": RUN_SCIENTIFIC_ACTIVE,
+                "phase": f"RESUMED_{resume_plan['stage']}",
+                "authorization_id": AUTHORIZATION_ID,
+                "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+                "last_verified_boundary_credential": _mapping(resume_plan["status"], "same-attempt resume status").get("boundary_credential"),
+                "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+    heartbeat = HeartbeatWriter(attempt, control.identity.run_id, total_steps=2 * FIT_UPDATES, interval_seconds=60.0)
+    if resume_plan is None:
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="SCIENTIFIC_ACTIVE", step=0, latest_losses={"rank_domain": [0, 1, 2], "execution_phase": "RANK_0_BASELINE"}, force=True)
+    else:
+        saved_status = _mapping(resume_plan["status"], "same-attempt resume status")
+        heartbeat.update(
+            state=RUN_SCIENTIFIC_ACTIVE,
+            phase="SCIENTIFIC_ACTIVE",
+            step=int(saved_status.get("step", 2 * FIT_UPDATES)),
+            latest_losses={"resuming_stage": resume_plan["stage"], "execution_phase": saved_status["phase"]},
+            force=True,
+        )
+    heartbeat.start_liveness(interval_seconds=1.0)
+    start_time = time.perf_counter()
+    report_published = False
+    attempt_id = str(control.identity.scientific_attempt_id)
+    rank_results: dict[str, Any] = {"0": {"rank": 0, "updates": 0, "role": "exact accepted shared baseline", "checkpoint_sha256": START_CHECKPOINT_SHA256}}
+    try:
+        baseline_dir = attempt / "rank_0"
+        baseline_dir.mkdir(parents=True, exist_ok=True)
+        baseline_model = _new_model(0, authorities["checkpoint"], device).eval()
+        baseline_path = baseline_dir / "shared_baseline_rank_0_step_00000.pt"
+        if not baseline_path.exists():
+            atomic_torch_save_new(baseline_path, {"schema": CHECKPOINT_SCHEMA, "rank": 0, "completed_updates": 0, "generator_state": authorities["checkpoint"]["generator_state"], "encoder_state": authorities["checkpoint"]["encoder_state"], "contract_sha256": CONTRACT_SHA256, "protocol_sha256": PROTOCOL_SHA256, "scientific_artifact": True, "operational_artifact": False}, artifact_kind="N3 shared rank-zero baseline")
+        for rank in (1, 2):
+            endpoint_path = attempt / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{FIT_UPDATES:05d}.pt"
+            if endpoint_path.exists():
+                endpoint = _load_endpoint(root, rank)
+                _load_endpoint_ledger(root, rank, manifest, attempt_id)
+                if rank not in ledger.completed_fit_ranks:
+                    ledger.record_fit_endpoint(rank, int(endpoint["completed_updates"]))
+                rank_results[str(rank)] = {"rank": rank, "updates": FIT_UPDATES, "fit_metrics": endpoint["fit_metrics"], "endpoint": {"path": _relative(root, endpoint_path), "sha256": file_sha256(endpoint_path)}, "reused_same_attempt_endpoint": True}
+                continue
+            selected_recovery = None
+            if resume_plan is not None and resume_plan.get("resume_checkpoint") is not None:
+                candidate_path = Path(resume_plan["resume_checkpoint"])
+                if candidate_path.parent.name == f"rank_{rank}":
+                    selected_recovery = candidate_path
+            rank_results[str(rank)] = _fit_rank(
+                root,
+                rank,
+                authorities,
+                manifest,
+                device,
+                heartbeat,
+                ledger,
+                attempt_id=attempt_id,
+                control=control,
+                resume_from=selected_recovery,
+            )
+            ledger.record_fit_endpoint(rank, int(rank_results[str(rank)]["updates"]))
+            endpoint_credential = _write_endpoint_ledger(root, rank, ledger, manifest, attempt_id)
+            heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="SCIENTIFIC_ACTIVE", step=rank * FIT_UPDATES, latest_losses={"rank": rank, "updates": FIT_UPDATES, "execution_phase": f"RANK_{rank}_FIT_COMPLETE"}, force=True)
+            if _INTERRUPT_REQUESTED.is_set():
+                _mark_attempt_interrupted(
+                    attempt_dir=attempt,
+                    control=control,
+                    heartbeat=heartbeat,
+                    phase=f"FIT_RANK_{rank}_COMPLETE",
+                    step=rank * FIT_UPDATES,
+                    stage_credential=endpoint_credential,
+                )
+        # N3_SELECT is opened only after both complete final FIT endpoints exist.
+        _require(all(_load_endpoint(root, rank).get("completed_updates") == FIT_UPDATES for rank in (1, 2)), "one-shot N3_SELECT cannot run with an incomplete rank")
+        select_indices = authorities["roles"]["N3_SELECT"]
+        selection_path = attempt / "selection.json"
+        selection_marker_path = _stage_recovery_path(attempt, "selection")
+        _require(selection_path.exists() == selection_marker_path.exists(), "N3_SELECT evidence/credential pair is incomplete; one-shot domain will not be reread")
+        if selection_marker_path.exists():
+            selection_document = _mapping(json.loads(selection_path.read_text(encoding="utf-8")), "persisted N3_SELECT evidence")
+            selected_rank = int(selection_document["selected_rank"])
+            if ledger.phase == "SELECT":
+                _require(ledger.selected_rank is None, "persisted N3_SELECT ledger unexpectedly entered confirmation")
+            elif ledger.phase == "CONFIRM":
+                _require(ledger.selected_rank == selected_rank, "persisted N3_SELECT rank differs from the N3_CONFIRM recovery ledger")
+            else:
+                raise N3ExecutionError("resumed one-shot evidence has an invalid ledger phase")
+        else:
+            _require(ledger.phase == "FIT", "N3_SELECT cannot begin from the current ledger phase")
+            ledger.enter_selection()
+            selection: dict[int, dict[str, Any]] = {}
+            for rank in (0, 1, 2):
+                model = _new_model(rank, authorities["checkpoint"], device)
+                if rank > 0:
+                    endpoint = _load_endpoint(root, rank)
+                    model.load_trainable_state({"n3_correction.A": endpoint["A"], "n3_correction.B": endpoint["B"]})
+                selection[rank] = _evaluate_domain(rank, model, select_indices, authorities, (smooth, independent, ec), device, ledger, "N3_SELECT", "model_order_candidate")
+                del model
+            ledger.verify_selection_evaluations(int(select_indices.numel()))
+            selected_rank, selection_trace = _select_rank(selection)
+            selection_document = {
+                "schema": "n3_low_rank_model_order_selection.v1",
+                "contract_sha256": CONTRACT_SHA256,
+                "protocol_sha256": PROTOCOL_SHA256,
+                "domain": "N3_SELECT",
+                "sample_count": int(select_indices.numel()),
+                "indices_sha256": tensor_sha256(select_indices),
+                "rank_results": {str(rank): {key: value for key, value in record.items() if not key.startswith("_")} for rank, record in selection.items()},
+                "semantic_feasibility": {str(rank): {name: bool(selection[rank]["semantic"][name] <= selection[0]["semantic"][name]) for name in ("L_S", "L_I", "L_C")} for rank in (0, 1, 2)},
+                "lexicographic_trace": selection_trace,
+                "selected_rank": selected_rank,
+                "selection_count": 1,
+            }
+            atomic_write_new_json(selection_path, selection_document, artifact_kind="N3 one-shot rank selection")
+            _write_stage_recovery(
+                root,
+                attempt,
+                "selection",
+                selection_path,
+                {0: baseline_path, 1: attempt / "rank_1" / f"fit_final_rank_1_step_{FIT_UPDATES:05d}.pt", 2: attempt / "rank_2" / f"fit_final_rank_2_step_{FIT_UPDATES:05d}.pt"},
+                authorities["roles"],
+                ledger,
+                manifest,
+                attempt_id,
+            )
+            if _INTERRUPT_REQUESTED.is_set():
+                _mark_attempt_interrupted(
+                    attempt_dir=attempt,
+                    control=control,
+                    heartbeat=heartbeat,
+                    phase="N3_SELECT_COMPLETE",
+                    step=2 * FIT_UPDATES,
+                    stage_credential=selection_marker_path,
+                )
+        selected_rank = int(selection_document["selected_rank"])
+        if ledger.phase == "SELECT":
+            _require(ledger.enter_confirmation(selection_path) == selected_rank, "persisted N3_SELECT rank changed before confirmation")
+        else:
+            _require(ledger.phase == "CONFIRM" and ledger.selected_rank == selected_rank, "resumed N3_CONFIRM ledger rank/phase changed")
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="SCIENTIFIC_ACTIVE", step=2 * FIT_UPDATES, latest_losses={"selected_rank": selected_rank, "execution_phase": "N3_SELECT_COMPLETE"}, force=True)
+
+        confirm_indices = authorities["roles"]["N3_CONFIRM"]
+        confirmation_path = attempt / "confirmation.json"
+        confirmation_marker_path = _stage_recovery_path(attempt, "confirmation")
+        _require(confirmation_path.exists() == confirmation_marker_path.exists(), "N3_CONFIRM evidence/credential pair is incomplete; one-shot domain will not be reread")
+        if confirmation_marker_path.exists():
+            confirmation_document = _mapping(json.loads(confirmation_path.read_text(encoding="utf-8")), "persisted N3_CONFIRM evidence")
+            _require(ledger.phase == "CONFIRM" and ledger.selected_rank == selected_rank, "persisted N3_CONFIRM ledger is not at the selected rank")
+        else:
+            _require(ledger.phase == "CONFIRM" and ledger.selected_rank == selected_rank, "N3_CONFIRM cannot begin from the current ledger phase")
+            selected_model = _new_model(selected_rank, authorities["checkpoint"], device)
+            if selected_rank > 0:
+                endpoint = _load_endpoint(root, selected_rank)
+                selected_model.load_trainable_state({"n3_correction.A": endpoint["A"], "n3_correction.B": endpoint["B"]})
+            confirmation = _confirm(selected_rank, selected_model, baseline_model, confirm_indices, authorities, (smooth, independent, ec), device, ledger)
+            ledger.verify_confirmation_evaluations(int(confirm_indices.numel()))
+            confirmation_document = {"schema": "n3_low_rank_model_order_confirmation.v1", "contract_sha256": CONTRACT_SHA256, "protocol_sha256": PROTOCOL_SHA256, "domain": "N3_CONFIRM", "indices_sha256": tensor_sha256(confirm_indices), "evaluations": 1, **confirmation}
+            atomic_write_new_json(confirmation_path, confirmation_document, artifact_kind="N3 one-shot confirmation")
+            confirmation_endpoint_paths = {0: baseline_path}
+            if selected_rank > 0:
+                confirmation_endpoint_paths[selected_rank] = attempt / f"rank_{selected_rank}" / f"fit_final_rank_{selected_rank}_step_{FIT_UPDATES:05d}.pt"
+            _write_stage_recovery(
+                root,
+                attempt,
+                "confirmation",
+                confirmation_path,
+                confirmation_endpoint_paths,
+                authorities["roles"],
+                ledger,
+                manifest,
+                attempt_id,
+            )
+            if _INTERRUPT_REQUESTED.is_set():
+                _mark_attempt_interrupted(
+                    attempt_dir=attempt,
+                    control=control,
+                    heartbeat=heartbeat,
+                    phase="N3_CONFIRM_COMPLETE",
+                    step=2 * FIT_UPDATES,
+                    stage_credential=confirmation_marker_path,
+                )
+
+        for rank in (0, 1, 2):
+            rank_results[str(rank)]["N3_SELECT"] = selection_document["rank_results"][str(rank)]
+        passed = bool(confirmation_document["passed"])
+        final_status = RUN_COMPLETED if passed else RUN_VALID_FAILED
+        final_classification = CLASSIFICATION_ADEQUATE if passed else CLASSIFICATION_NOT_ADEQUATE
+        report = {
+            "schema": REPORT_SCHEMA,
+            "task_id": TASK_ID,
+            "result": final_status,
+            "status": final_status.lower(),
+            "outer_gate": OUTER_GATE,
+            "outer_gate_passed": passed,
+            "classification": final_classification,
+            "authorization": {"authorization_id": AUTHORIZATION_ID, "status": "VALID_UNCONSUMED_AT_START_CONSUMED_BY_ATTEMPT_01", "source": "current explicit user EXECUTE request naming the exact frozen authorization"},
+            "run_identity": control.identity.to_dict(),
+            "source_manifest": manifest,
+            "contract": {"path": CONTRACT_PATH.as_posix(), "sha256": CONTRACT_SHA256},
+            "fit_protocol": {"path": PROTOCOL_PATH.as_posix(), "sha256": PROTOCOL_SHA256},
+            "attempt": {"path": _relative(root, attempt), "attempt_id": control.identity.scientific_attempt_id},
+            "strict_preflight": json.loads((root / PREFLIGHT_DIR / "preflight.json").read_text(encoding="utf-8")),
+            "cuda": {"device": torch.cuda.get_device_name(device), "runtime": torch.version.cuda, "pytorch": torch.__version__, "memory": _cuda_memory(device)},
+            "rank_results": rank_results,
+            "selection": selection_document,
+            "selected_rank": selected_rank,
+            "confirmation": confirmation_document,
+            "data_reads": ledger.summary(),
+            "optimizer_updates_persisted": {"rank_0": 0, "rank_1": FIT_UPDATES, "rank_2": FIT_UPDATES},
+            "recovery_interval_updates": RECOVERY_INTERVAL,
+            "execution_elapsed_seconds": time.perf_counter() - start_time,
+            "execution_stopped_after_confirmation": True,
+            "continued_after_confirmation": False,
+            "rank_domain_expanded": False,
+            "checkpoint_selection": False,
+        }
+        _publish_report_then_terminal_status(attempt, report, control, heartbeat)
+        report_published = True
+        return report
+    except N3ControlledInterruption:
+        raise
+    except N3PostReportStatusError:
+        raise
+    except BaseException as error:
+        if report_published:
+            raise N3PostReportStatusError(f"final N3 report is durable; post-report operational update failed: {error}") from error
+        control.invalid_harness()
+        atomic_write_json(attempt / "status.json", {"state": RUN_INVALID_HARNESS, "phase": "INVALID_HARNESS", "error_type": type(error).__name__, "message": str(error), "authorization_id": AUTHORIZATION_ID, "execution_source_semantics_id": manifest["execution_source_semantics_id"], "updated_at_utc": datetime.now(timezone.utc).isoformat()})
+        raise
+    finally:
+        heartbeat.stop_liveness()
+
+
+def execute(*, repo_root: Path | None = None, resume: bool = False, resume_from: Path | None = None) -> dict[str, Any]:
+    _INTERRUPT_REQUESTED.clear()
+    previous_handlers: dict[int, Any] = {}
+    if threading.current_thread() is threading.main_thread():
+        def request_interrupt(signum: int, frame: Any) -> None:
+            _INTERRUPT_REQUESTED.set()
+
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, request_interrupt)
+    try:
+        return _execute(repo_root=repo_root, resume=resume, resume_from=resume_from)
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+        _INTERRUPT_REQUESTED.clear()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--resume", action="store_true", help="resume the exact existing attempt after interruption")
+    parser.add_argument("--resume-from", type=Path, help="explicit same-attempt rank recovery checkpoint")
+    args = parser.parse_args()
+    report = execute(repo_root=args.repo_root, resume=args.resume, resume_from=args.resume_from)
+    print(json.dumps({"result": report["result"], "classification": report["classification"], "selected_rank": report["selected_rank"], "confirmation_passed": report["confirmation"]["passed"], "attempt": report["attempt"]["path"]}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

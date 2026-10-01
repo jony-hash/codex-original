@@ -1,0 +1,720 @@
+"""Freeze the source-row authority for ``N3_DEVELOPMENT_BANK_V2``.
+
+This definition-only consumer reads the registered MNIST train labels and the
+existing source/firewall manifests.  It selects rows by source coverage only;
+it never loads q values, OLS values, or image tensors.  The materialization
+consumer is intentionally separate so the row membership and the q producer
+cannot silently influence one another.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import struct
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import (
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    tensor_sha256,
+)
+from scripts.research.lightgen.n3 import compare_n3_minimal_competing_producer_baselines_v1 as comparison
+from scripts.research.lightgen.n3 import define_n3_source_position_balanced_development_protocol_v1 as previous
+
+
+TASK_ID = "N3_DEVELOPMENT_BANK_V2"
+GATE = TASK_ID
+SCHEMA = "n3_development_bank_v2_source_manifest.v1"
+SEMANTIC_AUTHORITY_ID = TASK_ID
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+CLASS_COUNT = 10
+SOURCE_COUNT = 60_000
+ROWS_PER_CLASS = 500
+POOL_COUNT = CLASS_COUNT * ROWS_PER_CLASS
+ELIGIBLE_RANGE = [0, SOURCE_COUNT]
+SELECTION_RULE = "rank_j=floor(j*(M-1)/(500-1)); j=0..499; classwise eligible source-index list ascending"
+SOURCE_ROW_IDENTITY_FORMULA = "sha256(mnist_train|source_index|label|SOURCE_ROW_IDENTITY_V1)"
+
+SOURCE_LABELS_PATH = Path("data/MNIST/processed/training.pt")
+SOURCE_LABELS_FILE_SHA256 = "8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd"
+SOURCE_LABELS_RAW_PATH = Path("data/MNIST/raw/train-labels-idx1-ubyte")
+SOURCE_LABELS_RAW_SHA256 = "65a50cbbf4e906d70832878ad85ccda5333a97f0f4c3dd2ef09a8a9eef7101c5"
+SOURCE_IMAGES_RAW_PATH = Path("data/MNIST/raw/train-images-idx3-ubyte")
+SOURCE_IMAGES_RAW_SHA256 = "ba891046e6505d7aadcbbe25680a0738ad16aec93bde7f9b65e87a2fc25776db"
+SOURCE_LABELS_TENSOR_SHA256 = "5b15b6a6d7cf9f282941280ffeb569aca7640d0d7e78be939a9b1723e4f83549"
+SOURCE_IMAGES_CONTENT_SHA256 = "cc86acbde125e1596a9d290165c4345cff2294032e1bb5cf4aeaf8c6467322f0"
+SOURCE_DATA_IDENTITY_MANIFEST_SHA256 = "8ae23bf1f247124a1f1f9689a2a4cfb507860c49704d334adec158808d093dc4"
+SOURCE_DATASET_MANIFEST_SHA256 = "520f7743bb317fabf891734ad899c84f2cec7639dbe02f65642670a8a1e64ebb"
+
+PRODUCER_DIR = Path(
+    "outputs/20260907_v2/runs/"
+    "lightgen_ols_producer_data_authority_v1_attempt_01"
+)
+PRODUCER_SOURCE_MANIFEST = PRODUCER_DIR / "ols_producer_source_manifest.v1.json"
+PRODUCER_PARTITION_MANIFEST = PRODUCER_DIR / "ols_producer_partition_manifest.v1.json"
+PRODUCER_FIREWALL_MANIFEST = PRODUCER_DIR / "ols_producer_data_firewall_manifest.v1.json"
+PRODUCER_SOURCE_MANIFEST_SHA256 = "d07fc3fa927796e97254fa09a8c0eceb18d6555a99590db43217a685bf0d1687"
+PRODUCER_PARTITION_MANIFEST_SHA256 = "409b598aacae921da631adea553b339b56560231f9cb2cf75ce8d7e5b439242b"
+PRODUCER_FIREWALL_MANIFEST_SHA256 = "b711e9d3443f3a86c803ff1f8cae1ff266634439ebe0c0d31c04e807c3841837"
+OLD_SOURCE_INDEX_SHA256 = "532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d"
+OLD_SOURCE_LABEL_SHA256 = "1f376234300ef9c7a60a5e895c2dabb52550292724c4b806adf5315e8ab5f251"
+OLD_SORTED_SOURCE_INDEX_SHA256 = "0ca14bcfe34c20a303475c1b7a9ece9a6f86b0e6535429de02c3b5106f33fbd9"
+
+SEALED_CONFIRMATION_MANIFEST = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_sealed_confirmation_source_v1_attempt_01/"
+    "n3_sealed_confirmation_source_manifest.v1.json"
+)
+SEALED_CONFIRMATION_MANIFEST_SHA256 = "6475474f157d31591a3b0252f27320323d84ea93803c61ee6a365420a8ebb08e"
+SEALED_CONFIRMATION_SOURCE_INDEX_SHA256 = "60baa34331dad647ff6ed4944a9c5ebdce6ad8ad2bb68219e64701696b0ceeb1"
+SEALED_CONFIRMATION_LABEL_SHA256 = "c8bacf260ae894e7da623586b9e04c67d95f628c16f52766cee0994ca2ceac19"
+
+S2_VALIDATION_INDEX_SHA256 = "5370b35f304a779cde7f978df6392b9974faaf4296e9edf75f9edf8202db02fa"
+S2_VALIDATION_LABEL_SHA256 = "13d90706eef49c3c9f17ccd39c002dc18a79eca1378e780548ea6b29adc6ec29"
+S1_CONFIRMATION_INDEX_SHA256 = "ff7ab50b95d96e727c240edc2baa916d1e6c11402b8f4f9c2ce6e2e7e5e2218a"
+S1_CONFIRMATION_LABEL_SHA256 = "b05112caa3014d6c2081423b371361eefe1ec7a9f531e54db016b89bfbb77b18"
+S1_SELECTION_INDEX_SHA256 = "11c076affa8511e883f595a0d1ee91e40f6d94747a351e21269520344d3f594f"
+S3_FORMAL_PANEL_IDENTITY_SHA256 = "8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47"
+CODE8_REVIEW_MANIFEST_SHA256 = "d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd"
+
+REPRESENTATION_CONTRACT_PATH = Path(
+    "outputs/20260904_v2/runs/"
+    "lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/"
+    "ols_representation_contract.json"
+)
+REPRESENTATION_CONTRACT_SHA256 = "f99c2ced713005fe3f4a5a0fa91a2cd7648f5647e2360f122bc68e77f225f10d"
+SEMANTIC_MANIFEST_PATH = REPRESENTATION_CONTRACT_PATH.parent / "semantic_manifest.json"
+SEMANTIC_MANIFEST_SHA256 = "b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e"
+MRA_CONFIG_PATH = Path("configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1.yaml")
+MRA_CONFIG_SHA256 = "95e4587f87fc49e79fe3bef5a930f34502ebc9c95f36a312995d77f993a72cad"
+FORMAL_CONFIG_PATH = Path("configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml")
+FORMAL_CONFIG_SHA256 = "0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905"
+CHECKPOINT_PATH = Path(
+    "outputs/20260829_v2/runs/"
+    "lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/"
+    "checkpoints/scaled_chen_horizon_step_5000.pt"
+)
+CHECKPOINT_SHA256 = "ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de"
+MODE_BANK_SHA256 = "75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9"
+
+OUTPUT_DIR = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_source_manifest_v1_attempt_01"
+)
+ARTIFACT_NAME = "n3_development_bank_v2_source_manifest.v1.json"
+
+SAFE_DIRTY_PATHS = set(previous.SAFE_DIRTY_PATHS) | {
+    "scripts/research/lightgen/n3/define_n3_development_bank_v2.py",
+    "scripts/research/lightgen/n3/materialize_n3_development_bank_v2_q.py",
+    "scripts/research/lightgen/n3/define_n3_development_bank_v2_five_fold_protocol.py",
+    "scripts/research/lightgen/n3/execute_n3_development_bank_v2_empirical_ceiling.py",
+    "tests/v2/test_n3_development_bank_v2.py",
+    "docs/CURRENT_STATUS.md",
+    "docs/status/current_handoff.md",
+    "docs/status/experiment_history.md",
+    "docs/status/research_governance_state.json",
+}
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(repo_root: Path, path: Path, expected_sha256: str, name: str) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    value = json.loads(target.read_text(encoding="utf-8"))
+    return dict(_mapping(value, name))
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _load_source_labels(repo_root: Path) -> torch.Tensor:
+    processed = repo_root / SOURCE_LABELS_PATH
+    raw_path = repo_root / SOURCE_LABELS_RAW_PATH
+    _require(file_sha256(processed) == SOURCE_LABELS_FILE_SHA256, "processed MNIST source artifact changed")
+    _require(file_sha256(raw_path) == SOURCE_LABELS_RAW_SHA256, "raw MNIST label artifact changed")
+    raw = raw_path.read_bytes()
+    _require(len(raw) >= 8, "raw MNIST label header is incomplete")
+    magic, count = struct.unpack(">II", raw[:8])
+    _require(magic == 2049 and count == SOURCE_COUNT, "raw MNIST label header changed")
+    labels = torch.tensor(list(raw[8:]), dtype=torch.int64).contiguous()
+    _require(labels.shape == (SOURCE_COUNT,), "MNIST source label count changed")
+    _require(tensor_sha256(labels) == SOURCE_LABELS_TENSOR_SHA256, "MNIST source label identity changed")
+    _require(bool(torch.equal(torch.unique(labels), torch.arange(CLASS_COUNT))), "MNIST labels are not 0..9")
+    return labels
+
+
+def _int_tensor(values: Any, name: str) -> torch.Tensor:
+    tensor = torch.tensor(values, dtype=torch.int64).contiguous()
+    _require(tensor.ndim == 1, f"{name} must be one-dimensional")
+    _require(torch.unique(tensor).numel() == tensor.numel(), f"{name} contains duplicate identities")
+    _require(bool(tensor.ge(0).all()) and bool(tensor.lt(SOURCE_COUNT).all()), f"{name} is outside mnist_train")
+    return tensor
+
+
+def _label_slice(labels: torch.Tensor, indices: torch.Tensor, name: str, expected_index_sha256: str, expected_label_sha256: str) -> dict[str, Any]:
+    observed_labels = labels.index_select(0, indices).contiguous()
+    _require(tensor_sha256(indices) == expected_index_sha256, f"{name} index authority changed")
+    _require(tensor_sha256(observed_labels) == expected_label_sha256, f"{name} label authority changed")
+    return {
+        "dataset": "mnist_train",
+        "count": int(indices.numel()),
+        "index_sha256": tensor_sha256(indices),
+        "label_sha256": tensor_sha256(observed_labels),
+        "class_counts": torch.bincount(observed_labels, minlength=CLASS_COUNT).tolist(),
+    }
+
+
+def _stable_source_row_identity(source_index: int, label: int) -> str:
+    material = f"mnist_train|{source_index}|{label}|SOURCE_ROW_IDENTITY_V1".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def _authority_inputs(repo_root: Path, labels: torch.Tensor) -> dict[str, Any]:
+    historical = comparison._verify_authorities(repo_root)
+    boundaries = comparison._verify_historical_boundaries(repo_root)
+    partition = _read_json_exact(
+        repo_root,
+        PRODUCER_PARTITION_MANIFEST,
+        PRODUCER_PARTITION_MANIFEST_SHA256,
+        "old N3 partition manifest",
+    )
+    old_fit = _mapping(partition.get("fit"), "old N3 fit")
+    old_validation = _mapping(partition.get("internal_validation"), "old N3 internal validation")
+    old_records = [
+        (int(position), int(source_index), int(label))
+        for role in (old_fit, old_validation)
+        for position, source_index, label in zip(
+            role.get("row_positions", []),
+            role.get("source_indices", []),
+            role.get("labels", []),
+            strict=True,
+        )
+    ]
+    old_records.sort(key=lambda item: item[0])
+    _require([item[0] for item in old_records] == list(range(1000)), "old N3 row positions are incomplete")
+    old_indices = _int_tensor([item[1] for item in old_records], "old N3 source indices")
+    old_labels = labels.index_select(0, old_indices).contiguous()
+    _require(torch.equal(old_labels, torch.tensor([item[2] for item in old_records], dtype=torch.int64)), "old N3 source labels changed")
+    _require(old_indices.numel() == 1000, "old N3 source count changed")
+    _require(tensor_sha256(old_indices) == OLD_SOURCE_INDEX_SHA256, "old N3 source order changed")
+    _require(tensor_sha256(old_labels) == OLD_SOURCE_LABEL_SHA256, "old N3 label authority changed")
+    old_sorted = torch.sort(old_indices).values
+    _require(tensor_sha256(old_sorted) == OLD_SORTED_SOURCE_INDEX_SHA256, "old N3 sorted source identity changed")
+
+    sealed = _read_json_exact(
+        repo_root,
+        SEALED_CONFIRMATION_MANIFEST,
+        SEALED_CONFIRMATION_MANIFEST_SHA256,
+        "sealed confirmation reservation",
+    )
+    _require(sealed.get("status") == "RESERVED_NOT_MATERIALIZED", "sealed confirmation is no longer reserved")
+    _require(sealed.get("semantic_authority_id") == "N3_SEALED_CONFIRMATION_SOURCE_V1", "sealed authority changed")
+    selection = _mapping(sealed.get("selection"), "sealed selection")
+    reserved_indices = _int_tensor(selection.get("source_indices"), "sealed reserved source indices")
+    reserved_labels = labels.index_select(0, reserved_indices).contiguous()
+    _require(reserved_indices.numel() == 500, "sealed reserved count changed")
+    _require(tensor_sha256(reserved_indices) == SEALED_CONFIRMATION_SOURCE_INDEX_SHA256, "sealed reserved index identity changed")
+    _require(tensor_sha256(reserved_labels) == SEALED_CONFIRMATION_LABEL_SHA256, "sealed reserved label identity changed")
+    _require(selection.get("q_values_observed") is False and selection.get("ols_values_observed") is False, "sealed reservation observed values")
+
+    s2_indices = torch.arange(50_000, 55_000, dtype=torch.int64)
+    s1_indices = torch.arange(55_000, 60_000, dtype=torch.int64)
+    s2 = _label_slice(labels, s2_indices, "S2 validation", S2_VALIDATION_INDEX_SHA256, S2_VALIDATION_LABEL_SHA256)
+    s1 = _label_slice(labels, s1_indices, "S1 confirmation", S1_CONFIRMATION_INDEX_SHA256, S1_CONFIRMATION_LABEL_SHA256)
+    _require(not set(old_indices.tolist()) & set(s2_indices.tolist()), "old N3 overlaps S2 validation")
+    _require(not set(old_indices.tolist()) & set(s1_indices.tolist()), "old N3 overlaps S1 confirmation")
+    _require(not set(s2_indices.tolist()) & set(s1_indices.tolist()), "S2 validation overlaps S1 confirmation")
+
+    old_set = set(old_indices.tolist())
+    s2_set = set(s2_indices.tolist())
+    s1_set = set(s1_indices.tolist())
+    reserved_set = set(reserved_indices.tolist())
+    _require(not reserved_set & old_set, "sealed reservation overlaps old N3")
+    _require(not reserved_set & s2_set, "sealed reservation overlaps S2 validation")
+    _require(not reserved_set & s1_set, "sealed reservation overlaps S1 confirmation")
+    excluded_union = torch.tensor(sorted(old_set | s2_set | s1_set | reserved_set), dtype=torch.int64)
+    _require(excluded_union.numel() == 11_500, "excluded source union is not exact")
+
+    firewall = _read_json_exact(
+        repo_root,
+        PRODUCER_FIREWALL_MANIFEST,
+        PRODUCER_FIREWALL_MANIFEST_SHA256,
+        "producer firewall manifest",
+    )
+    protected_registry = []
+    for entry in firewall.get("protected_identities", []):
+        item = _mapping(entry, "protected identity")
+        protected_registry.append({
+            "canonical_name": item.get("canonical_name"),
+            "dataset_coordinate": item.get("domain", item.get("dataset_coordinate")),
+            "role": item.get("role"),
+            "status": item.get("status"),
+            "count": item.get("count"),
+            "index_sha256": item.get("index_sha256"),
+            "artifact_source_identity": item.get("artifact_source_identity"),
+        })
+    protected_registry.sort(key=lambda item: str(item["canonical_name"]))
+
+    return {
+        "old_n3": {
+            "dataset": "mnist_train",
+            "count": int(old_indices.numel()),
+            "index_sha256": tensor_sha256(old_indices),
+            "sorted_index_sha256": tensor_sha256(old_sorted),
+            "label_sha256": tensor_sha256(old_labels),
+            "source_manifest": {
+                "path": _relative(repo_root, repo_root / PRODUCER_SOURCE_MANIFEST),
+                "sha256": PRODUCER_SOURCE_MANIFEST_SHA256,
+            },
+            "partition_manifest": {
+                "path": _relative(repo_root, repo_root / PRODUCER_PARTITION_MANIFEST),
+                "sha256": PRODUCER_PARTITION_MANIFEST_SHA256,
+            },
+            "immutable_historical": True,
+        },
+        "s2_validation": {
+            "path": "outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/data_identity_manifest.json",
+            "manifest_sha256": SOURCE_DATA_IDENTITY_MANIFEST_SHA256,
+            "dataset": "mnist_train",
+            "source_range": [50_000, 55_000],
+            **s2,
+            "protected": True,
+        },
+        "s1_confirmation": {
+            "dataset": "mnist_train",
+            "source_range": [55_000, 60_000],
+            **s1,
+            "protected": True,
+        },
+        "sealed_confirmation_reservation": {
+            "path": _relative(repo_root, repo_root / SEALED_CONFIRMATION_MANIFEST),
+            "manifest_sha256": SEALED_CONFIRMATION_MANIFEST_SHA256,
+            "semantic_authority_id": sealed["semantic_authority_id"],
+            "status": sealed["status"],
+            "dataset": "mnist_train",
+            "count": int(reserved_indices.numel()),
+            "index_sha256": tensor_sha256(reserved_indices),
+            "label_sha256": tensor_sha256(reserved_labels),
+            "q_values_loaded": False,
+            "ols_values_loaded": False,
+            "materialized": False,
+        },
+        "excluded_source_union": {
+            "dataset": "mnist_train",
+            "count": int(excluded_union.numel()),
+            "index_sha256": tensor_sha256(excluded_union),
+            "members": ["N3_DEVELOPMENT_BANK_V1", "S2_VALIDATION", "S1_CONFIRMATION", "N3_SEALED_CONFIRMATION_RESERVATION"],
+            "pairwise_overlap_zero": True,
+        },
+        "protected_panel_registry": protected_registry,
+        "historical_authority_summary": historical,
+        "sealed_boundary_summary": boundaries["sealed_confirmation"],
+        "excluded_sets": {
+            "N3_DEVELOPMENT_BANK_V1": old_set,
+            "S2_VALIDATION": s2_set,
+            "S1_CONFIRMATION": s1_set,
+            "N3_SEALED_CONFIRMATION_RESERVATION": reserved_set,
+        },
+    }
+
+
+def _select_rows(labels: torch.Tensor, excluded_sets: Mapping[str, set[int]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    excluded = set().union(*excluded_sets.values())
+    rows: list[dict[str, Any]] = []
+    coverage: list[dict[str, Any]] = []
+    labels_list = [int(value) for value in labels.tolist()]
+    for label in range(CLASS_COUNT):
+        eligible = [index for index, value in enumerate(labels_list) if value == label and index not in excluded]
+        _require(len(eligible) >= ROWS_PER_CLASS, f"class {label} lacks 500 eligible source rows")
+        selected_ranks = [((j * (len(eligible) - 1)) // (ROWS_PER_CLASS - 1)) for j in range(ROWS_PER_CLASS)]
+        _require(len(set(selected_ranks)) == ROWS_PER_CLASS, f"class {label} spacing produced duplicate ranks")
+        selected = [eligible[rank] for rank in selected_ranks]
+        _require(selected == sorted(selected), f"class {label} selected rows are not source-index ordered")
+        class_rows = []
+        for selected_rank, (eligible_rank, source_index) in enumerate(zip(selected_ranks, selected, strict=True)):
+            row = {
+                "bank_row_position": len(rows),
+                "source_index": source_index,
+                "label": label,
+                "stable_source_row_identity": _stable_source_row_identity(source_index, label),
+                "eligible_source_rank": eligible_rank,
+                "selected_within_class_rank": selected_rank,
+            }
+            rows.append(row)
+            class_rows.append(row)
+        coverage.append({
+            "label": label,
+            "eligible_count": len(eligible),
+            "eligible_source_index_min": eligible[0],
+            "eligible_source_index_max": eligible[-1],
+            "selected_source_index_min": selected[0],
+            "selected_source_index_max": selected[-1],
+            "selected_eligible_rank_min": selected_ranks[0],
+            "selected_eligible_rank_max": selected_ranks[-1],
+            "selected_eligible_rank_sha256": tensor_sha256(torch.tensor(selected_ranks, dtype=torch.int64)),
+            "selected_count": len(class_rows),
+            "full_eligible_range_endpoints_selected": selected[0] == eligible[0] and selected[-1] == eligible[-1],
+            "selection_rule": SELECTION_RULE,
+        })
+    return rows, {"per_class": coverage, "total_eligible_count": sum(item["eligible_count"] for item in coverage)}
+
+
+def _semantic_payload(
+    rows: list[dict[str, Any]],
+    source: Mapping[str, Any],
+    coverage: Mapping[str, Any],
+) -> dict[str, Any]:
+    indices = torch.tensor([int(row["source_index"]) for row in rows], dtype=torch.int64)
+    labels = torch.tensor([int(row["label"]) for row in rows], dtype=torch.int64)
+    exclusion_payload = {
+        name: {
+            "count": value["count"],
+            "index_sha256": value["index_sha256"],
+        }
+        for name, value in (
+            ("N3_DEVELOPMENT_BANK_V1", source["old_n3"]),
+            ("S2_VALIDATION", source["s2_validation"]),
+            ("S1_CONFIRMATION", source["s1_confirmation"]),
+            ("N3_SEALED_CONFIRMATION_RESERVATION", source["sealed_confirmation_reservation"]),
+        )
+    }
+    return {
+        "semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+        "dataset": "mnist_train",
+        "source_index_range": ELIGIBLE_RANGE,
+        "source_labels_tensor_sha256": SOURCE_LABELS_TENSOR_SHA256,
+        "rows_per_class": ROWS_PER_CLASS,
+        "pool_count": POOL_COUNT,
+        "selection_rule": SELECTION_RULE,
+        "source_row_identity_formula": SOURCE_ROW_IDENTITY_FORMULA,
+        "excluded_source_union_sha256": source["excluded_source_union"]["index_sha256"],
+        "excluded_authorities": exclusion_payload,
+        "eligible_count_by_class": [item["eligible_count"] for item in coverage["per_class"]],
+        "selected_source_indices": indices.tolist(),
+        "selected_labels": labels.tolist(),
+        "selected_source_indices_sha256": tensor_sha256(indices),
+        "selected_labels_sha256": tensor_sha256(labels),
+    }
+
+
+def _build_payload(repo_root: Path, git: Mapping[str, Any], labels: torch.Tensor, source: Mapping[str, Any], rows: list[dict[str, Any]], coverage: Mapping[str, Any]) -> dict[str, Any]:
+    indices = torch.tensor([int(row["source_index"]) for row in rows], dtype=torch.int64)
+    selected_labels = torch.tensor([int(row["label"]) for row in rows], dtype=torch.int64)
+    semantic = _semantic_payload(rows, source, coverage)
+    semantic_sha256 = canonical_sha256(semantic)
+    row_manifest_sha256 = canonical_sha256(rows)
+    excluded = set().union(*source["excluded_sets"].values())
+    eligible_all = [
+        index
+        for index, label in enumerate(labels.tolist())
+        if index not in excluded and 0 <= int(label) < CLASS_COUNT
+    ]
+    return {
+        "schema": SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "FROZEN_SOURCE_ROWS",
+        "semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+        "bank_semantic_sha256": semantic_sha256,
+        "git": {
+            "branch": git["branch"],
+            "starting_committed_head": git["head"],
+            "definition_script": _relative(repo_root, Path(__file__).resolve()),
+            "definition_script_sha256": file_sha256(Path(__file__).resolve()),
+            "dirty_paths": git["dirty_paths"],
+            "worktree_clean": git["worktree_clean"],
+        },
+        "source_domain": {
+            "dataset": "mnist_train",
+            "split_identity": "mnist_train_indices_0_59999",
+            "source_index_range": ELIGIBLE_RANGE,
+            "source_count": SOURCE_COUNT,
+            "eligible_count": coverage["total_eligible_count"],
+            "eligible_source_indices_sorted_sha256": tensor_sha256(torch.tensor(sorted(set(eligible_all)), dtype=torch.int64)),
+            "source_labels_artifact": {
+                "path": _relative(repo_root, repo_root / SOURCE_LABELS_PATH),
+                "sha256": SOURCE_LABELS_FILE_SHA256,
+            },
+            "source_labels_raw_artifact": {
+                "path": _relative(repo_root, repo_root / SOURCE_LABELS_RAW_PATH),
+                "sha256": SOURCE_LABELS_RAW_SHA256,
+            },
+            "source_images_raw_artifact": {
+                "path": _relative(repo_root, repo_root / SOURCE_IMAGES_RAW_PATH),
+                "sha256": SOURCE_IMAGES_RAW_SHA256,
+                "content_sha256_recorded_only": SOURCE_IMAGES_CONTENT_SHA256,
+            },
+            "labels_tensor_sha256": SOURCE_LABELS_TENSOR_SHA256,
+            "data_identity_manifest_sha256": SOURCE_DATA_IDENTITY_MANIFEST_SHA256,
+            "dataset_manifest_sha256": SOURCE_DATASET_MANIFEST_SHA256,
+        },
+        "ols_q_authority": {
+            "coordinate": "R2_AMPLITUDE",
+            "definition": "q=abs(c/sqrt(s))=abs(R3_COMPLEX)",
+            "source": "ScaledChenBOGTModel._coefficients(encoded)",
+            "semantic_field": "output.coefficients",
+            "stage": "encoder_final_field_to_fixed_ols_modal_projection",
+            "dtype": "torch.complex64 before q; torch.float64 q",
+            "shape": ["N", 100],
+            "checkpoint_path": _relative(repo_root, repo_root / CHECKPOINT_PATH),
+            "checkpoint_sha256": CHECKPOINT_SHA256,
+            "mode_bank_sha256": MODE_BANK_SHA256,
+            "mra_config_path": _relative(repo_root, repo_root / MRA_CONFIG_PATH),
+            "mra_config_sha256": MRA_CONFIG_SHA256,
+            "formal_config_path": _relative(repo_root, repo_root / FORMAL_CONFIG_PATH),
+            "formal_config_sha256": FORMAL_CONFIG_SHA256,
+            "representation_contract_path": _relative(repo_root, repo_root / REPRESENTATION_CONTRACT_PATH),
+            "representation_contract_sha256": REPRESENTATION_CONTRACT_SHA256,
+            "semantic_manifest_path": _relative(repo_root, repo_root / SEMANTIC_MANIFEST_PATH),
+            "semantic_manifest_sha256": SEMANTIC_MANIFEST_SHA256,
+        },
+        "exclusions": {
+            "authorities": {
+                "N3_DEVELOPMENT_BANK_V1": source["old_n3"],
+                "S2_VALIDATION": source["s2_validation"],
+                "S1_CONFIRMATION": source["s1_confirmation"],
+                "N3_SEALED_CONFIRMATION_RESERVATION": source["sealed_confirmation_reservation"],
+            },
+            "union": source["excluded_source_union"],
+            "v2_overlap_counts": {
+                "N3_DEVELOPMENT_BANK_V1": 0,
+                "S2_VALIDATION": 0,
+                "S1_CONFIRMATION": 0,
+                "N3_SEALED_CONFIRMATION_RESERVATION": 0,
+            },
+            "source_index_namespace": "dataset-qualified mnist_train",
+            "non_source_index_domains": {
+                "S1_SELECTION": {"status": "NOT_APPLICABLE_SOURCE_INDEX_NAMESPACE", "index_sha256": S1_SELECTION_INDEX_SHA256, "dataset": "mnist_test"},
+                "FORMAL_S3_PROTECTED_PANEL": {"status": "NOT_APPLICABLE_SOURCE_INDEX_NAMESPACE", "identity_sha256": S3_FORMAL_PANEL_IDENTITY_SHA256},
+                "CODE8_REVIEW": {"status": "NOT_APPLICABLE_SOURCE_INDEX_NAMESPACE", "manifest_sha256": CODE8_REVIEW_MANIFEST_SHA256},
+            },
+        },
+        "selection": {
+            "algorithm": "classwise eligible source-index ascending list with inclusive-endpoint evenly-spaced ranks",
+            "formula": SELECTION_RULE,
+            "q_values_used": False,
+            "ols_values_used": False,
+            "image_values_used": False,
+            "rng_used": False,
+            "split_optimization": False,
+            "reselection": False,
+            "source_index_order_frozen": True,
+            "class_order": list(range(CLASS_COUNT)),
+            "rows_per_class": ROWS_PER_CLASS,
+            "pool_count": POOL_COUNT,
+            "coverage": coverage,
+        },
+        "rows": rows,
+        "identity": {
+            "row_manifest_sha256": row_manifest_sha256,
+            "selected_source_indices_sha256": tensor_sha256(indices),
+            "selected_labels_sha256": tensor_sha256(selected_labels),
+            "stable_source_row_identity_formula": SOURCE_ROW_IDENTITY_FORMULA,
+            "unique_source_rows": torch.unique(indices).numel() == POOL_COUNT,
+            "class_counts": torch.bincount(selected_labels, minlength=CLASS_COUNT).tolist(),
+            "semantic_payload_sha256": semantic_sha256,
+        },
+        "authority_inputs": {
+            "old_n3_source_manifest_sha256": PRODUCER_SOURCE_MANIFEST_SHA256,
+            "old_n3_partition_manifest_sha256": PRODUCER_PARTITION_MANIFEST_SHA256,
+            "old_n3_firewall_manifest_sha256": PRODUCER_FIREWALL_MANIFEST_SHA256,
+            "sealed_confirmation_manifest_sha256": SEALED_CONFIRMATION_MANIFEST_SHA256,
+            "sealed_status": "RESERVED_NOT_MATERIALIZED",
+            "protected_panel_registry": source["protected_panel_registry"],
+        },
+        "materialization_boundary": {
+            "definition_only": True,
+            "q_values_loaded": False,
+            "q_values_materialized": False,
+            "image_values_loaded": False,
+            "sealed_confirmation_values_loaded": False,
+            "sealed_confirmation_consumed": False,
+            "producer_evaluated": False,
+            "producer_selection": False,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+        },
+        "artifact_policy": {
+            "write_once": True,
+            "immutable_after_publish": True,
+            "old_1000_row_authority_unchanged": True,
+            "sealed_reservation_unchanged": True,
+            "q_values_embedded": False,
+        },
+        "governance": {
+            "development_only": True,
+            "future_consumer": "N3_DEVELOPMENT_BANK_V2_FIVE_FOLD_EMPIRICAL_CEILING_ONLY",
+            "producer_selection": False,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+        },
+    }
+
+
+def validate_source_manifest_payload(payload: Mapping[str, Any]) -> None:
+    _require(payload.get("schema") == SCHEMA, "source manifest schema changed")
+    _require(payload.get("version") == 1 and payload.get("task_id") == TASK_ID, "source manifest identity changed")
+    _require(payload.get("status") == "FROZEN_SOURCE_ROWS", "source manifest is not frozen")
+    _require(payload.get("semantic_authority_id") == SEMANTIC_AUTHORITY_ID, "semantic authority changed")
+    source = _mapping(payload.get("source_domain"), "source domain")
+    _require(source.get("dataset") == "mnist_train" and source.get("source_index_range") == ELIGIBLE_RANGE, "source domain changed")
+    selection = _mapping(payload.get("selection"), "selection")
+    _require(selection.get("formula") == SELECTION_RULE and selection.get("q_values_used") is False, "selection rule or q boundary changed")
+    _require(selection.get("ols_values_used") is False and selection.get("image_values_used") is False, "selection observed forbidden values")
+    rows = payload.get("rows")
+    _require(isinstance(rows, list) and len(rows) == POOL_COUNT, "source row manifest is incomplete")
+    indices: list[int] = []
+    labels: list[int] = []
+    identities: list[str] = []
+    for position, item in enumerate(rows):
+        row = _mapping(item, f"source row {position}")
+        _require(row.get("bank_row_position") == position, "source row order changed")
+        source_index = row.get("source_index")
+        label = row.get("label")
+        _require(isinstance(source_index, int) and 0 <= source_index < SOURCE_COUNT, "source index is invalid")
+        _require(isinstance(label, int) and 0 <= label < CLASS_COUNT, "source label is invalid")
+        _require(row.get("stable_source_row_identity") == _stable_source_row_identity(source_index, label), "stable row identity changed")
+        indices.append(source_index)
+        labels.append(label)
+        identities.append(str(row["stable_source_row_identity"]))
+    index_tensor = torch.tensor(indices, dtype=torch.int64)
+    label_tensor = torch.tensor(labels, dtype=torch.int64)
+    _require(torch.unique(index_tensor).numel() == POOL_COUNT, "source rows are not unique")
+    _require(torch.equal(torch.bincount(label_tensor, minlength=CLASS_COUNT), torch.full((CLASS_COUNT,), ROWS_PER_CLASS, dtype=torch.int64)), "source rows are not class balanced")
+    identity = _mapping(payload.get("identity"), "source identity")
+    _require(identity.get("selected_source_indices_sha256") == tensor_sha256(index_tensor), "selected source hash changed")
+    _require(identity.get("selected_labels_sha256") == tensor_sha256(label_tensor), "selected label hash changed")
+    _require(identity.get("row_manifest_sha256") == canonical_sha256(rows), "row manifest hash changed")
+    _require(identity.get("class_counts") == [ROWS_PER_CLASS] * CLASS_COUNT, "class counts changed")
+    _require(identity.get("unique_source_rows") is True, "unique source-row invariant changed")
+    _require(len(set(identities)) == POOL_COUNT, "stable source identities are not unique")
+    exclusions = _mapping(payload.get("exclusions"), "exclusions")
+    overlaps = _mapping(exclusions.get("v2_overlap_counts"), "V2 overlap counts")
+    _require(dict(overlaps) == {name: 0 for name in ("N3_DEVELOPMENT_BANK_V1", "S2_VALIDATION", "S1_CONFIRMATION", "N3_SEALED_CONFIRMATION_RESERVATION")}, "source overlap gate changed")
+    boundary = _mapping(payload.get("materialization_boundary"), "materialization boundary")
+    for key in ("definition_only", "q_values_loaded", "q_values_materialized", "image_values_loaded", "sealed_confirmation_values_loaded", "sealed_confirmation_consumed", "producer_evaluated", "producer_selection", "training_authorized", "formal_promotion"):
+        _require(boundary.get(key) is False if key != "definition_only" else boundary.get(key) is True, f"source boundary changed: {key}")
+    _require(boundary.get("generation_readiness") == "not_ready", "generation readiness changed")
+
+
+def _write_artifact(repo_root: Path, output_dir: Path, payload: Mapping[str, Any]) -> Path:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(temporary / ARTIFACT_NAME, payload, artifact_kind="N3 V2 source manifest")
+        if output_dir.exists():
+            raise FileExistsError(f"write-once output appeared during definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return output_dir / ARTIFACT_NAME
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "starting committed HEAD changed")
+    unexpected = [path for path in git["dirty_paths"] if path not in SAFE_DIRTY_PATHS]
+    _require(not unexpected, f"unrelated local changes invalidate provenance: {unexpected}")
+    _require(not output_dir.exists(), f"write-once output already exists: {output_dir}")
+    labels = _load_source_labels(repo_root)
+    source = _authority_inputs(repo_root, labels)
+    rows, coverage = _select_rows(labels, source["excluded_sets"])
+    payload = _build_payload(repo_root, git, labels, source, rows, coverage)
+    validate_source_manifest_payload(payload)
+    artifact_path = _write_artifact(repo_root, output_dir, payload)
+    published = json.loads(artifact_path.read_text(encoding="utf-8"))
+    validate_source_manifest_payload(published)
+    return {
+        "result": "FROZEN_SOURCE_ROWS",
+        "semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+        "artifact": _relative(repo_root, artifact_path),
+        "artifact_sha256": file_sha256(artifact_path),
+        "bank_semantic_sha256": published["bank_semantic_sha256"],
+        "row_manifest_sha256": published["identity"]["row_manifest_sha256"],
+        "selected_source_indices_sha256": published["identity"]["selected_source_indices_sha256"],
+        "selected_labels_sha256": published["identity"]["selected_labels_sha256"],
+        "eligible_count": published["source_domain"]["eligible_count"],
+        "eligible_count_by_class": [item["eligible_count"] for item in published["selection"]["coverage"]["per_class"]],
+        "selected_count": POOL_COUNT,
+        "selected_per_class": ROWS_PER_CLASS,
+        "excluded_source_union": published["exclusions"]["union"],
+        "v2_overlap_counts": published["exclusions"]["v2_overlap_counts"],
+        "q_values_used": False,
+        "image_values_used": False,
+        "sealed_confirmation_consumed": False,
+        "producer_selection": False,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = args.repo_root.resolve()
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

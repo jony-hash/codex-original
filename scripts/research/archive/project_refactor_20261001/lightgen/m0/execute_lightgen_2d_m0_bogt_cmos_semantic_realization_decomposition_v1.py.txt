@@ -1,0 +1,1573 @@
+"""Decompose step600 raw-CMOS linear-code preservation from canonical E_D realization.
+
+This is a read-only R2 diagnostic.  It fits one fixed TRAIN-only CMOS probe,
+evaluates that probe on the canonical DEV CMOS and accepted S1 CMOS, and
+reproduces the accepted independent E_D measurements.  No optical update or
+S1 regeneration is permitted.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ctypes
+import json
+import math
+import os
+from pathlib import Path
+import shutil
+import time
+from typing import Any, Mapping
+
+import torch
+from torch import nn
+from torch.nn import functional as F
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, RESOURCE_ENVELOPE, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INVALID_HARNESS, RUN_INTERRUPTED, RUN_PREPARING, RUN_SCIENTIFIC_ACTIVE, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_json,
+    atomic_write_new_json,
+    file_sha256,
+    tensor_sha256,
+)
+from scripts.research.lightgen import execute_lightgen_2d_chen_bogt_complex_ols_training_v1 as parent_training
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_generative_failure_localization_v1 as localization
+from scripts.research.lightgen import execute_lightgen_2d_ols_to_cmos_semantic_information_localization_v1 as probe_convention
+from scripts.research.lightgen import materialize_lightgen_2d_frozen_dev_ols_cmos_v1 as cuda_runtime_helper
+
+
+TASK_ID = "M0_BOGT_CMOS_SEMANTIC_REALIZATION_DECOMPOSITION_V1"
+AUTHORIZATION_ID = f"{TASK_ID}:authorization:01"
+SEMANTIC_AUTHORITY_ID = "M0_BOGT_SEMANTIC_GENERATION_CANARY_V1"
+RUN_ID = "m0-bogt-cmos-semantic-realization-decomposition-v1"
+TRAJECTORY_ID = "fixed-step600-train-cmos-linear-code-decomposition-v1"
+ATTEMPT_ID = f"{RUN_ID}:attempt_01"
+OUTER_GATE = "M0_CMOS_SEMANTIC_REALIZATION_DECOMPOSED"
+DEFAULT_ATTEMPT = Path(
+    "outputs/20260926_m0_bogt_cmos_semantic_realization_decomposition_v1/runs/attempt_01"
+)
+
+M0_ATTEMPT = Path("outputs/20260925_m0_bogt_semantic_generation_canary_v1/runs/attempt_01")
+M0_REPORT = M0_ATTEMPT / "resolved_report_05.json"
+M0_REPORT_SHA256 = "e9814c90bc6600f7cccda1f7ec4e54d560c22d7d67553db37b0e26a7516ab8d4"
+LOCALIZATION_ATTEMPT = Path(
+    "outputs/20260926_m0_bogt_generative_failure_localization_v1/runs/attempt_01"
+)
+LOCALIZATION_REPORT = LOCALIZATION_ATTEMPT / "report.json"
+LOCALIZATION_REPORT_SHA256 = "3f3facaa5e963fac06807b36da760330ff8cf3d13f7b8a831db75972bc09e5cc"
+
+TRAIN_COUNT = 55_000
+DEV_COUNT = 5_000
+S1_COUNT = 2_000
+CLASS_COUNT = 10
+CMOS_SHAPE = (1, 200, 200)
+FEATURE_SHAPE = (28, 28)
+OPTICAL_BATCH_SIZE = 10
+EVALUATOR_BATCH_SIZE = 256
+BOOTSTRAP_REPLICATES = 2_000
+SMOKE_BOOTSTRAP_REPLICATES = 41
+BOOTSTRAP_SEEDS = {
+    "real_cmos_probe": 2026092605,
+    "s1_cmos_probe": 2026092606,
+    "real_ed": 2026092603,
+    "s1_ed": 2026092604,
+}
+SEMANTIC_MACRO_THRESHOLD = 0.50
+SEMANTIC_CLASS_THRESHOLD = 0.10
+ED_REPRODUCTION_TOLERANCE = 1.0e-6
+MAX_TOTAL_EXECUTION_SECONDS = 7_200.0
+MAX_DEVICE_MEMORY_FRACTION = 0.90
+MIN_FREE_DISK_BYTES = 100 * 1024 * 1024
+MIN_FREE_HOST_MEMORY_BYTES = 2 * 1024**3
+ESTIMATED_HOST_HEADROOM_BYTES = 1024**3
+ESTIMATED_OUTPUT_BYTES = 20 * 1024**2
+SMOKE_ROWS_PER_CLASS = 10
+PROBE_SCHEMA = "m0_bogt_cmos_semantic_realization_probe.v1"
+REPORT_SCHEMA = "m0_bogt_cmos_semantic_realization_decomposition_report.v1"
+PREFLIGHT_SCHEMA = "m0_bogt_cmos_semantic_realization_decomposition_preflight.v1"
+SOURCE_MANIFEST_SCHEMA = "m0_bogt_cmos_semantic_realization_decomposition_source_manifest.v1"
+
+
+class DecompositionError(RuntimeError):
+    """Raised when a required authority, preflight, or measurement is invalid."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise DecompositionError(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _tensor(value: object, name: str) -> torch.Tensor:
+    _require(isinstance(value, torch.Tensor), f"{name} must be a tensor")
+    return value
+
+
+def _finite(value: torch.Tensor, name: str) -> None:
+    _require(bool(torch.isfinite(value).all().item()), f"{name} contains nonfinite values")
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _relative(root: Path, path: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def _read_json(path: Path, *, expected_sha256: str | None = None) -> dict[str, Any]:
+    _require(path.is_file(), f"required JSON authority is missing: {path}")
+    if expected_sha256 is not None:
+        _require(file_sha256(path) == expected_sha256, f"JSON authority identity changed: {path}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise DecompositionError(f"JSON authority is unreadable: {path}") from error
+    return dict(_mapping(value, str(path)))
+
+
+def _validate_target(root: Path, requested: Path) -> Path:
+    target = (root / requested if not requested.is_absolute() else requested).resolve()
+    outputs_root = (root / "outputs").resolve()
+    _require(outputs_root in target.parents, "diagnostic output must remain below outputs/")
+    _require(target == (root / DEFAULT_ATTEMPT).resolve(), "diagnostic output must use the one authorized attempt_01 path")
+    _require("final_pt" not in target.parts and "_wsl_restore_metadata_v4" not in target.parts, "protected output namespace is forbidden")
+    if target.exists():
+        _require(_setup_only_recheck_target(target), f"write-once diagnostic attempt already exists: {target}")
+    return target
+
+
+def _setup_only_recheck_target(target: Path) -> bool:
+    """Permit recovery only when the prior READY open failed before measurement."""
+    if not target.is_dir():
+        return False
+    names = {item.name for item in target.iterdir()}
+    if names != {"preflight.json", "source_manifest.json"}:
+        return False
+    try:
+        preflight = json.loads((target / "preflight.json").read_text(encoding="utf-8"))
+        source = json.loads((target / "source_manifest.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(preflight, Mapping)
+        and preflight.get("schema") == PREFLIGHT_SCHEMA
+        and preflight.get("status") == "READY"
+        and preflight.get("formal_attempt_created") is False
+        and isinstance(source, Mapping)
+        and source.get("schema") == "research_execution_source_manifest.v1"
+    )
+
+
+def _validate_step600_train_bank_binding(
+    payload: Mapping[str, Any],
+    *,
+    checkpoint_sha256: str,
+    source_manifest_id: str,
+    data_identity: Mapping[str, Any],
+) -> torch.Tensor:
+    _require(payload.get("schema") == "m0_step600_train_ols.v1", "TRAIN OLS schema is not the accepted step600 schema")
+    _require(payload.get("selected_step") == 600, "TRAIN OLS bank is not selected step600")
+    _require(payload.get("selected_checkpoint_sha256") == checkpoint_sha256, "TRAIN OLS bank checkpoint lineage is stale")
+    _require(payload.get("source_manifest_id") == source_manifest_id, "TRAIN OLS bank source manifest is stale")
+    _require(payload.get("data_identity") == dict(data_identity), "TRAIN OLS bank data identity is stale")
+    z = _tensor(payload.get("z"), "step600 TRAIN OLS tensor")
+    _require(z.shape == (TRAIN_COUNT, 100) and z.dtype == torch.complex64, "step600 TRAIN OLS tensor shape/dtype changed")
+    _finite(z.real, "step600 TRAIN OLS real part")
+    _finite(z.imag, "step600 TRAIN OLS imaginary part")
+    return z
+
+
+def _load_authorities(root: Path) -> dict[str, Any]:
+    authority = localization._load_authorities(root)
+    previous = _read_json(root / LOCALIZATION_REPORT, expected_sha256=LOCALIZATION_REPORT_SHA256)
+    _require(previous.get("result") == "VALID_COMPLETED_DIAGNOSTIC", "prior M0 localization is not valid completed evidence")
+    _require(previous.get("outer_gate") == "M0_BOGT_GENERATIVE_FAILURE_LOCALIZED", "prior localization Gate changed")
+    _require(previous.get("classification") == "OLS_TO_CMOS_SEMANTIC_REALIZATION_BOTTLENECK_SUPPORTED", "prior localization classification changed")
+    _require(previous.get("lineage", {}).get("accepted_m0_report", {}).get("sha256") == M0_REPORT_SHA256, "prior localization does not bind to accepted M0 step600")
+    accepted_m0_source = _mapping(_mapping(authority.get("report"), "accepted M0 report").get("source_manifest"), "accepted M0 source manifest")
+    accepted_m0_data = _mapping(_mapping(accepted_m0_source.get("config_identity"), "accepted M0 config").get("data_identity"), "accepted M0 data identity")
+    _validate_step600_train_bank_binding(
+        _mapping(authority.get("train_payload"), "step600 TRAIN OLS payload"),
+        checkpoint_sha256=authority["references"]["step600_checkpoint"]["sha256"],
+        source_manifest_id=str(accepted_m0_source.get("source_manifest_id")),
+        data_identity=accepted_m0_data,
+    )
+    matrix = _mapping(previous.get("measurement_matrix"), "prior localization measurement matrix")
+    for population, count in (("real_cmos", DEV_COUNT), ("s1_cmos", S1_COUNT)):
+        measurement = _mapping(matrix.get(population), f"accepted E_D {population} measurement")
+        _require(measurement.get("rows") == count, f"accepted E_D {population} row count changed")
+        _require(tuple(torch.as_tensor(measurement.get("confusion_matrix_actual_rows_predicted_columns")).shape) == (CLASS_COUNT, CLASS_COUNT), f"accepted E_D {population} confusion matrix is malformed")
+        _require(tuple(torch.as_tensor(measurement.get("prediction_histogram")).shape) == (CLASS_COUNT,), f"accepted E_D {population} histogram is malformed")
+        _require(isinstance(measurement.get("prediction_tensor_sha256"), str), f"accepted E_D {population} prediction identity is missing")
+
+    m0_report = _read_json(root / M0_REPORT, expected_sha256=M0_REPORT_SHA256)
+    source = _mapping(m0_report.get("source_manifest"), "accepted M0 source manifest")
+    config = _mapping(source.get("config_identity"), "accepted M0 config identity")
+    optional_evaluator = _mapping(config.get("training_evaluator"), "accepted M0 training evaluator identity")
+    _require(optional_evaluator.get("architecture") == "FrozenMNISTEvaluator v1", "training evaluator architecture is not uniquely resolved")
+    _require(optional_evaluator.get("checkpoint") == parent_training.EVALUATOR_CHECKPOINT_RELATIVE_PATH.as_posix(), "training evaluator checkpoint path differs from accepted M0")
+    _require(optional_evaluator.get("checkpoint_sha256") == parent_training.EVALUATOR_CHECKPOINT_SHA256, "training evaluator checkpoint differs from accepted M0")
+    authority["prior_localization_report"] = previous
+    authority["prior_localization_report_ref"] = {
+        "path": LOCALIZATION_REPORT.as_posix(),
+        "sha256": LOCALIZATION_REPORT_SHA256,
+        "role": "accepted step600 DEV/S1 E_D localization report",
+    }
+    authority["training_evaluator_config"] = dict(optional_evaluator)
+    authority["prior_matrix"] = dict(matrix)
+    authority["m0_report"] = m0_report
+    return authority
+
+
+def _load_dataset(root: Path, authority: Mapping[str, Any]) -> dict[str, Any]:
+    dataset = localization._load_dataset(root, authority)
+    indices = _tensor(dataset.get("train_indices"), "canonical TRAIN indices")
+    dev_indices = _tensor(dataset.get("dev_indices"), "canonical DEV indices")
+    labels = _tensor(dataset.get("labels"), "canonical source labels")
+    data_identity = _mapping(authority.get("data_identity"), "accepted M0 data identity")
+    _require(tensor_sha256(indices) == data_identity.get("train_indices_sha256"), "canonical TRAIN ordering differs from accepted M0")
+    _require(tensor_sha256(dev_indices) == data_identity.get("development_indices_sha256"), "canonical DEV ordering differs from accepted M0")
+    train_labels = labels.index_select(0, indices).contiguous()
+    dev_labels = labels.index_select(0, dev_indices).contiguous()
+    prior_real = _mapping(_mapping(authority.get("prior_localization_report"), "prior report").get("real_cmos_checks"), "prior real CMOS identity")
+    _require(tensor_sha256(dev_indices) == prior_real.get("source_indices_sha256"), "real DEV CMOS indices do not match the accepted prior population")
+    _require(tensor_sha256(dev_labels) == prior_real.get("labels_sha256"), "real DEV CMOS labels/order do not match the accepted prior population")
+    _require(train_labels.shape == (TRAIN_COUNT,) and dev_labels.shape == (DEV_COUNT,), "canonical TRAIN/DEV population dimensions changed")
+    _require(torch.equal(torch.unique(train_labels), torch.arange(CLASS_COUNT)), "TRAIN labels do not cover classes 0-9")
+    _require(torch.equal(torch.bincount(dev_labels, minlength=CLASS_COUNT), torch.full((CLASS_COUNT,), DEV_COUNT // CLASS_COUNT, dtype=torch.long)), "DEV population is not class balanced")
+    dataset["train_labels"] = train_labels
+    dataset["dev_labels"] = dev_labels
+    return dataset
+
+
+def _load_models(
+    root: Path,
+    authority: Mapping[str, Any],
+    device: torch.device,
+) -> tuple[nn.Module, nn.Module | None, nn.Module, dict[str, Any]]:
+    cuda_runtime = cuda_runtime_helper._prepare_cuda_runtime_dll_search_path()
+    consumer, ed_evaluator, model_facts = localization._load_frozen_models(authority, device)
+    training_evaluator: nn.Module | None = None
+    training_identity: dict[str, Any] | None = None
+    optional_error: str | None = None
+    try:
+        candidate, identity = parent_training._load_evaluator(root, device)
+        accepted = _mapping(authority.get("training_evaluator_config"), "accepted M0 training evaluator config")
+        for key in ("checkpoint", "checkpoint_sha256", "architecture", "implementation", "implementation_sha256", "view"):
+            _require(identity.get(key) == accepted.get(key), f"training evaluator {key} does not match accepted M0")
+        candidate.freeze()
+        for parameter in candidate.parameters():
+            parameter.grad = None
+        _require(all(not item.requires_grad and item.grad is None for item in candidate.parameters()), "training evaluator is not frozen")
+        training_evaluator = candidate
+        training_identity = dict(identity)
+        training_identity["role"] = "optional descriptive evaluation only; not a probe fit target or Gate"
+    except (OSError, RuntimeError, ValueError, DecompositionError) as error:
+        optional_error = f"{type(error).__name__}: {error}"
+    return consumer, ed_evaluator, training_evaluator, {
+        **model_facts,
+        "cuda_runtime": cuda_runtime,
+        "training_evaluator": training_identity if training_identity is not None else {"status": "NOT_CONSUMED", "reason": optional_error or "not needed for the primary classification"},
+        "optimizer_created": False,
+        "optical_backward": False,
+        "optical_parameter_updates": 0,
+        "checkpoint_writes": 0,
+    }
+
+
+def _snapshot(module: nn.Module) -> dict[str, torch.Tensor]:
+    return {name: value.detach().cpu().contiguous().clone() for name, value in module.state_dict().items()}
+
+
+def _snapshots_equal(left: Mapping[str, torch.Tensor], right: Mapping[str, torch.Tensor]) -> bool:
+    return set(left) == set(right) and all(torch.equal(left[key], right[key]) for key in left)
+
+
+def _rng_snapshot(device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    return torch.get_rng_state().clone(), torch.cuda.get_rng_state(device).clone()
+
+
+def _pool_raw_cpu(raw: torch.Tensor) -> torch.Tensor:
+    _require(raw.ndim == 4 and tuple(raw.shape[1:]) == CMOS_SHAPE and raw.dtype == torch.float32, "raw CMOS feature input shape/dtype changed")
+    cpu_raw = raw.detach().cpu()
+    features = probe_convention._cmos_view(cpu_raw).to(torch.float32).contiguous()
+    _finite(features, "pooled CMOS feature batch")
+    return features
+
+
+def _raw_validity(raw: torch.Tensor, name: str) -> dict[str, Any]:
+    _require(raw.ndim == 4 and tuple(raw.shape[1:]) == CMOS_SHAPE and raw.dtype == torch.float32, f"{name} shape/dtype changed")
+    _finite(raw, name)
+    _require(bool((raw >= 0.0).all().item()), f"{name} contains negative intensity")
+    flattened = raw.reshape(raw.shape[0], -1)
+    maxima = flattened.amax(dim=1)
+    minima = flattened.amin(dim=1)
+    zero_count = int((maxima == 0.0).sum().item())
+    constant_count = int((maxima == minima).sum().item())
+    _require(zero_count == 0 and constant_count == 0, f"{name} contains zero or constant images")
+    return {
+        "rows": int(raw.shape[0]),
+        "finite_image_count": int(torch.isfinite(flattened).all(dim=1).sum().item()),
+        "zero_image_count": zero_count,
+        "constant_image_count": constant_count,
+        "raw_min": float(raw.min().item()),
+        "raw_max": float(raw.max().item()),
+    }
+
+
+def _stream_ols_cmos_features(
+    consumer: Any,
+    z: torch.Tensor,
+    source_indices: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    progress_phase: str,
+    validate_pool_equivalence: bool,
+    deadline: float | None = None,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    _require(z.ndim == 2 and tuple(z.shape[1:]) == (100,) and z.dtype == torch.complex64, "step600 OLS bank shape/dtype changed")
+    _require(source_indices.shape == labels.shape == (z.shape[0],), "CMOS materialization identities do not align")
+    _finite(z.real, "step600 OLS real part")
+    _finite(z.imag, "step600 OLS imaginary part")
+    rows = int(z.shape[0])
+    features = torch.empty((rows, FEATURE_SHAPE[0] * FEATURE_SHAPE[1]), dtype=torch.float32)
+    zero_count = 0
+    constant_count = 0
+    finite_count = 0
+    raw_min = math.inf
+    raw_max = -math.inf
+    equivalence_checked = False
+    started = time.perf_counter()
+    consumer.runtime.eval()
+    with torch.inference_mode():
+        for start in range(0, rows, OPTICAL_BATCH_SIZE):
+            if deadline is not None:
+                _require(time.perf_counter() < deadline, "two-hour authorized execution envelope exceeded")
+            stop = min(start + OPTICAL_BATCH_SIZE, rows)
+            result = consumer.runtime.forward_from_ols(z[start:stop].to(consumer.device))
+            _require(result.image_input is None and result.ols_input_field is None, "external TRAIN OLS unexpectedly traversed an image/encoder path")
+            _require(result.z_ols.source == "external_generated", "TRAIN CMOS producer identity changed")
+            _require(result.generator_input_field.provenance.operation == "lightgen_ols_coefficient_transmission_and_modal_reemission", "TRAIN CMOS path did not use W_OLS")
+            _require(result.generator_input_field.provenance.parameters.get("transport") == "T=I_100_coefficient_space", "TRAIN W_OLS transport changed")
+            _require(result.raw_camera.plane.plane_id == "lightgen_raw_cmos", "TRAIN output is not raw CMOS")
+            raw = result.raw_intensity
+            _require(raw.shape == (stop - start, *CMOS_SHAPE) and raw.device == consumer.device, "TRAIN raw CMOS output shape/device changed")
+            valid = _raw_validity(raw, "step600 TRAIN raw CMOS batch")
+            finite_count += valid["finite_image_count"]
+            zero_count += valid["zero_image_count"]
+            constant_count += valid["constant_image_count"]
+            raw_min = min(raw_min, valid["raw_min"])
+            raw_max = max(raw_max, valid["raw_max"])
+            pooled = _pool_raw_cpu(raw)
+            if validate_pool_equivalence and not equivalence_checked:
+                registered = probe_convention._cmos_features(raw.detach().cpu())
+                _require(torch.equal(pooled.to(torch.float64), registered), "streamed TRAIN pooling differs from the registered probe convention")
+                equivalence_checked = True
+            features[start:stop].copy_(pooled.flatten(1))
+            del result, raw, pooled
+            if progress_phase == "TRAIN_CMOS_FORWARD" and (stop == rows or stop % 1_000 == 0):
+                print(json.dumps({"phase": progress_phase, "completed_rows": stop, "total_rows": rows}, sort_keys=True), flush=True)
+    _require(finite_count == rows and zero_count == 0 and constant_count == 0, "TRAIN CMOS population validity failed")
+    return features, {
+        "rows": rows,
+        "feature_shape": list(features.shape),
+        "feature_dtype_before_probe_cast": str(features.dtype),
+        "raw_cmos_persisted": False,
+        "materialization": "one frozen forward in bounded batches; raw batches pooled and released",
+        "pool_equivalence_checked": equivalence_checked,
+        "source_indices_sha256": tensor_sha256(source_indices),
+        "labels_sha256": tensor_sha256(labels),
+        "raw_validity": {
+            "finite_image_count": finite_count,
+            "zero_image_count": zero_count,
+            "constant_image_count": constant_count,
+            "raw_min": raw_min,
+            "raw_max": raw_max,
+        },
+        "forward": {
+            "device": str(consumer.device),
+            "batch_size": OPTICAL_BATCH_SIZE,
+            "batch_count": math.ceil(rows / OPTICAL_BATCH_SIZE),
+            "input": "accepted canonical step600 TRAIN complex OLS only",
+            "W_OLS_and_generator_frozen": True,
+            "optimizer_created": False,
+            "backward": False,
+            "elapsed_seconds": time.perf_counter() - started,
+        },
+    }
+
+
+def _forward_real_cmos_features(
+    consumer: Any,
+    ed_evaluator: nn.Module,
+    training_evaluator: nn.Module | None,
+    images: torch.Tensor,
+    indices: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    progress: bool,
+    validate_pool_equivalence: bool,
+    deadline: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, dict[str, Any]]:
+    _require(indices.shape == labels.shape and indices.ndim == 1, "real DEV identities do not align")
+    rows = int(indices.numel())
+    features = torch.empty((rows, FEATURE_SHAPE[0] * FEATURE_SHAPE[1]), dtype=torch.float32)
+    ed_predictions = torch.empty((rows,), dtype=torch.long)
+    train_predictions = torch.empty((rows,), dtype=torch.long) if training_evaluator is not None else None
+    raw_min = math.inf
+    raw_max = -math.inf
+    finite_count = 0
+    zero_count = 0
+    constant_count = 0
+    equivalence_checked = False
+    started = time.perf_counter()
+    consumer.runtime.eval()
+    with torch.inference_mode():
+        for start in range(0, rows, OPTICAL_BATCH_SIZE):
+            if deadline is not None:
+                _require(time.perf_counter() < deadline, "two-hour authorized execution envelope exceeded")
+            stop = min(start + OPTICAL_BATCH_SIZE, rows)
+            source_indices = indices[start:stop]
+            image_batch = images.index_select(0, source_indices).to(consumer.device)
+            result = consumer.runtime.forward_from_image(image_batch)
+            _require(result.image_input is not None and result.ols_input_field is not None and result.z_ols.source == "real_encoded", "DEV population did not use the accepted real-image optical path")
+            _require(result.generator_input_field.provenance.operation == "lightgen_ols_coefficient_transmission_and_modal_reemission", "DEV path did not use W_OLS")
+            _require(result.generator_input_field.provenance.parameters.get("transport") == "T=I_100_coefficient_space", "DEV W_OLS transport changed")
+            _require(result.raw_camera.plane.plane_id == "lightgen_raw_cmos", "DEV output is not raw CMOS")
+            raw = result.raw_intensity
+            _require(raw.shape == (stop - start, *CMOS_SHAPE) and raw.dtype == torch.float32 and raw.device == consumer.device, "DEV raw CMOS output shape/dtype/device changed")
+            valid = _raw_validity(raw, "real DEV raw CMOS batch")
+            finite_count += valid["finite_image_count"]
+            zero_count += valid["zero_image_count"]
+            constant_count += valid["constant_image_count"]
+            raw_min = min(raw_min, valid["raw_min"])
+            raw_max = max(raw_max, valid["raw_max"])
+            pooled = _pool_raw_cpu(raw)
+            if validate_pool_equivalence and not equivalence_checked:
+                registered = probe_convention._cmos_features(raw.detach().cpu())
+                _require(torch.equal(pooled.to(torch.float64), registered), "streamed DEV pooling differs from the registered probe convention")
+                equivalence_checked = True
+            features[start:stop].copy_(pooled.flatten(1))
+            evaluator_view = F.adaptive_avg_pool2d(raw.clamp(0.0, 1.0), FEATURE_SHAPE)
+            ed_logits = ed_evaluator(evaluator_view)
+            _finite(ed_logits, "real DEV E_D logits")
+            ed_predictions[start:stop].copy_(ed_logits.argmax(dim=1).detach().cpu())
+            if training_evaluator is not None and train_predictions is not None:
+                _, train_logits = training_evaluator(evaluator_view)
+                _finite(train_logits, "real DEV training-evaluator logits")
+                train_predictions[start:stop].copy_(train_logits.argmax(dim=1).detach().cpu())
+            if progress and (stop == rows or stop % 500 == 0):
+                print(json.dumps({"phase": "REAL_DEV_FORWARD", "completed_rows": stop, "total_rows": rows}, sort_keys=True), flush=True)
+            del result, image_batch, raw, pooled, evaluator_view
+    _require(finite_count == rows and zero_count == 0 and constant_count == 0, "real DEV CMOS population validity failed")
+    return features, ed_predictions, train_predictions, {
+        "rows": rows,
+        "source_indices_sha256": tensor_sha256(indices),
+        "labels_sha256": tensor_sha256(labels),
+        "raw_validity": {
+            "finite_image_count": finite_count,
+            "zero_image_count": zero_count,
+            "constant_image_count": constant_count,
+            "raw_min": raw_min,
+            "raw_max": raw_max,
+        },
+        "pool_equivalence_checked": equivalence_checked,
+        "forward": {
+            "device": str(consumer.device),
+            "batch_size": OPTICAL_BATCH_SIZE,
+            "batch_count": math.ceil(rows / OPTICAL_BATCH_SIZE),
+            "path": "canonical DEV images -> encoder -> W_OLS -> frozen step600 Generator -> raw CMOS",
+            "optimizer_created": False,
+            "backward": False,
+            "elapsed_seconds": time.perf_counter() - started,
+        },
+    }
+
+
+def _stored_cmos_features_and_evaluators(
+    raw: torch.Tensor,
+    ed_evaluator: nn.Module,
+    training_evaluator: nn.Module | None,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, dict[str, Any]]:
+    validity = _raw_validity(raw, "accepted S1 raw CMOS")
+    rows = int(raw.shape[0])
+    features = torch.empty((rows, FEATURE_SHAPE[0] * FEATURE_SHAPE[1]), dtype=torch.float32)
+    ed_predictions = torch.empty((rows,), dtype=torch.long)
+    train_predictions = torch.empty((rows,), dtype=torch.long) if training_evaluator is not None else None
+    for start in range(0, rows, EVALUATOR_BATCH_SIZE):
+        stop = min(start + EVALUATOR_BATCH_SIZE, rows)
+        chunk = raw[start:stop]
+        features[start:stop].copy_(_pool_raw_cpu(chunk).flatten(1))
+        view = F.adaptive_avg_pool2d(chunk.to(device).clamp(0.0, 1.0), FEATURE_SHAPE)
+        with torch.inference_mode():
+            ed_logits = ed_evaluator(view)
+            _finite(ed_logits, "S1 E_D logits")
+            ed_predictions[start:stop].copy_(ed_logits.argmax(dim=1).cpu())
+            if training_evaluator is not None and train_predictions is not None:
+                _, train_logits = training_evaluator(view)
+                _finite(train_logits, "S1 training-evaluator logits")
+                train_predictions[start:stop].copy_(train_logits.argmax(dim=1).cpu())
+        del chunk, view
+    return features, ed_predictions, train_predictions, validity
+
+
+def _fit_probe(train_features: torch.Tensor, train_labels: torch.Tensor) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, torch.Tensor], dict[str, Any]]:
+    """Fit the sole probe from TRAIN only; evaluation populations are not inputs."""
+    _require(train_features.ndim == 2 and train_features.shape[0] == train_labels.numel(), "TRAIN probe inputs do not align")
+    _require(train_labels.dtype == torch.long and train_features.dtype == torch.float32, "TRAIN probe input dtype changed")
+    train_double = train_features.to(torch.float64).contiguous()
+    mean = train_double.mean(dim=0)
+    std = train_double.std(dim=0, unbiased=False)
+    safe_std = torch.where(std > 0.0, std, torch.ones_like(std))
+    standardized = ((train_double - mean) / safe_std).contiguous()
+    _finite(standardized, "standardized TRAIN CMOS features")
+    model, solver = probe_convention._fit_logistic(standardized, train_labels)
+    standardizer = {"mean": mean.detach().clone(), "safe_std": safe_std.detach().clone()}
+    identity = {
+        "fit_role": "canonical TRAIN only",
+        "feature_count": int(train_features.shape[1]),
+        "mean_tensor_sha256": tensor_sha256(mean),
+        "safe_std_tensor_sha256": tensor_sha256(safe_std),
+        "constant_feature_count": int((std == 0.0).sum().item()),
+        "dtype_for_fit": "float64",
+    }
+    del train_double, standardized
+    return model, solver, standardizer, identity
+
+
+def _apply_probe(model: Mapping[str, torch.Tensor], standardizer: Mapping[str, torch.Tensor], features: torch.Tensor) -> torch.Tensor:
+    _require(features.ndim == 2 and features.shape[1] == _tensor(standardizer.get("mean"), "probe mean").numel(), "probe evaluation feature shape changed")
+    mean = _tensor(standardizer.get("mean"), "probe mean")
+    safe_std = _tensor(standardizer.get("safe_std"), "probe safe std")
+    values = features.to(torch.float64)
+    standardized = ((values - mean) / safe_std).contiguous()
+    _finite(standardized, "standardized CMOS evaluation features")
+    return probe_convention._predict(model, standardized)
+
+
+def _plain_metrics(predictions: torch.Tensor, labels: torch.Tensor) -> dict[str, Any]:
+    _require(predictions.shape == labels.shape and predictions.ndim == labels.ndim == 1, "metric prediction/label shapes do not match")
+    confusion = torch.zeros((CLASS_COUNT, CLASS_COUNT), dtype=torch.long)
+    for actual in range(CLASS_COUNT):
+        mask = labels == actual
+        _require(bool(mask.any().item()), f"metric population lacks class {actual}")
+        for predicted in range(CLASS_COUNT):
+            confusion[actual, predicted] = int(((predictions == predicted) & mask).sum().item())
+    recall = torch.diag(confusion).to(torch.float64) / confusion.sum(dim=1).to(torch.float64)
+    return {
+        "accuracy": float((predictions == labels).to(torch.float64).mean().item()),
+        "macro_recall": float(recall.mean().item()),
+        "minimum_per_class_recall": float(recall.min().item()),
+        "per_class_recall": [float(value) for value in recall.tolist()],
+        "confusion_matrix_actual_rows_predicted_columns": confusion.tolist(),
+        "prediction_histogram": torch.bincount(predictions, minlength=CLASS_COUNT).tolist(),
+        "rows": int(labels.numel()),
+        "prediction_tensor_sha256": tensor_sha256(predictions),
+    }
+
+
+def _measure_probe(
+    train_features: torch.Tensor,
+    train_labels: torch.Tensor,
+    real_features: torch.Tensor,
+    real_labels: torch.Tensor,
+    s1_features: torch.Tensor,
+    s1_labels: torch.Tensor,
+    *,
+    bootstrap_replicates: int,
+) -> tuple[dict[str, torch.Tensor], dict[str, Any], dict[str, torch.Tensor], dict[str, Any], dict[str, Any]]:
+    model, solver, standardizer, standardizer_identity = _fit_probe(train_features, train_labels)
+    real_predictions = _apply_probe(model, standardizer, real_features)
+    s1_predictions = _apply_probe(model, standardizer, s1_features)
+    real_metrics = localization._metrics(
+        real_predictions,
+        real_labels,
+        seed=BOOTSTRAP_SEEDS["real_cmos_probe"],
+        replicates=bootstrap_replicates,
+    )
+    s1_metrics = localization._metrics(
+        s1_predictions,
+        s1_labels,
+        seed=BOOTSTRAP_SEEDS["s1_cmos_probe"],
+        replicates=bootstrap_replicates,
+    )
+    return model, solver, standardizer, standardizer_identity, {
+        "real_dev": real_metrics,
+        "s1": s1_metrics,
+        "_real_predictions": real_predictions,
+        "_s1_predictions": s1_predictions,
+    }
+
+
+def _passes(metrics: Mapping[str, Any]) -> bool:
+    return (
+        float(metrics["macro_recall"]) >= SEMANTIC_MACRO_THRESHOLD
+        and float(metrics["minimum_per_class_recall"]) >= SEMANTIC_CLASS_THRESHOLD
+    )
+
+
+def _classify(
+    real_probe: Mapping[str, Any],
+    s1_probe: Mapping[str, Any],
+    real_ed: Mapping[str, Any],
+    s1_ed: Mapping[str, Any],
+) -> dict[str, Any]:
+    rp, sp, re, se = _passes(real_probe), _passes(s1_probe), _passes(real_ed), _passes(s1_ed)
+    if rp and sp and not re and not se:
+        name = "CMOS_LINEAR_CLASS_CODE_PRESERVED_BUT_CANONICAL_REALIZATION_FAILED"
+        successor = "CANONICAL_SEMANTIC_REALIZATION_OBJECTIVE"
+        interpretation = "TRAIN-to-DEV linear class code is retained in real and S1 raw CMOS, while the independent canonical E_D criterion fails for both."
+    elif not rp and not sp:
+        name = "CMOS_LINEAR_CLASS_CODE_PRESERVATION_NOT_SUPPORTED"
+        successor = "GENERATOR_OPTICAL_MAPPING_INFORMATION_TRANSFER"
+        interpretation = "The fixed linear probe does not meet the registered class-code criterion on either raw CMOS population; this does not prove nonlinear class information is absent."
+    elif rp and not sp:
+        name = "S1_GENERATOR_SUPPORT_MISMATCH_SUPPORTED"
+        successor = "S1_TO_GENERATOR_SUPPORT_MATCHING"
+        interpretation = "Real in-manifold inputs produce a decodable raw-CMOS class code, while the existing S1 population does not."
+    else:
+        name = "M0_CMOS_SEMANTIC_REALIZATION_DECOMPOSITION_MIXED"
+        successor = None
+        interpretation = "The observed probe and E_D pass/fail pattern does not isolate one preregistered mechanism."
+    return {
+        "classification": name,
+        "successor_research_domain": successor,
+        "interpretation": interpretation,
+        "design_criterion": {
+            "macro_recall_min": SEMANTIC_MACRO_THRESHOLD,
+            "minimum_per_class_recall_min": SEMANTIC_CLASS_THRESHOLD,
+            "role": "localization design decision, not a universal definition of information preservation",
+        },
+        "case_flags": {
+            "real_cmos_probe_pass": rp,
+            "s1_cmos_probe_pass": sp,
+            "real_independent_ed_pass": re,
+            "s1_independent_ed_pass": se,
+        },
+        "decision_rule": "A: both CMOS probes pass and both E_D fail; B: both CMOS probes fail; C: real probe passes and S1 probe fails; otherwise MIXED.",
+    }
+
+
+def _balanced_positions(labels: torch.Tensor, per_class: int) -> torch.Tensor:
+    _require(labels.ndim == 1 and labels.dtype == torch.long, "balanced selection labels are invalid")
+    selected = torch.zeros_like(labels, dtype=torch.bool)
+    for digit in range(CLASS_COUNT):
+        positions = torch.nonzero(labels == digit, as_tuple=False).flatten()
+        _require(positions.numel() >= per_class, f"population lacks {per_class} rows for class {digit}")
+        selected[positions[:per_class]] = True
+    return torch.nonzero(selected, as_tuple=False).flatten().contiguous()
+
+
+def _source_paths(root: Path) -> list[Path]:
+    return [
+        Path(__file__).resolve(),
+        root / "scripts/research/lightgen/m0/execute_lightgen_2d_m0_bogt_generative_failure_localization_v1.py",
+        root / "scripts/research/lightgen/m0/execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1.py",
+        root / "scripts/research/lightgen/execute_lightgen_2d_chen_bogt_complex_ols_training_v1.py",
+        root / "scripts/research/lightgen/execute_lightgen_2d_establish_sic_independent_confirmation_evaluator_v1.py",
+        root / "scripts/research/lightgen/execute_lightgen_2d_ols_to_cmos_semantic_information_localization_v1.py",
+        root / "scripts/research/lightgen/materialize_lightgen_2d_frozen_dev_ols_cmos_v1.py",
+        root / "src/ldm_project/v2/application/research/shared/research_run_control.py",
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py",
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+        root / "src/ldm_project/v2/student/evaluator.py",
+        root / "src/ldm_project/v2/evidence/__init__.py",
+    ]
+
+
+def _config_identity(authority: Mapping[str, Any]) -> dict[str, Any]:
+    refs = _mapping(authority.get("references"), "M0 input authority table")
+    return {
+        "outer_gate": OUTER_GATE,
+        "input_authorities": {
+            key: {"path": value["path"], "sha256": value["sha256"]}
+            for key, value in refs.items()
+        },
+        "prior_localization_report": {"path": LOCALIZATION_REPORT.as_posix(), "sha256": LOCALIZATION_REPORT_SHA256},
+        "probe": {
+            "family": "fixed multinomial logistic regression with L2; exact compatible convention from accepted project probe",
+            "feature_view": "raw CMOS clamp[0,1] -> CPU adaptive_avg_pool2d(28,28) -> flatten -> float64",
+            "C": probe_convention.PROBE_C,
+            "max_iter": probe_convention.PROBE_MAX_ITER,
+            "history_size": probe_convention.PROBE_HISTORY_SIZE,
+            "tolerance_grad": probe_convention.PROBE_TOLERANCE_GRAD,
+            "tolerance_change": probe_convention.PROBE_TOLERANCE_CHANGE,
+            "bootstrap_replicates": BOOTSTRAP_REPLICATES,
+            "bootstrap_seeds": BOOTSTRAP_SEEDS,
+            "fit_role": "canonical step600 TRAIN only",
+        },
+        "populations": {"train": TRAIN_COUNT, "real_dev": DEV_COUNT, "existing_s1": S1_COUNT},
+        "decision": {"macro_recall_min": SEMANTIC_MACRO_THRESHOLD, "minimum_class_recall_min": SEMANTIC_CLASS_THRESHOLD},
+        "execution": {
+            "train_cmos": "one bounded frozen forward; exact registered CPU pooling streamed; raw images transient only",
+            "optical_batch_size": OPTICAL_BATCH_SIZE,
+            "evaluator_batch_size": EVALUATOR_BATCH_SIZE,
+            "max_total_execution_seconds": MAX_TOTAL_EXECUTION_SECONDS,
+            "max_device_memory_fraction": MAX_DEVICE_MEMORY_FRACTION,
+            "no_optical_optimizer": True,
+            "no_parameter_update": True,
+            "no_checkpoint_write": True,
+            "no_s1_regeneration": True,
+        },
+        "training_evaluator": dict(authority.get("training_evaluator_config", {})),
+    }
+
+
+def _host_memory() -> dict[str, int]:
+    if os.name == "nt":
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatus()
+        status.dwLength = ctypes.sizeof(status)
+        _require(bool(ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))), "host memory facts are unavailable")
+        return {"total_bytes": int(status.ullTotalPhys), "available_bytes": int(status.ullAvailPhys)}
+    page_size = int(os.sysconf("SC_PAGE_SIZE"))
+    total_pages = int(os.sysconf("SC_PHYS_PAGES"))
+    available_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+    return {"total_bytes": total_pages * page_size, "available_bytes": available_pages * page_size}
+
+
+def _plain_evaluator_metrics(predictions: torch.Tensor, labels: torch.Tensor) -> dict[str, Any]:
+    return _plain_metrics(predictions, labels)
+
+
+def _assemble_report(
+    *,
+    authority: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    source_manifest: Mapping[str, Any],
+    probe_metrics: Mapping[str, Any],
+    ed_metrics: Mapping[str, Any],
+    training_evaluator_metrics: Mapping[str, Any] | None,
+    probe_solver: Mapping[str, Any],
+    standardizer_identity: Mapping[str, Any],
+    train_cmos_details: Mapping[str, Any],
+    real_dev_details: Mapping[str, Any],
+    s1_details: Mapping[str, Any],
+    ed_fidelity: Mapping[str, Any] | None,
+    integrity: Mapping[str, Any],
+    resource: Mapping[str, Any],
+    smoke: bool,
+) -> dict[str, Any]:
+    classification = _classify(
+        _mapping(probe_metrics.get("real_dev"), "real DEV CMOS probe metrics"),
+        _mapping(probe_metrics.get("s1"), "S1 CMOS probe metrics"),
+        _mapping(ed_metrics.get("real_dev"), "real DEV E_D metrics"),
+        _mapping(ed_metrics.get("s1"), "S1 E_D metrics"),
+    )
+    m0_matrix = _mapping(_mapping(authority.get("m0_report"), "accepted M0 report").get("generated_outputs"), "accepted M0 generated outputs").get("independent_E_D")
+    previous_matrix = _mapping(authority.get("prior_matrix"), "prior localization matrix")
+    dataset_identity = _mapping(dataset.get("identity"), "canonical dataset identity")
+    prior_real_ols = _mapping(previous_matrix.get("real_ols"), "accepted real OLS measurement")
+    prior_s1_ols = _mapping(previous_matrix.get("s1_ols"), "accepted S1 OLS measurement")
+    refs = _mapping(authority.get("references"), "accepted artifact references")
+    public_probe = {key: value for key, value in probe_metrics.items() if not key.startswith("_")}
+    public_ed = {key: value for key, value in ed_metrics.items() if not key.startswith("_")}
+    return {
+        "schema": REPORT_SCHEMA,
+        "task_id": TASK_ID,
+        "authorization_id": AUTHORIZATION_ID,
+        "semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+        "outer_gate": OUTER_GATE,
+        "result": "SMOKE_ONLY" if smoke else "VALID_COMPLETED_DIAGNOSTIC",
+        "classification": classification["classification"],
+        "successor_research_domain": classification["successor_research_domain"],
+        "claim_boundary": {
+            "question": "Does accepted step600 raw CMOS retain stable TRAIN-to-DEV linearly decodable class code despite failing canonical independent E_D realization?",
+            "low_linear_probe_does_not_prove": "information-theoretic absence of all nonlinear class information",
+            "scope": "diagnostic decomposition only; no training qualification or promotion",
+        },
+        "comparison_matrix": {
+            "accepted_ols_probe_metrics_consumed_unchanged": {
+                "real_dev_ols": dict(prior_real_ols),
+                "s1_ols": dict(prior_s1_ols),
+                "refit": False,
+            },
+            "new_cmos_probe_metrics": public_probe,
+            "canonical_independent_ed_metrics": public_ed,
+        },
+        "classification_logic": classification,
+        "probe": {
+            "role": "DEVELOPMENT_DIAGNOSTIC_ONLY; not a training teacher, loss evaluator, checkpoint selector, acceptance evaluator, or promotion evaluator",
+            "family": "multinomial logistic regression with L2 regularization",
+            "feature_view": "raw CMOS clamp[0,1] -> CPU adaptive_avg_pool2d(28,28) -> flatten; TRAIN-only standardization; float64 fit",
+            "fixed_convention_source": {
+                "path": "scripts/research/lightgen/execute_lightgen_2d_ols_to_cmos_semantic_information_localization_v1.py",
+                "sha256": file_sha256(Path(probe_convention.__file__)),
+                "convention_reused": True,
+            },
+            "solver": dict(probe_solver),
+            "standardizer": dict(standardizer_identity),
+            "standardization_fit_role": "canonical TRAIN only",
+            "DEV_or_S1_fit_or_tuning": False,
+        },
+        "canonical_e_d": {
+            "authority": "SIC_INDEPENDENT_CONFIRMATION_EVALUATOR_D_V1",
+            "architecture": "pixel_mlp_confirmation_evaluator_v1",
+            "role": "frozen independent confirmation evaluation only",
+            "input_view": "raw CMOS clamp[0,1] -> device adaptive_avg_pool2d(28,28)",
+            "accepted_s1_evidence": dict(m0_matrix),
+            "accepted_localization_fidelity": dict(ed_fidelity or {}),
+        },
+        "optional_training_evaluator": dict(training_evaluator_metrics) if training_evaluator_metrics is not None else {"status": "NOT_CONSUMED"},
+        "populations": {
+            "train_cmos": dict(train_cmos_details),
+            "real_dev_cmos": dict(real_dev_details),
+            "existing_s1_cmos": dict(s1_details),
+            "canonical_train_dev_identity": dict(dataset_identity),
+        },
+        "lineage": {
+            "accepted_m0_report": {"path": M0_REPORT.as_posix(), "sha256": M0_REPORT_SHA256},
+            "accepted_prior_localization_report": dict(authority["prior_localization_report_ref"]),
+            "step600_checkpoint": dict(refs["step600_checkpoint"]),
+            "step600_train_ols": dict(refs["train_ols"]),
+            "existing_s1_coefficients": dict(refs["s1_coefficients"]),
+            "existing_s1_raw_cmos": dict(refs["raw_cmos"]),
+            "independent_ed_checkpoint": dict(refs["ed_checkpoint"]),
+            "training_evaluator": dict(authority.get("training_evaluator_config", {})),
+            "data_identity": dict(dataset_identity),
+            "execution_source_manifest": dict(source_manifest),
+            "accepted_step600_train_raw_cmos_authority": "none found; materialized once as streamed raw batches into the registered pooled-feature view",
+        },
+        "data_roles": {
+            "train_rows_for_probe_fit": int(_tensor(dataset.get("train_labels"), "TRAIN labels").numel()) if not smoke else int(train_cmos_details["rows"]),
+            "real_dev_rows_for_evaluation": int(_tensor(dataset.get("dev_labels"), "DEV labels").numel()) if not smoke else int(real_dev_details["rows"]),
+            "existing_s1_rows_for_evaluation": S1_COUNT if not smoke else int(s1_details["rows"]),
+            "protected_reads": 0,
+            "official_test_reads": 0,
+            "sealed_reads": 0,
+            "dev_or_s1_used_for_fit_or_tuning": False,
+        },
+        "integrity": dict(integrity),
+        "resource": dict(resource),
+        "gate_resolution": {
+            "outer_gate": OUTER_GATE,
+            "resolved": not smoke,
+            "classification": classification["classification"],
+        },
+        "successor_execution": "NONE; successor domain is for human redecision only",
+    }
+
+
+def _production_shaped_smoke(
+    root: Path,
+    authority: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    consumer: Any,
+    ed_evaluator: nn.Module,
+    training_evaluator: nn.Module | None,
+    device: torch.device,
+    *,
+    deadline: float,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    train_labels = _tensor(dataset.get("train_labels"), "TRAIN labels")
+    dev_labels = _tensor(dataset.get("dev_labels"), "DEV labels")
+    train_indices = _tensor(dataset.get("train_indices"), "TRAIN indices")
+    dev_indices = _tensor(dataset.get("dev_indices"), "DEV indices")
+    train_z = _tensor(authority.get("train_z"), "accepted step600 TRAIN OLS")
+    train_positions = _balanced_positions(train_labels, SMOKE_ROWS_PER_CLASS)
+    dev_positions = _balanced_positions(dev_labels, SMOKE_ROWS_PER_CLASS)
+    s1_labels = _tensor(authority.get("s1_labels"), "accepted S1 labels")
+    s1_positions = _balanced_positions(s1_labels, SMOKE_ROWS_PER_CLASS)
+
+    train_started = time.perf_counter()
+    train_features, train_details = _stream_ols_cmos_features(
+        consumer,
+        train_z.index_select(0, train_positions).contiguous(),
+        train_indices.index_select(0, train_positions).contiguous(),
+        train_labels.index_select(0, train_positions).contiguous(),
+        progress_phase="SMOKE_TRAIN_CMOS_FORWARD",
+        validate_pool_equivalence=True,
+        deadline=deadline,
+    )
+    train_forward_seconds = time.perf_counter() - train_started
+    real_started = time.perf_counter()
+    real_features, real_ed_predictions, real_train_predictions, real_details = _forward_real_cmos_features(
+        consumer,
+        ed_evaluator,
+        training_evaluator,
+        _tensor(dataset.get("images"), "canonical images"),
+        dev_indices.index_select(0, dev_positions).contiguous(),
+        dev_labels.index_select(0, dev_positions).contiguous(),
+        progress=False,
+        validate_pool_equivalence=True,
+        deadline=deadline,
+    )
+    real_forward_seconds = time.perf_counter() - real_started
+    s1_raw = _tensor(authority.get("s1_raw"), "accepted S1 raw CMOS").index_select(0, s1_positions).contiguous()
+    smoke_s1_labels = s1_labels.index_select(0, s1_positions).contiguous()
+    s1_started = time.perf_counter()
+    s1_features, s1_ed_predictions, s1_train_predictions, s1_details = _stored_cmos_features_and_evaluators(
+        s1_raw, ed_evaluator, training_evaluator, device
+    )
+    s1_eval_seconds = time.perf_counter() - s1_started
+
+    fit_started = time.perf_counter()
+    probe, solver, standardizer, standardizer_identity, probe_metrics = _measure_probe(
+        train_features,
+        train_labels.index_select(0, train_positions).contiguous(),
+        real_features,
+        dev_labels.index_select(0, dev_positions).contiguous(),
+        s1_features,
+        smoke_s1_labels,
+        bootstrap_replicates=SMOKE_BOOTSTRAP_REPLICATES,
+    )
+    fit_seconds = time.perf_counter() - fit_started
+    ed_metrics = {
+        "real_dev": localization._metrics(
+            real_ed_predictions,
+            dev_labels.index_select(0, dev_positions).contiguous(),
+            seed=BOOTSTRAP_SEEDS["real_ed"],
+            replicates=SMOKE_BOOTSTRAP_REPLICATES,
+        ),
+        "s1": localization._metrics(
+            s1_ed_predictions,
+            smoke_s1_labels,
+            seed=BOOTSTRAP_SEEDS["s1_ed"],
+            replicates=SMOKE_BOOTSTRAP_REPLICATES,
+        ),
+    }
+    saved_s1_predictions = _tensor(authority.get("saved_s1_predictions"), "accepted S1 E_D predictions")
+    _require(torch.equal(s1_ed_predictions, saved_s1_predictions.index_select(0, s1_positions)), "smoke S1 E_D predictions do not match accepted stored predictions")
+    training_metrics = None
+    if real_train_predictions is not None and s1_train_predictions is not None:
+        training_metrics = {
+            "status": "CONSUMED_DESCRIPTIVELY",
+            "role": "optional training evaluator; not used for probe fitting or classification",
+            "real_dev": _plain_evaluator_metrics(real_train_predictions, dev_labels.index_select(0, dev_positions).contiguous()),
+            "s1": _plain_evaluator_metrics(s1_train_predictions, smoke_s1_labels),
+        }
+    smoke_source = {
+        "execution_source_semantics_id": "production-source-bound-during-preflight",
+        "scope": "bounded balanced smoke only; no scientific attempt opened",
+    }
+    smoke_integrity = {
+        "optical_parameter_updates": 0,
+        "optical_optimizer_creations": 0,
+        "optical_checkpoint_writes": 0,
+        "probe_fit_role": "TRAIN only",
+        "dev_or_s1_fit": False,
+        "protected_test_sealed_reads": 0,
+        "s1_regenerated": False,
+    }
+    smoke_resource = {"status": "measured as part of preflight"}
+    report = _assemble_report(
+        authority=authority,
+        dataset=dataset,
+        source_manifest=smoke_source,
+        probe_metrics=probe_metrics,
+        ed_metrics=ed_metrics,
+        training_evaluator_metrics=training_metrics,
+        probe_solver=solver,
+        standardizer_identity=standardizer_identity,
+        train_cmos_details=train_details,
+        real_dev_details=real_details,
+        s1_details={"rows": len(s1_positions), "labels_sha256": tensor_sha256(smoke_s1_labels), "raw_validity": s1_details},
+        ed_fidelity={"smoke_s1_prediction_labels_exact_match": True},
+        integrity=smoke_integrity,
+        resource=smoke_resource,
+        smoke=True,
+    )
+    serialized = json.dumps(report, sort_keys=True, allow_nan=False)
+    _require(bool(serialized), "production-shaped smoke report serialization returned empty output")
+    _require(torch.equal(standardizer["mean"], standardizer["mean"].clone()), "smoke standardizer did not remain finite")
+    _finite(probe["weights"], "smoke probe weights")
+    return {
+        "status": "PASS",
+        "production_code_path": True,
+        "train_rows": int(train_positions.numel()),
+        "real_dev_rows": int(dev_positions.numel()),
+        "existing_s1_rows": int(s1_positions.numel()),
+        "actual_frozen_train_ols_forward": True,
+        "actual_frozen_real_dev_forward": True,
+        "existing_s1_reused": True,
+        "registered_pooling_equivalence": True,
+        "smoke_s1_ed_prediction_fidelity": True,
+        "probe_fit_and_metrics": True,
+        "report_classification_and_json_serialization": "PASS",
+        "elapsed_seconds": time.perf_counter() - started,
+        "train_forward_seconds": train_forward_seconds,
+        "real_dev_forward_seconds": real_forward_seconds,
+        "s1_evaluator_seconds": s1_eval_seconds,
+        "probe_fit_seconds": fit_seconds,
+        "report_schema": REPORT_SCHEMA,
+    }
+
+
+def _build_preflight(
+    root: Path,
+    target: Path,
+    authority: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    consumer: Any,
+    ed_evaluator: nn.Module,
+    training_evaluator: nn.Module | None,
+    device: torch.device,
+    *,
+    task_started: float,
+) -> tuple[dict[str, Any], PreflightReceipt, dict[str, Any]]:
+    _require(not target.exists() or _setup_only_recheck_target(target), "authorized attempt path changed during preflight")
+    config = _config_identity(authority)
+    source_manifest = capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        relevant_paths=_source_paths(root),
+        config_identity=config,
+    ).to_dict()
+    free_device_before, total_device = torch.cuda.mem_get_info(device)
+    _require(total_device > 0 and free_device_before > 0, "CUDA resource facts are unavailable")
+    host = _host_memory()
+    disk_free = int(shutil.disk_usage(root / "outputs").free)
+    reserved_before = int(torch.cuda.memory_reserved(device))
+    torch.cuda.reset_peak_memory_stats(device)
+    optical_state_before = _snapshot(consumer.runtime)
+    ed_state_before = _snapshot(ed_evaluator)
+    train_eval_state_before = _snapshot(training_evaluator) if training_evaluator is not None else None
+    rng_before = _rng_snapshot(device)
+    smoke = _production_shaped_smoke(
+        root,
+        authority,
+        dataset,
+        consumer,
+        ed_evaluator,
+        training_evaluator,
+        device,
+        deadline=task_started + MAX_TOTAL_EXECUTION_SECONDS,
+    )
+    torch.cuda.synchronize(device)
+    peak_reserved = int(torch.cuda.max_memory_reserved(device))
+    free_device_after, _ = torch.cuda.mem_get_info(device)
+    global_device_peak = max(
+        total_device - free_device_before + max(0, peak_reserved - reserved_before),
+        total_device - free_device_after,
+    )
+    memory_fraction = global_device_peak / int(torch.cuda.get_device_properties(device).total_memory)
+    train_feature_bytes = TRAIN_COUNT * FEATURE_SHAPE[0] * FEATURE_SHAPE[1] * 4
+    train_double_bytes = TRAIN_COUNT * FEATURE_SHAPE[0] * FEATURE_SHAPE[1] * 8
+    dataset_images = _tensor(dataset.get("images"), "canonical images")
+    s1_raw = _tensor(authority.get("s1_raw"), "accepted S1 raw CMOS")
+    train_z = _tensor(authority.get("train_z"), "accepted step600 TRAIN OLS")
+    estimated_host_peak = (
+        train_feature_bytes
+        + train_double_bytes * 2
+        + dataset_images.numel() * dataset_images.element_size()
+        + s1_raw.numel() * s1_raw.element_size()
+        + train_z.numel() * train_z.element_size()
+        + ESTIMATED_HOST_HEADROOM_BYTES
+    )
+    smoke_train_rows = max(1, int(smoke["train_rows"]))
+    smoke_dev_rows = max(1, int(smoke["real_dev_rows"]))
+    row_scaled_seconds = (
+        float(smoke["train_forward_seconds"]) / smoke_train_rows * TRAIN_COUNT
+        + float(smoke["real_dev_forward_seconds"]) / smoke_dev_rows * DEV_COUNT
+        + float(smoke["s1_evaluator_seconds"]) / int(smoke["existing_s1_rows"]) * S1_COUNT
+        + float(smoke["probe_fit_seconds"]) * TRAIN_COUNT / smoke_train_rows
+    )
+    estimated_total_seconds = row_scaled_seconds * 2.0 + 300.0
+    resource = {
+        "device": torch.cuda.get_device_name(device),
+        "torch_version": torch.__version__,
+        "cuda_runtime": torch.version.cuda,
+        "device_total_bytes": int(torch.cuda.get_device_properties(device).total_memory),
+        "device_free_bytes_before_smoke": int(free_device_before),
+        "device_free_bytes_after_smoke": int(free_device_after),
+        "process_reserved_bytes_before_smoke": reserved_before,
+        "process_peak_reserved_bytes_during_smoke": peak_reserved,
+        "estimated_global_peak_device_bytes": global_device_peak,
+        "estimated_peak_device_memory_fraction": memory_fraction,
+        "device_memory_fraction_limit": MAX_DEVICE_MEMORY_FRACTION,
+        "host_total_bytes": host["total_bytes"],
+        "host_available_bytes_before_smoke": host["available_bytes"],
+        "estimated_host_peak_bytes": estimated_host_peak,
+        "minimum_host_headroom_bytes": MIN_FREE_HOST_MEMORY_BYTES,
+        "outputs_free_disk_bytes": disk_free,
+        "minimum_free_disk_bytes": MIN_FREE_DISK_BYTES,
+        "estimated_new_artifact_bytes": ESTIMATED_OUTPUT_BYTES,
+        "estimated_total_execution_seconds": estimated_total_seconds,
+        "maximum_total_execution_seconds": MAX_TOTAL_EXECUTION_SECONDS,
+        "runtime_estimate_method": "2x row-scaled production-shaped smoke plus 300 seconds fixed overhead",
+        "status": "PASS",
+    }
+    _require(memory_fraction <= MAX_DEVICE_MEMORY_FRACTION, "production-shaped smoke exceeded the 90% device-memory envelope")
+    _require(host["available_bytes"] >= estimated_host_peak, "available host memory is below the bounded feature/probe estimate")
+    _require(host["available_bytes"] - estimated_host_peak >= 0, "host memory estimate exceeds available memory")
+    _require(disk_free >= MIN_FREE_DISK_BYTES + ESTIMATED_OUTPUT_BYTES, "insufficient free disk for diagnostic evidence")
+    _require(estimated_total_seconds <= MAX_TOTAL_EXECUTION_SECONDS, "production resource estimate exceeds the two-hour bounded execution envelope")
+    _require(_snapshots_equal(optical_state_before, _snapshot(consumer.runtime)), "frozen optical state changed during production-shaped smoke")
+    _require(_snapshots_equal(ed_state_before, _snapshot(ed_evaluator)), "independent E_D changed during production-shaped smoke")
+    if training_evaluator is not None and train_eval_state_before is not None:
+        _require(_snapshots_equal(train_eval_state_before, _snapshot(training_evaluator)), "training evaluator changed during smoke")
+    _require(all(not value.requires_grad and value.grad is None for value in consumer.runtime.parameters()), "optical freeze changed during smoke")
+    _require(all(not value.requires_grad and value.grad is None for value in ed_evaluator.parameters()), "independent E_D freeze changed during smoke")
+    _require(training_evaluator is None or all(not value.requires_grad and value.grad is None for value in training_evaluator.parameters()), "training evaluator freeze changed during smoke")
+    rng_after = _rng_snapshot(device)
+    _require(torch.equal(rng_before[0], rng_after[0]) and torch.equal(rng_before[1], rng_after[1]), "production-shaped smoke consumed global RNG")
+
+    check_groups = {
+        CORRECTNESS_INVARIANTS: {
+            "accepted_step600_checkpoint_and_train_ols_bound": True,
+            "accepted_prior_localization_and_e_d_bound": True,
+            "canonical_train_dev_indices_and_labels_bound": True,
+            "existing_s1_cmos_and_label_order_bound": True,
+            "fixed_registered_probe_convention_reused": True,
+            "streamed_pooling_equivalence_on_real_frozen_forward": True,
+            "production_shaped_smoke": smoke["status"] == "PASS",
+            "smoke_report_classification_and_serialization": smoke["report_classification_and_json_serialization"] == "PASS",
+            "evaluator_frozen_state_and_rng_checks": True,
+            "dev_s1_fit_firewall": True,
+            "protected_test_sealed_reads": 0,
+            "optical_updates": 0,
+            "s1_regeneration": False,
+        },
+        RESOURCE_ENVELOPE: resource,
+        IMPLEMENTATION_SELECTION: {
+            "status": "PASS",
+            "selected_engine": "STREAM_RAW_CMOS_TO_REGISTERED_CPU_POOLED_FEATURES",
+            "probe_family_search": False,
+            "feature_search": False,
+            "regularization_search": False,
+            "dev_or_s1_tuning": False,
+            "raw_train_cmos_full_tensor_persisted": False,
+            "registered_probe_feature_math_unchanged": True,
+        },
+    }
+    receipt = PreflightReceipt(
+        source_semantics_id=str(source_manifest["execution_source_semantics_id"]),
+        authorization_id=AUTHORIZATION_ID,
+        checks=check_groups,
+        selected_engine="STREAM_RAW_CMOS_TO_REGISTERED_CPU_POOLED_FEATURES",
+        resource=resource,
+        created_at=time.time(),
+    )
+    identity = ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        trajectory_id=TRAJECTORY_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role="canonical TRAIN fit; DEV and existing S1 diagnostic evaluation",
+        config_identity=config,
+        model_identity={
+            "step600_checkpoint_sha256": authority["references"]["step600_checkpoint"]["sha256"],
+            "train_ols_sha256": authority["references"]["train_ols"]["sha256"],
+            "optical_runtime_frozen": True,
+            "w_ols_frozen": True,
+        },
+        optimizer_identity={"optical": None, "diagnostic_probe": "one fixed TRAIN-only LBFGS fit"},
+        sampler_identity={"S1": "accepted S1 raw CMOS reuse only; no regeneration"},
+        execution_source_semantics_id=str(source_manifest["execution_source_semantics_id"]),
+        source_manifest_id=str(source_manifest["source_manifest_id"]),
+    )
+    control = ResearchRunControl(identity, AUTHORIZATION_ID, state=RUN_PREPARING)
+    control.mark_preflight_ready(receipt)
+    preflight = {
+        "schema": PREFLIGHT_SCHEMA,
+        "status": "READY",
+        "task_id": TASK_ID,
+        "authorization_id": AUTHORIZATION_ID,
+        "outer_gate": OUTER_GATE,
+        "source_semantics_id": source_manifest["execution_source_semantics_id"],
+        "source_manifest_id": source_manifest["source_manifest_id"],
+        "receipt": receipt.to_dict(),
+        "check_groups": check_groups,
+        "production_shaped_smoke": smoke,
+        "resource": resource,
+        "formal_attempt_created": False,
+    }
+    json.dumps(preflight, sort_keys=True, allow_nan=False)
+    return preflight, receipt, {"control": control, "identity": identity, "source_manifest": source_manifest}
+
+
+def _e_d_fidelity(
+    observed: Mapping[str, Any],
+    predictions: torch.Tensor,
+    expected: Mapping[str, Any],
+    *,
+    name: str,
+) -> dict[str, Any]:
+    checks = {
+        "macro_recall": math.isclose(float(observed["macro_recall"]), float(expected["macro_recall"]), rel_tol=0.0, abs_tol=ED_REPRODUCTION_TOLERANCE),
+        "prediction_tensor_sha256": observed.get("prediction_tensor_sha256") == expected.get("prediction_tensor_sha256"),
+        "confusion_matrix": observed.get("confusion_matrix_actual_rows_predicted_columns") == expected.get("confusion_matrix_actual_rows_predicted_columns"),
+        "prediction_histogram": observed.get("prediction_histogram") == expected.get("prediction_histogram"),
+        "per_class_recall": observed.get("per_class_recall") == expected.get("per_class_recall"),
+    }
+    _require(all(checks.values()), f"accepted E_D {name} measurement did not reproduce: {checks}")
+    return {
+        "population": name,
+        "passed": True,
+        "checks": checks,
+        "accepted_macro_recall": float(expected["macro_recall"]),
+        "observed_macro_recall": float(observed["macro_recall"]),
+        "accepted_prediction_tensor_sha256": expected["prediction_tensor_sha256"],
+        "observed_prediction_tensor_sha256": observed["prediction_tensor_sha256"],
+    }
+
+
+def _write_status(path: Path, *, state: str, phase: str, report: Mapping[str, Any] | None = None, error: str | None = None) -> None:
+    payload = {
+        "schema": "m0_bogt_cmos_semantic_realization_decomposition_status.v1",
+        "task_id": TASK_ID,
+        "authorization_id": AUTHORIZATION_ID,
+        "outer_gate": OUTER_GATE,
+        "state": state,
+        "phase": phase,
+        "report_result": None if report is None else report.get("result"),
+        "classification": None if report is None else report.get("classification"),
+        "error": error,
+        "updated_at_unix": time.time(),
+    }
+    atomic_write_json(path, payload)
+
+
+def _write_progress(attempt: Path, phase: str, completed: int, total: int) -> None:
+    entry = {"phase": phase, "completed": completed, "total": total, "updated_at_unix": time.time()}
+    with (attempt / "progress.jsonl").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(entry, sort_keys=True, allow_nan=False) + "\n")
+        handle.flush()
+
+
+def _run_full_measurement(
+    root: Path,
+    authority: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    consumer: Any,
+    ed_evaluator: nn.Module,
+    training_evaluator: nn.Module | None,
+    model_facts: Mapping[str, Any],
+    source_manifest: Mapping[str, Any],
+    attempt: Path,
+    device: torch.device,
+    *,
+    deadline: float,
+    task_started: float,
+    preflight_resource: Mapping[str, Any],
+) -> dict[str, Any]:
+    train_labels = _tensor(dataset.get("train_labels"), "canonical TRAIN labels")
+    train_indices = _tensor(dataset.get("train_indices"), "canonical TRAIN indices")
+    dev_labels = _tensor(dataset.get("dev_labels"), "canonical DEV labels")
+    dev_indices = _tensor(dataset.get("dev_indices"), "canonical DEV indices")
+    train_z = _tensor(authority.get("train_z"), "accepted step600 TRAIN OLS")
+    s1_raw = _tensor(authority.get("s1_raw"), "accepted S1 raw CMOS")
+    s1_labels = _tensor(authority.get("s1_labels"), "accepted S1 labels")
+    saved_s1_predictions = _tensor(authority.get("saved_s1_predictions"), "accepted S1 E_D predictions")
+    start = time.perf_counter()
+
+    train_features, train_details = _stream_ols_cmos_features(
+        consumer,
+        train_z,
+        train_indices,
+        train_labels,
+        progress_phase="TRAIN_CMOS_FORWARD",
+        validate_pool_equivalence=True,
+        deadline=deadline,
+    )
+    _write_progress(attempt, "TRAIN_CMOS_FORWARD", TRAIN_COUNT, TRAIN_COUNT)
+    _write_status(attempt / "status.json", state=RUN_SCIENTIFIC_ACTIVE, phase="REAL_DEV_FORWARD")
+    real_features, real_ed_predictions, real_training_predictions, real_details = _forward_real_cmos_features(
+        consumer,
+        ed_evaluator,
+        training_evaluator,
+        _tensor(dataset.get("images"), "canonical MNIST images"),
+        dev_indices,
+        dev_labels,
+        progress=True,
+        validate_pool_equivalence=True,
+        deadline=deadline,
+    )
+    _write_progress(attempt, "REAL_DEV_FORWARD", DEV_COUNT, DEV_COUNT)
+    _write_status(attempt / "status.json", state=RUN_SCIENTIFIC_ACTIVE, phase="S1_EVALUATION")
+    s1_features, s1_ed_predictions, s1_training_predictions, s1_validity = _stored_cmos_features_and_evaluators(
+        s1_raw, ed_evaluator, training_evaluator, device
+    )
+    _require(torch.equal(s1_ed_predictions, saved_s1_predictions), "current S1 E_D predictions differ from the accepted exact prediction labels")
+    _write_progress(attempt, "S1_EVALUATION", S1_COUNT, S1_COUNT)
+    _write_status(attempt / "status.json", state=RUN_SCIENTIFIC_ACTIVE, phase="PROBE_FIT_AND_EVALUATION")
+
+    probe_started = time.perf_counter()
+    probe_model, solver, standardizer, standardizer_identity, probe_metrics = _measure_probe(
+        train_features,
+        train_labels,
+        real_features,
+        dev_labels,
+        s1_features,
+        s1_labels,
+        bootstrap_replicates=BOOTSTRAP_REPLICATES,
+    )
+    probe_elapsed = time.perf_counter() - probe_started
+    ed_metrics = {
+        "real_dev": localization._metrics(
+            real_ed_predictions,
+            dev_labels,
+            seed=BOOTSTRAP_SEEDS["real_ed"],
+            replicates=BOOTSTRAP_REPLICATES,
+        ),
+        "s1": localization._metrics(
+            s1_ed_predictions,
+            s1_labels,
+            seed=BOOTSTRAP_SEEDS["s1_ed"],
+            replicates=BOOTSTRAP_REPLICATES,
+        ),
+    }
+    expected_matrix = _mapping(authority.get("prior_matrix"), "prior accepted measurement matrix")
+    real_fidelity = _e_d_fidelity(
+        ed_metrics["real_dev"],
+        real_ed_predictions,
+        _mapping(expected_matrix.get("real_cmos"), "accepted real DEV E_D metrics"),
+        name="real DEV CMOS",
+    )
+    s1_fidelity = _e_d_fidelity(
+        ed_metrics["s1"],
+        s1_ed_predictions,
+        _mapping(expected_matrix.get("s1_cmos"), "accepted S1 E_D metrics"),
+        name="S1 CMOS",
+    )
+    _require(torch.equal(s1_ed_predictions, saved_s1_predictions), "accepted M0 S1 E_D saved predictions did not reproduce exactly")
+    ed_fidelity = {"real_dev": real_fidelity, "s1": s1_fidelity, "s1_saved_prediction_labels_exact_match": True}
+    training_metrics = None
+    if real_training_predictions is not None and s1_training_predictions is not None:
+        training_metrics = {
+            "status": "CONSUMED_DESCRIPTIVELY",
+            "role": "exact M0 training semantic evaluator; descriptive only and excluded from classification",
+            "real_dev": _plain_evaluator_metrics(real_training_predictions, dev_labels),
+            "s1": _plain_evaluator_metrics(s1_training_predictions, s1_labels),
+        }
+
+    integrity = {
+        "probe_role": "DEVELOPMENT_DIAGNOSTIC_ONLY",
+        "probe_fit_population": "canonical TRAIN only",
+        "probe_fit_rows": TRAIN_COUNT,
+        "dev_or_s1_fit_or_tuning": False,
+        "optical_parameter_updates": 0,
+        "optical_optimizer_creations": 0,
+        "diagnostic_probe_optimizer_creations": 1,
+        "diagnostic_probe_optimizer": "torch.optim.LBFGS; probe parameters only",
+        "optical_backward": False,
+        "optical_checkpoint_writes": 0,
+        "protected_reads": 0,
+        "official_test_reads": 0,
+        "sealed_reads": 0,
+        "s1_regenerated": False,
+        "ols_probe_refit": False,
+        "independent_ed_retrained": False,
+        "training_evaluator_retrained": False,
+        "frozen_optical_ed_state_and_rng": "PASS",
+        "step600_train_cmos_materialization": "one pass; raw mini-batches were transient and exact pooled features were streamed",
+    }
+    resource = {
+        **dict(preflight_resource),
+        "observed_attempt_elapsed_seconds": time.perf_counter() - start,
+        "observed_total_elapsed_seconds_including_preflight": time.perf_counter() - task_started,
+        "probe_fit_and_evaluation_seconds": probe_elapsed,
+    }
+    report = _assemble_report(
+        authority=authority,
+        dataset=dataset,
+        source_manifest=source_manifest,
+        probe_metrics=probe_metrics,
+        ed_metrics=ed_metrics,
+        training_evaluator_metrics=training_metrics,
+        probe_solver=solver,
+        standardizer_identity=standardizer_identity,
+        train_cmos_details=train_details,
+        real_dev_details=real_details,
+        s1_details={
+            "rows": S1_COUNT,
+            "labels_sha256": tensor_sha256(s1_labels),
+            "accepted_s1_raw_cmos_sha256": authority["references"]["raw_cmos"]["sha256"],
+            "validity": s1_validity,
+            "optical_forward_rows": 0,
+            "regenerated": False,
+        },
+        ed_fidelity=ed_fidelity,
+        integrity=integrity,
+        resource=resource,
+        smoke=False,
+    )
+
+    probe_path = attempt / "cmos_probe.pt"
+    atomic_torch_save_new(
+        probe_path,
+        {
+            "schema": PROBE_SCHEMA,
+            "task_id": TASK_ID,
+            "role": "DEVELOPMENT_DIAGNOSTIC_ONLY",
+            "feature_view": "raw CMOS clamp[0,1] -> CPU adaptive_avg_pool2d(28,28) -> flatten -> float64 fit",
+            "fit_population": "canonical step600 TRAIN only",
+            "train_rows": TRAIN_COUNT,
+            "train_indices_sha256": tensor_sha256(train_indices),
+            "train_labels_sha256": tensor_sha256(train_labels),
+            "solver": dict(solver),
+            "standardizer_identity": dict(standardizer_identity),
+            "standardizer": standardizer,
+            "model": probe_model,
+            "evaluation_firewall": {"dev_fit": False, "s1_fit": False, "hyperparameter_tuning": False},
+        },
+        artifact_kind="diagnostic-only TRAIN-fit CMOS probe",
+    )
+    report["artifacts"] = {
+        "cmos_probe": {
+            "path": _relative(root, probe_path),
+            "sha256": file_sha256(probe_path),
+            "role": "fixed TRAIN-only diagnostic CMOS classifier and standardizer",
+        }
+    }
+    report["execution"] = {
+        "elapsed_seconds": time.perf_counter() - start,
+        "effective_scientific_attempt_id": ATTEMPT_ID,
+        "train_raw_cmos_rows_materialized": TRAIN_COUNT,
+        "train_raw_cmos_storage": "transient batches only; no full raw tensor persisted",
+        "real_dev_raw_cmos_rows_forwarded": DEV_COUNT,
+        "existing_s1_raw_cmos_rows_reused": S1_COUNT,
+        "s1_optical_forward_rows": 0,
+        "optical_parameter_updates": 0,
+        "optical_optimizer_creations": 0,
+        "diagnostic_probe_optimizer_creations": 1,
+        "optical_checkpoint_writes": 0,
+        "source_model_facts": dict(model_facts),
+    }
+    json.dumps(report, sort_keys=True, allow_nan=False)
+    atomic_write_new_json(attempt / "report.json", report, artifact_kind="M0 CMOS semantic realization decomposition report")
+    return report
+
+
+def execute(*, repo_root: Path | None = None, output_dir: Path | None = None) -> dict[str, Any]:
+    root = _repo_root() if repo_root is None else repo_root.resolve()
+    requested = DEFAULT_ATTEMPT if output_dir is None else output_dir
+    target = _validate_target(root, requested)
+    task_started = time.perf_counter()
+    authority = _load_authorities(root)
+    dataset = _load_dataset(root, authority)
+    _require(torch.cuda.is_available() and torch.cuda.device_count() >= 1, "read-only optical materialization requires CUDA")
+    device = torch.device("cuda", torch.cuda.current_device())
+    consumer, ed_evaluator, training_evaluator, model_facts = _load_models(root, authority, device)
+    optical_state_before = _snapshot(consumer.runtime)
+    ed_state_before = _snapshot(ed_evaluator)
+    training_state_before = _snapshot(training_evaluator) if training_evaluator is not None else None
+    rng_before = _rng_snapshot(device)
+    preflight, receipt, lifecycle = _build_preflight(
+        root,
+        target,
+        authority,
+        dataset,
+        consumer,
+        ed_evaluator,
+        training_evaluator,
+        device,
+        task_started=task_started,
+    )
+    _require(preflight["status"] == "READY", "source-bound preflight did not reach READY")
+    control: ResearchRunControl = lifecycle["control"]
+    source_manifest: Mapping[str, Any] = lifecycle["source_manifest"]
+    setup_recheck = target.exists()
+    if setup_recheck:
+        old_preflight_sha = file_sha256(target / "preflight.json")
+        old_source_sha = file_sha256(target / "source_manifest.json")
+        recovery = {
+            "schema": "m0_cmos_decomposition_setup_recovery.v1",
+            "task_id": TASK_ID,
+            "attempt_id": ATTEMPT_ID,
+            "prior_ready_preflight_sha256": old_preflight_sha,
+            "prior_source_manifest_sha256": old_source_sha,
+            "prior_startup_failure": "atomic_write_json was called with unsupported artifact_kind keyword before any production measurement began",
+            "scientific_measurement_started_before_recheck": False,
+            "recheck_source_semantics_id": source_manifest["execution_source_semantics_id"],
+            "prior_artifacts_preserved": True,
+        }
+        atomic_write_new_json(target / "setup_recovery.json", recovery, artifact_kind="M0 CMOS startup recovery record")
+        atomic_write_new_json(target / "source_manifest_recheck_01.json", {"schema": SOURCE_MANIFEST_SCHEMA, **dict(source_manifest)}, artifact_kind="M0 CMOS rechecked source manifest")
+        atomic_write_new_json(target / "preflight_recheck_01.json", preflight, artifact_kind="M0 CMOS rechecked READY preflight")
+        control.interrupted()
+        _write_status(target / "status.json", state=RUN_INTERRUPTED, phase="SETUP_ONLY_RECHECK")
+        effective = control.resume_scientific_attempt(target, ATTEMPT_ID, receipt)
+    else:
+        effective = control.open_scientific_attempt(target, ATTEMPT_ID, receipt)
+        atomic_write_new_json(target / "source_manifest.json", {"schema": SOURCE_MANIFEST_SCHEMA, **dict(source_manifest)}, artifact_kind="M0 CMOS decomposition source manifest")
+        atomic_write_new_json(target / "preflight.json", preflight, artifact_kind="M0 CMOS decomposition READY preflight")
+    _write_status(target / "status.json", state=RUN_SCIENTIFIC_ACTIVE, phase="TRAIN_CMOS_FORWARD")
+    _write_progress(target, "READY", 1, 1)
+    try:
+        report = _run_full_measurement(
+            root,
+            authority,
+            dataset,
+            consumer,
+            ed_evaluator,
+            training_evaluator,
+            model_facts,
+            source_manifest,
+            target,
+            device,
+            deadline=task_started + MAX_TOTAL_EXECUTION_SECONDS,
+            task_started=task_started,
+            preflight_resource=preflight["resource"],
+        )
+        if setup_recheck:
+            report["lineage"]["setup_only_recovery"] = {
+                "path": "setup_recovery.json",
+                "scientific_attempt_id_preserved": True,
+                "new_source_bound_ready_preflight": "preflight_recheck_01.json",
+                "rechecked_source_manifest": "source_manifest_recheck_01.json",
+                "scientific_measurement_started_before_recheck": False,
+            }
+        torch.cuda.synchronize(device)
+        _require(_snapshots_equal(optical_state_before, _snapshot(consumer.runtime)), "frozen optical model state changed during measurement")
+        _require(_snapshots_equal(ed_state_before, _snapshot(ed_evaluator)), "frozen independent E_D changed during measurement")
+        if training_evaluator is not None and training_state_before is not None:
+            _require(_snapshots_equal(training_state_before, _snapshot(training_evaluator)), "frozen training evaluator changed during measurement")
+        _require(all(not value.requires_grad and value.grad is None for value in consumer.runtime.parameters()), "optical model acquired gradients")
+        _require(all(not value.requires_grad and value.grad is None for value in ed_evaluator.parameters()), "independent E_D acquired gradients")
+        _require(training_evaluator is None or all(not value.requires_grad and value.grad is None for value in training_evaluator.parameters()), "training evaluator acquired gradients")
+        rng_after = _rng_snapshot(device)
+        _require(torch.equal(rng_before[0], rng_after[0]) and torch.equal(rng_before[1], rng_after[1]), "full measurement consumed global RNG")
+        report["execution"]["effective_scientific_attempt_id"] = effective.scientific_attempt_id
+        atomic_write_json(target / "report.json", report, artifact_kind="completed M0 CMOS decomposition report")
+        _write_status(target / "status.json", state=RUN_COMPLETED, phase="COMPLETED", report=report)
+        control.complete()
+        return report
+    except BaseException as error:
+        if control.state == RUN_SCIENTIFIC_ACTIVE:
+            if isinstance(error, KeyboardInterrupt):
+                control.interrupted()
+            else:
+                control.invalid_harness()
+        _write_status(
+            target / "status.json",
+            state=control.state if control.state != RUN_INVALID_HARNESS else RUN_INVALID_HARNESS,
+            phase="INVALID_HARNESS",
+            error=f"{type(error).__name__}: {error}",
+        )
+        raise
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_ATTEMPT)
+    parser.add_argument("--execute", action="store_true", help="run the one authorized bounded decomposition diagnostic")
+    args = parser.parse_args()
+    if not args.execute:
+        raise SystemExit("Read-only decomposition requires the explicit --execute flag.")
+    report = execute(output_dir=args.output_dir)
+    print(json.dumps({"outer_gate": OUTER_GATE, "result": report["result"], "classification": report["classification"], "successor_research_domain": report["successor_research_domain"]}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

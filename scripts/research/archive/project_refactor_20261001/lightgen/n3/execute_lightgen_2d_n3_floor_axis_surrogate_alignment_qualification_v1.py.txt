@@ -1,0 +1,1561 @@
+"""Run the one-shot, no-persistent-update N3 floor-axis qualification."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import json
+import math
+import time
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import torch
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, RESOURCE_ENVELOPE, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INVALID_HARNESS, RUN_VALID_FAILED, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_write_json,
+    atomic_write_new_json,
+    file_sha256,
+    tensor_sha256,
+)
+from ldm_project.v2.student.evaluator import stratified_mnist_indices
+from scripts.research.lightgen.n3 import diagnose_lightgen_2d_n3_surrogate_hard_transfer_precision_diagnostic_v1 as precision
+from scripts.research.lightgen import execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1 as structural_exec
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_low_rank_model_order_v1 as n3
+
+
+TASK_ID = "EXECUTE_LIGHTGEN_2D_N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_QUALIFICATION_V1"
+OUTER_GATE = "N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_QUALIFICATION_COMPLETED"
+AUTHORIZATION_ID = "AUTHORIZED_EXECUTE_N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_QUALIFICATION_V1"
+CLASSIFICATION_QUALIFIED = "N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_QUALIFIED"
+CLASSIFICATION_NOT_QUALIFIED = "N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_NOT_QUALIFIED"
+
+V1_PATH = Path(
+    "outputs/20260923_n3_floor_axis_surrogate_alignment_v1/runs/contract_definition_01/"
+    "lightgen_2d_n3_floor_axis_surrogate_alignment_contract.v1.json"
+)
+V1_SHA256 = "b9933906fa98c4de1137ca5b17351bec150c2b245f8a3bd185eb732cb2fa5ad1"
+V2_PATH = Path(
+    "outputs/20260923_n3_floor_axis_surrogate_alignment_v1/runs/contract_definition_02/"
+    "lightgen_2d_n3_floor_axis_surrogate_alignment_contract.v2.json"
+)
+V2_SHA256 = "693dde3c0036b1eafcc3c2dc5cd17debc05e65b73b7d8a6e1304f9ba3ec74ed5"
+N3_OPTICAL_SOURCE_SHA256 = "99ef7fd96a9658c9576dd0202e648a79350b62698682ba1c8e5e718afb443eed"
+
+RUNS_ROOT = Path("outputs/20260923_n3_floor_axis_surrogate_alignment_v1/runs")
+AUTHORIZATION_PATH = RUNS_ROOT / "authorization_01/execution_authorization.json"
+PREFLIGHT_DIR = RUNS_ROOT / "preflight_01"
+PREFLIGHT_FAILURE_PATH = RUNS_ROOT / "preflight_failure_01.json"
+ATTEMPT_DIR = RUNS_ROOT / "attempt_01"
+FLOOR_INDICES = (74, 165, 256, 285)
+FLOOR_INDEX_TENSOR = torch.tensor(FLOOR_INDICES, dtype=torch.long)
+CLASS_COUNT = 10
+ROWS_PER_CLASS = 1024
+TOL = 1.0e-9
+EPS_MASS = 1.0e-12
+SOFT_TEMPERATURE = 0.05
+LAMBDA_EPSILON = 1.0e-12
+RECONSTRUCTION_MAX_DELTA = 0.005
+BATCH_SIZE = n3.LOGICAL_BATCH_SIZE
+REFERENCE_ROLE = "N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_V1"
+
+_METRIC_KEYS = {
+    "soft_floor_macro": "Q1",
+    "hard_floor_macro": "Q2",
+    "hard_floor_class8": "Q3",
+    "hard_floor_class1": "Q4",
+    "L_struct_336_macro": "Q5",
+    "nonfloor_macro": "Q6",
+    "hard_logrho_macro": "Q7",
+}
+
+
+class QualificationError(RuntimeError):
+    """An authority, runtime, or evidence invariant failed."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise QualificationError(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be an object")
+    return value
+
+
+def _sha_json(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _finite_scalar(value: Any, name: str) -> float:
+    result = float(value)
+    _require(math.isfinite(result), f"{name} is nonfinite")
+    return result
+
+
+def _q_trace(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[dict[str, Any]]:
+    trace = []
+    for key, criterion in _METRIC_KEYS.items():
+        left = _finite_scalar(before[key], f"before.{key}")
+        right = _finite_scalar(after[key], f"after.{key}")
+        delta = left - right
+        strict = criterion in {"Q1", "Q2", "Q3"}
+        passed = delta > TOL if strict else delta >= -TOL
+        trace.append(
+            {
+                "id": criterion,
+                "metric": key,
+                "before": left,
+                "after": right,
+                "delta_before_minus_after": delta,
+                "operator": "delta > TOL" if strict else "delta >= -TOL",
+                "tolerance": TOL,
+                "passed": bool(passed),
+            }
+        )
+    return trace
+
+
+def _optical_control(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    before_mse = _finite_scalar(before["reconstruction_mse"], "before.reconstruction_mse")
+    after_mse = _finite_scalar(after["reconstruction_mse"], "after.reconstruction_mse")
+    _require(before.get("raw_cmos_finite") is True and after.get("raw_cmos_finite") is True, "raw CMOS evaluation is nonfinite")
+    reconstruction_delta = after_mse - before_mse
+    nonconstant = before.get("nonconstant_fraction") == 1.0 and after.get("nonconstant_fraction") == 1.0
+    no_zero_images = before.get("zero_image_count") == 0 and after.get("zero_image_count") == 0
+    reconstruction_pass = reconstruction_delta <= RECONSTRUCTION_MAX_DELTA
+    return {
+        "authority": {
+            "n3_contract_sha256": n3.CONTRACT_SHA256,
+            "predicate_source_path": "scripts/research/lightgen/n3/execute_lightgen_2d_n3_low_rank_model_order_v1.py",
+            "predicate_source_sha256": N3_OPTICAL_SOURCE_SHA256,
+            "predicate_function": "_confirm",
+        },
+        "measurements": {
+            "reconstruction_mse_before": before_mse,
+            "reconstruction_mse_after": after_mse,
+            "reconstruction_delta_after_minus_before": reconstruction_delta,
+            "nonconstant_fraction_before": before["nonconstant_fraction"],
+            "nonconstant_fraction_after": after["nonconstant_fraction"],
+            "zero_image_count_before": before["zero_image_count"],
+            "zero_image_count_after": after["zero_image_count"],
+        },
+        "predicate": {
+            "reconstruction_delta_after_minus_before_lte": RECONSTRUCTION_MAX_DELTA,
+            "baseline_and_candidate_nonconstant_fraction_eq": 1.0,
+            "baseline_and_candidate_zero_image_count_eq": 0,
+            "baseline_and_candidate_raw_cmos_finite": True,
+        },
+        "reconstruction_pass": reconstruction_pass,
+        "optical_validity_pass": nonconstant and no_zero_images,
+        "passed": bool(reconstruction_pass and nonconstant and no_zero_images),
+    }
+
+
+def _semantic_control(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    metrics = {}
+    for name in ("L_S", "L_I", "L_C"):
+        left = _finite_scalar(before[name], f"before.{name}")
+        right = _finite_scalar(after[name], f"after.{name}")
+        tolerance = 1.0e-9 * max(1.0, abs(left))
+        metrics[name] = {
+            "before": left,
+            "after": right,
+            "tolerance": tolerance,
+            "passed": right <= left + tolerance,
+        }
+    return {
+        "authority": {
+            "v1_contract_sha256": V1_SHA256,
+            "active_fit_protocol_sha256": n3.PROTOCOL_SHA256,
+            "evaluator_authority": "active reconciled N3 fit protocol frozen E_S/E_I/E_C evaluators",
+        },
+        "aggregation": "equal-weight mean of ten class means",
+        "predicate": "after <= before + 1e-9 * max(1, abs(before)) for each of L_S/L_I/L_C",
+        "metrics": metrics,
+        "passed": all(bool(item["passed"]) for item in metrics.values()),
+    }
+
+
+def _decision(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    optical: Mapping[str, Any],
+    semantic: Mapping[str, Any],
+    *,
+    rollback_verified: bool,
+    evidence_valid: bool,
+) -> dict[str, Any]:
+    if not rollback_verified:
+        return {"attempt_status": RUN_INVALID_HARNESS, "qualification_result": "NONE", "reason": "exact rollback failed"}
+    if not evidence_valid:
+        return {"attempt_status": RUN_INVALID_HARNESS, "qualification_result": "NONE", "reason": "required evidence failed validation"}
+    q_trace = _q_trace(before, after)
+    core_pass = all(item["passed"] for item in q_trace)
+    optical_pass = optical.get("passed") is True
+    semantic_pass = semantic.get("passed") is True
+    final_pass = core_pass and optical_pass and semantic_pass
+    failed = [item["id"] for item in q_trace if not item["passed"]]
+    if not optical_pass:
+        failed.append("C_OPTICAL")
+    if not semantic_pass:
+        failed.append("C_SEMANTIC")
+    return {
+        "attempt_status": "VALID_COMPLETED",
+        "qualification_result": CLASSIFICATION_QUALIFIED if final_pass else CLASSIFICATION_NOT_QUALIFIED,
+        "structural_core_pass": core_pass,
+        "optical_control_pass": optical_pass,
+        "semantic_control_pass": semantic_pass,
+        "final_qualification_pass": final_pass,
+        "failed_criteria": failed,
+        "q1_q7": q_trace,
+    }
+
+
+def _soft_floor_features(raw_view: torch.Tensor) -> torch.Tensor:
+    _require(raw_view.ndim == 4 and tuple(raw_view.shape[1:]) == (1, 28, 28), "soft floor input geometry changed")
+    values = raw_view[:, 0].to(torch.float64)
+    _require(bool(torch.isfinite(values).all().item()), "soft floor input is nonfinite")
+    _require(float(values.detach().min()) >= 0.0 and float(values.detach().max()) <= 1.0, "soft floor input is outside [0,1]")
+    coordinate = torch.arange(28, device=values.device, dtype=torch.float64)
+    outputs = []
+    for threshold in (0.25, 0.50, 0.75):
+        baseline = torch.sigmoid(torch.tensor(-threshold / SOFT_TEMPERATURE, device=values.device, dtype=torch.float64))
+        occupancy = (torch.sigmoid((values - threshold) / SOFT_TEMPERATURE) - baseline) / (1.0 - baseline)
+        row = -torch.expm1(torch.log1p(-occupancy).sum(dim=2))
+        column = -torch.expm1(torch.log1p(-occupancy).sum(dim=1))
+        nonempty = -torch.expm1(torch.log1p(-occupancy).sum(dim=(1, 2)))
+
+        def expected_span(probability: torch.Tensor) -> torch.Tensor:
+            complement = 1.0 - probability
+            prefix = torch.cat(
+                (torch.ones_like(complement[:, :1]), torch.cumprod(complement, dim=1)[:, :-1]), dim=1
+            )
+            suffix = torch.cat(
+                (torch.cumprod(complement.flip(1), dim=1).flip(1)[:, 1:], torch.ones_like(complement[:, :1])),
+                dim=1,
+            )
+            p_minimum = probability * prefix
+            p_maximum = probability * suffix
+            first = (p_minimum * coordinate).sum(dim=1)
+            last = (p_maximum * coordinate).sum(dim=1)
+            safe_nonempty = nonempty.clamp_min(EPS_MASS)
+            return 1.0 + (last - first) / safe_nonempty
+
+        height = expected_span(row)
+        width = expected_span(column)
+        aspect = width / height
+        aspect = torch.where(nonempty > EPS_MASS, aspect, torch.zeros_like(aspect))
+        outputs.append(aspect)
+        if threshold == 0.75:
+            mass = occupancy.sum(dim=(1, 2))
+            projection = occupancy[:, :, 0].sum(dim=1) / mass.clamp_min(EPS_MASS)
+            projection = torch.where(mass > EPS_MASS, projection, torch.zeros_like(projection))
+            outputs.append(projection)
+    result = torch.stack(outputs, dim=1)
+    _require(bool(torch.isfinite(result).all().item()), "soft floor feature is nonfinite")
+    return result
+
+
+def _select_fixed_populations(
+    labels: torch.Tensor,
+    train_indices: torch.Tensor,
+    role_indices: Mapping[str, torch.Tensor],
+    historical_exclusions: Sequence[int],
+    attribution_indices: torch.Tensor,
+    precision_indices: torch.Tensor,
+    reference_indices: torch.Tensor,
+) -> dict[str, Any]:
+    excluded = set(int(value) for value in historical_exclusions)
+    for role in ("N3_FIT", "N3_SELECT", "N3_CONFIRM"):
+        excluded.update(int(value) for value in role_indices[role].tolist())
+    excluded.update(int(value) for value in attribution_indices.tolist())
+    excluded.update(int(value) for value in precision_indices.tolist())
+    train_set = set(int(value) for value in train_indices.tolist())
+    _require(excluded.issubset(set(range(labels.numel()))), "an exclusion index is outside canonical TRAIN source")
+
+    def choose(eligible_by_class: dict[int, list[int]], role: str) -> list[int]:
+        chosen = []
+        for digit in range(CLASS_COUNT):
+            ranked = []
+            for source_index in eligible_by_class[digit]:
+                key = f"{REFERENCE_ROLE}\n{role}\n{digit}\n{source_index}".encode("utf-8")
+                ranked.append((hashlib.sha256(key).hexdigest(), source_index))
+            _require(len(ranked) >= ROWS_PER_CLASS, f"{role} class {digit} has fewer than {ROWS_PER_CLASS} eligible rows")
+            selected = sorted(ranked)[:ROWS_PER_CLASS]
+            chosen.extend(sorted(index for _, index in selected))
+        return chosen
+
+    eligible = {
+        digit: [
+            int(index)
+            for index in train_indices.tolist()
+            if int(labels[int(index)]) == digit and int(index) not in excluded
+        ]
+        for digit in range(CLASS_COUNT)
+    }
+    qualification = choose(eligible, "QUALIFICATION")
+    qualification_set = set(qualification)
+    future_pool = {digit: [index for index in eligible[digit] if index not in qualification_set] for digit in range(CLASS_COUNT)}
+    future = choose(future_pool, "FUTURE_PAIRED_EVALUATION")
+    qualification_tensor = torch.tensor(qualification, dtype=torch.long)
+    future_tensor = torch.tensor(future, dtype=torch.long)
+    _require(not set(qualification).intersection(future), "qualification and future paired populations overlap")
+    _require(set(qualification).union(future).issubset(train_set), "selected rows are outside canonical TRAIN")
+    _require(torch.bincount(labels.index_select(0, qualification_tensor), minlength=CLASS_COUNT).tolist() == [ROWS_PER_CLASS] * CLASS_COUNT, "qualification class counts changed")
+    _require(torch.bincount(labels.index_select(0, future_tensor), minlength=CLASS_COUNT).tolist() == [ROWS_PER_CLASS] * CLASS_COUNT, "future paired class counts changed")
+    _require(not (set(qualification) | set(future)).intersection(excluded), "selected populations overlap an excluded role")
+    overlap = len(set(qualification).intersection(int(value) for value in reference_indices.tolist()))
+    return {
+        "qualification_indices": qualification_tensor,
+        "future_paired_evaluation_indices": future_tensor,
+        "qualification_indices_sha256": tensor_sha256(qualification_tensor),
+        "future_paired_evaluation_indices_sha256": tensor_sha256(future_tensor),
+        "qualification_population_sha256": _sha_json(qualification),
+        "future_paired_population_sha256": _sha_json(future),
+        "qualification_rows": len(qualification),
+        "future_paired_evaluation_rows": len(future),
+        "rows_per_class": ROWS_PER_CLASS,
+        "canonical_train_split_indices_sha256": tensor_sha256(train_indices),
+        "exclusion_count": len(excluded),
+        "reference_overlap_rows": overlap,
+        "reference_independence_claim": False,
+    }
+
+
+def _load_exclusion_indices(root: Path, v1: Mapping[str, Any]) -> tuple[torch.Tensor, torch.Tensor]:
+    authorities = _mapping(v1["bound_authorities"], "V1 authority bindings")
+    prior = _mapping(authorities["prior_attribution_rows"], "prior attribution rows")
+    precision_ref = _mapping(authorities["precision_diagnostic"], "precision diagnostic rows")
+    prior_path = root / str(prior["sample_indices_path"])
+    precision_path = root / str(precision_ref["fixed_sample_indices_path"])
+    _require(file_sha256(prior_path) == prior["sample_indices_artifact_sha256"], "prior attribution row identity changed")
+    _require(file_sha256(precision_path) == precision_ref["fixed_sample_indices_artifact_sha256"], "precision diagnostic row identity changed")
+    prior_payload = _mapping(json.loads(prior_path.read_text(encoding="utf-8")), "prior attribution sample indices")
+    precision_payload = _mapping(json.loads(precision_path.read_text(encoding="utf-8")), "precision sample indices")
+    prior_indices = torch.tensor(prior_payload["indices"], dtype=torch.long)
+    precision_rows = torch.tensor(precision_payload["indices"], dtype=torch.long)
+    _require(tensor_sha256(prior_indices) == prior["sample_indices_content_sha256"], "prior attribution row content changed")
+    _require(tensor_sha256(precision_rows) == precision_ref["fixed_sample_indices_content_sha256"], "precision diagnostic row content changed")
+    return prior_indices, precision_rows
+
+
+def _load_authorization(
+    root: Path,
+    source: Mapping[str, Any],
+    populations: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, Any], str]:
+    path = root / AUTHORIZATION_PATH
+    _require(path.is_file(), f"explicit execution authorization artifact is missing: {AUTHORIZATION_PATH.as_posix()}")
+    payload = dict(_mapping(json.loads(path.read_text(encoding="utf-8")), "qualification authorization"))
+    required = {
+        "schema": "n3_floor_axis_surrogate_alignment_execution_authorization.v1",
+        "authorization_id": AUTHORIZATION_ID,
+        "contract_v1_sha256": V1_SHA256,
+        "contract_v2_sha256": V2_SHA256,
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "active_fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "frozen_structural_reference_sha256": n3.STRUCTURAL_REFERENCE_SHA256,
+        "surrogate_normalization_sha256": n3.SURROGATE_NORMALIZATION_SHA256,
+        "source_manifest_id": source["source_manifest_id"],
+        "execution_source_semantics_id": source["execution_source_semantics_id"],
+    }
+    if populations is not None:
+        required.update(
+            {
+                "qualification_population_sha256": populations["qualification_population_sha256"],
+                "future_paired_population_sha256": populations["future_paired_population_sha256"],
+            }
+        )
+    for key, expected in required.items():
+        _require(payload.get(key) == expected, f"execution authorization binding mismatch: {key}")
+    return payload, file_sha256(path)
+
+
+def _source_manifest(root: Path) -> dict[str, Any]:
+    config = {
+        "v1_sha256": V1_SHA256,
+        "v2_sha256": V2_SHA256,
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "backend": "FROZEN_FULL_POPULATION_GRADIENT_PLUS_ONE_TEMPORARY_ADAM_STEP",
+        "floor_indices": list(FLOOR_INDICES),
+        "qualification_rows_per_class": ROWS_PER_CLASS,
+    }
+    sources = [
+        Path(__file__),
+        V1_PATH,
+        V2_PATH,
+        n3.CONTRACT_PATH,
+        n3.PROTOCOL_PATH,
+        n3.PROTOCOL_RECONCILIATION_ENTRYPOINT,
+        Path(n3.__file__),
+        Path(precision.__file__),
+        Path(structural_exec.__file__),
+        Path("scripts/research/lightgen/execute_lightgen_2d_non_classifier_structural_semantic_confirmation_v1.py"),
+        Path("scripts/research/lightgen/execute_lightgen_2d_three_evaluator_robust_semantic_continuation_v1.py"),
+        Path("scripts/research/lightgen/execute_lightgen_2d_establish_third_confirmation_evaluator_v1.py"),
+        Path("src/ldm_project/v2/application/research/shared/research_run_control.py"),
+        Path("src/ldm_project/v2/evidence/io.py"),
+        Path("src/ldm_project/v2/student/evaluator.py"),
+    ]
+    manifest = capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id="N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_V2",
+        relevant_paths=sources,
+        config_identity=config,
+    )
+    return manifest.to_dict()
+
+
+def _make_identity(manifest: Mapping[str, Any], populations: Mapping[str, Any]) -> ResearchRunIdentity:
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id="lightgen-2d-n3-floor-axis-surrogate-alignment-qualification-v1",
+        trajectory_id="n3-floor-axis-surrogate-alignment-qualification-v1",
+        semantic_authority_id="N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_V2",
+        data_role="TRAIN",
+        config_identity={
+            "v1_sha256": V1_SHA256,
+            "v2_sha256": V2_SHA256,
+            "n3_contract_sha256": n3.CONTRACT_SHA256,
+            "fit_protocol_sha256": n3.PROTOCOL_SHA256,
+            "qualification_population_sha256": populations["qualification_population_sha256"],
+            "future_paired_population_sha256": populations["future_paired_population_sha256"],
+            "floor_indices": list(FLOOR_INDICES),
+        },
+        model_identity="accepted_step9000_plus_canonical_rank2_A_B_initialization",
+        optimizer_identity={
+            "name": "Adam",
+            "parameters": ["n3_correction.B", "n3_correction.A"],
+            "learning_rate": n3.LEARNING_RATE,
+            "betas": list(n3.ADAM_BETAS),
+            "eps": n3.ADAM_EPS,
+            "weight_decay": n3.WEIGHT_DECAY,
+            "state": "fresh_zero; one in-memory temporary step; exact rollback",
+        },
+        sampler_identity={"calibration_population": "fixed full N3_FIT order", "cursor_consumed": 0},
+        execution_source_semantics_id=str(manifest["execution_source_semantics_id"]),
+        source_manifest_id=str(manifest["source_manifest_id"]),
+        scientific_attempt_id="n3-floor-axis-alignment-qualification:attempt_01",
+    )
+
+
+def _load_frozen_indices(root: Path, contract: Mapping[str, Any], authorities: Mapping[str, Any]) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
+    labels = authorities["labels"].to(torch.long).cpu()
+    train_indices, _ = stratified_mnist_indices(labels, seed=1234, validation_per_label=500)
+    train_indices = torch.sort(train_indices).values.contiguous()
+    expected_train_sha = contract["bound_authorities"]["canonical_train_source"]["n3_canonical_train_split_indices_sha256"]
+    _require(tensor_sha256(train_indices) == expected_train_sha, "canonical N3 TRAIN split identity changed")
+    roles = {name: authorities["roles"][name].to(torch.long).cpu() for name in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")}
+    prior_indices, precision_indices = _load_exclusion_indices(root, contract)
+    historical = contract["bound_authorities"]["n3_contract"]
+    n3_contract = json.loads((root / historical["path"]).read_text(encoding="utf-8"))
+    exclusions = n3_contract["data_roles"]["historical_exclusions"]["union"]
+    reference_rows = torch.tensor(
+        authorities["structural_reference"]["structural_fit"]["canonical_source_indices"], dtype=torch.long
+    )
+    populations = _select_fixed_populations(
+        labels,
+        train_indices,
+        roles,
+        exclusions,
+        prior_indices,
+        precision_indices,
+        reference_rows,
+    )
+    populations["qualification_indices_by_class"] = {
+        str(digit): populations["qualification_indices"][labels.index_select(0, populations["qualification_indices"]) == digit].tolist()
+        for digit in range(CLASS_COUNT)
+    }
+    populations["future_indices_by_class"] = {
+        str(digit): populations["future_paired_evaluation_indices"][labels.index_select(0, populations["future_paired_evaluation_indices"]) == digit].tolist()
+        for digit in range(CLASS_COUNT)
+    }
+    return roles, populations
+
+
+def _reference_targets(signature: torch.Tensor, labels: torch.Tensor, reference: Mapping[str, Any]) -> torch.Tensor:
+    fit = reference["structural_fit"]
+    ref_labels = torch.as_tensor(fit["labels"], dtype=torch.long).cpu()
+    source_indices = torch.as_tensor(fit["canonical_source_indices"], dtype=torch.long).cpu()
+    standardized = torch.as_tensor(fit["standardized_signature"], dtype=torch.float64).cpu()
+    normalization = reference["normalization"]
+    mean = torch.as_tensor(normalization["mean"], dtype=torch.float64).cpu()
+    scale = torch.as_tensor(normalization["population_std_clamped_scale"], dtype=torch.float64).cpu()
+    queries = (signature.to(torch.float64).cpu() - mean) / scale
+    labels = labels.to(torch.long).cpu()
+    _require(queries.shape == (labels.numel(), 337), "hard reference target query geometry changed")
+    chosen = torch.empty(labels.numel(), dtype=torch.long)
+    for digit in range(CLASS_COUNT):
+        rows = torch.nonzero(labels == digit, as_tuple=False).flatten()
+        candidates = torch.nonzero(ref_labels == digit, as_tuple=False).flatten()
+        _require(candidates.numel() > 0, f"frozen reference has no rows for class {digit}")
+        order = torch.argsort(source_indices.index_select(0, candidates), stable=True)
+        candidates = candidates.index_select(0, order)
+        ref = standardized.index_select(0, candidates)
+        query = queries.index_select(0, rows)
+        distances = query.square().sum(dim=1, keepdim=True) + ref.square().sum(dim=1).unsqueeze(0) - 2.0 * query @ ref.T
+        local = distances.argmin(dim=1)
+        chosen[rows] = candidates.index_select(0, local)
+    return chosen
+
+
+def _fit_objective_batch(
+    model: n3.N3ClassConditionedModel,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    mean: torch.Tensor,
+    scale: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    result = model.forward_from_image(images, labels)
+    raw = result.raw_intensity
+    n3._finite(raw, "qualification FIT raw CMOS")
+    raw_view = n3._deterministic_cmos_view(raw)
+    target_view = structural_exec.prior._cmos_view(images)
+    generated = structural_exec._normalized_surrogate(structural_exec._structural_surrogate(raw_view), mean, scale)
+    target = structural_exec._normalized_surrogate(structural_exec._structural_surrogate(target_view), mean, scale)
+    per_row_336 = (generated - target.detach()).square().mean(dim=1)
+    return per_row_336.mean(), per_row_336, raw, raw_view, result.image_input.slm_intensity, target_view
+
+
+def _calibrate_lambda(
+    model: n3.N3ClassConditionedModel,
+    authorities: Mapping[str, Any],
+    fit_indices: torch.Tensor,
+    reference: Mapping[str, Any],
+    mean: torch.Tensor,
+    scale: torch.Tensor,
+    device: torch.device,
+) -> dict[str, Any]:
+    parameters = (model.B, model.A)
+    gradient_336 = [torch.zeros_like(parameter, device="cpu", dtype=torch.float64) for parameter in parameters]
+    gradient_floor = [torch.zeros_like(parameter, device="cpu", dtype=torch.float64) for parameter in parameters]
+    row_336: list[torch.Tensor] = []
+    row_floor: list[torch.Tensor] = []
+    fixed_rows: list[torch.Tensor] = []
+    labels_cpu = authorities["labels"].to(torch.long).cpu()
+    raw_reference = torch.as_tensor(reference["structural_fit"]["raw_signature"], dtype=torch.float64).cpu()
+    images_cpu = authorities["images"]
+    total_rows = int(fit_indices.numel())
+    for start in range(0, total_rows, BATCH_SIZE):
+        indices = fit_indices[start : start + BATCH_SIZE]
+        images = images_cpu.index_select(0, indices).to(device)
+        labels = labels_cpu.index_select(0, indices).to(device)
+        loss_336, per_row_336, raw, raw_view, _, _ = _fit_objective_batch(model, images, labels, mean, scale)
+        signature = precision.hard.structural_signature(raw_view.detach(), device=device, batch_size=BATCH_SIZE).to(torch.float64).cpu()
+        reference_rows = _reference_targets(signature, labels.cpu(), reference)
+        fixed_rows.append(reference_rows)
+        target_floor = raw_reference.index_select(0, reference_rows).index_select(1, FLOOR_INDEX_TENSOR).to(device)
+        soft = _soft_floor_features(raw_view)
+        per_row_floor = (soft - target_floor).square().mean(dim=1)
+        loss_floor = per_row_floor.mean()
+        gradients_336 = torch.autograd.grad(loss_336, parameters, retain_graph=True, allow_unused=False)
+        gradients_floor = torch.autograd.grad(loss_floor, parameters, allow_unused=False)
+        for index, (g336, gfloor) in enumerate(zip(gradients_336, gradients_floor, strict=True)):
+            n3._finite(g336, "calibration g336")
+            n3._finite(gfloor, "calibration gfloor")
+            gradient_336[index] += g336.detach().to(device="cpu", dtype=torch.float64) * indices.numel()
+            gradient_floor[index] += gfloor.detach().to(device="cpu", dtype=torch.float64) * indices.numel()
+        row_336.append(per_row_336.detach().to(device="cpu", dtype=torch.float64))
+        row_floor.append(per_row_floor.detach().to(device="cpu", dtype=torch.float64))
+        model.zero_grad(set_to_none=True)
+        del raw
+    g336 = [value / total_rows for value in gradient_336]
+    gfloor = [value / total_rows for value in gradient_floor]
+    all336 = torch.cat([value.reshape(-1) for value in g336])
+    allfloor = torch.cat([value.reshape(-1) for value in gfloor])
+    rms336 = float(all336.square().mean().sqrt())
+    rmsfloor = float(allfloor.square().mean().sqrt())
+    _require(math.isfinite(rms336) and rms336 > 0.0, "pooled g336 RMS is not finite and positive")
+    _require(math.isfinite(rmsfloor) and rmsfloor > 0.0, "pooled gfloor RMS is not finite and positive")
+    lambda_floor = rms336 / (rmsfloor + LAMBDA_EPSILON)
+    combined = [left + lambda_floor * right for left, right in zip(g336, gfloor, strict=True)]
+    _require(math.isfinite(lambda_floor) and lambda_floor > 0.0, "lambda_floor is not finite and positive")
+    _require(all(bool(torch.isfinite(value).all()) for value in combined), "combined calibration gradient is nonfinite")
+    combined_vector = torch.cat([value.reshape(-1) for value in combined])
+    _require(float(combined_vector.norm()) > 0.0, "combined calibration gradient is zero")
+    gradient_geometry = {
+        "g336_l2": float(all336.norm()),
+        "gfloor_l2": float(allfloor.norm()),
+        "g_aligned_l2": float(combined_vector.norm()),
+        "g_aligned_rms": float(combined_vector.square().mean().sqrt()),
+        "per_parameter": {
+            name: {
+                "g336_l2": float(left.norm()),
+                "gfloor_l2": float(right.norm()),
+                "g_aligned_l2": float(aligned.norm()),
+            }
+            for name, left, right, aligned in zip(("B", "A"), g336, gfloor, combined, strict=True)
+        },
+    }
+    cosine = float(torch.dot(all336, allfloor) / (all336.norm() * allfloor.norm()))
+    directional = {
+        "dL336_along_minus_g_aligned": -float(torch.dot(all336, combined_vector)),
+        "dL_floor_along_minus_g_aligned": -float(torch.dot(allfloor, combined_vector)),
+        "dL_aligned_along_minus_g_aligned": -float(torch.dot(combined_vector, combined_vector)),
+    }
+    fit_rows = {
+        "L_struct_336_macro": _class_macro(torch.cat(row_336), labels_cpu.index_select(0, fit_indices), expected_rows=256),
+        "L_floor_raw_macro": _class_macro(torch.cat(row_floor), labels_cpu.index_select(0, fit_indices), expected_rows=256),
+    }
+    return {
+        "g336": g336,
+        "gfloor": gfloor,
+        "g_aligned": combined,
+        "fixed_reference_rows": torch.cat(fixed_rows),
+        "lambda_floor": lambda_floor,
+        "rms_g336": rms336,
+        "rms_gfloor": rmsfloor,
+        "gradient_geometry": gradient_geometry,
+        "cosine_g336_gfloor": cosine,
+        "lambda_conditioning": lambda_floor * rmsfloor,
+        "first_order_directional_derivatives": directional,
+        "fit_metrics_theta0": fit_rows,
+    }
+
+
+def _class_macro(values: torch.Tensor, labels: torch.Tensor, *, expected_rows: int) -> dict[str, Any]:
+    values = values.to(torch.float64).cpu().reshape(-1)
+    labels = labels.to(torch.long).cpu().reshape(-1)
+    _require(values.shape == labels.shape and bool(torch.isfinite(values).all()), "class summary input shape or finite check failed")
+    by_class = {}
+    class_means = []
+    for digit in range(CLASS_COUNT):
+        subset = values[labels == digit]
+        _require(subset.numel() == expected_rows, f"class {digit} summary row count changed")
+        value = float(subset.mean())
+        by_class[str(digit)] = value
+        class_means.append(value)
+    return {"macro": sum(class_means) / CLASS_COUNT, "per_class": by_class}
+
+
+def _measure_population(
+    model: n3.N3ClassConditionedModel,
+    authorities: Mapping[str, Any],
+    indices: torch.Tensor,
+    reference: Mapping[str, Any],
+    mean: torch.Tensor,
+    scale: torch.Tensor,
+    evaluators: tuple[Any, Any, Any],
+    device: torch.device,
+    *,
+    fixed_reference_rows: torch.Tensor | None,
+    capture_replay_evidence: bool = False,
+) -> dict[str, Any]:
+    smooth, independent, ec = evaluators
+    model.eval()
+    labels_cpu = authorities["labels"].to(torch.long).cpu().index_select(0, indices)
+    l336_rows: list[torch.Tensor] = []
+    floor_rows: list[torch.Tensor] = []
+    soft_rows: list[torch.Tensor] = []
+    semantic_rows: dict[str, list[torch.Tensor]] = {name: [] for name in ("L_S", "L_I", "L_C")}
+    reconstruction_rows: list[torch.Tensor] = []
+    views: list[torch.Tensor] = []
+    threshold_margin_rows: list[torch.Tensor] = []
+    nonconstant = 0
+    zero_images = 0
+    fixed_target_rows: list[torch.Tensor] = []
+    raw_reference = torch.as_tensor(reference["structural_fit"]["raw_signature"], dtype=torch.float64).cpu()
+    for start in range(0, int(indices.numel()), BATCH_SIZE):
+        batch_indices = indices[start : start + BATCH_SIZE]
+        images = authorities["images"].index_select(0, batch_indices).to(device)
+        labels = authorities["labels"].index_select(0, batch_indices).to(device)
+        with torch.no_grad():
+            _, per_row_336, raw, raw_view, target_image, target_view = _fit_objective_batch(model, images, labels, mean, scale)
+            soft = _soft_floor_features(raw_view)
+            signature = precision.hard.structural_signature(raw_view, device=device, batch_size=BATCH_SIZE).to(torch.float64).cpu()
+            if fixed_reference_rows is None:
+                target_rows = _reference_targets(signature, labels.cpu(), reference)
+            else:
+                target_rows = fixed_reference_rows[start : start + batch_indices.numel()].cpu()
+            fixed_target_rows.append(target_rows)
+            target_floor = raw_reference.index_select(0, target_rows).index_select(1, FLOOR_INDEX_TENSOR).to(device)
+            floor_per_row = (soft - target_floor).square().mean(dim=1)
+            semantic = n3._semantic_row_losses(raw_view, target_view, smooth, independent, ec)
+            reconstruction = (raw - target_image).square().mean(dim=(1, 2, 3)).to(torch.float64)
+            flat = raw.to(torch.float64).flatten(1)
+            nonconstant += int((flat.std(dim=1, unbiased=False) > 0.0).sum().item())
+            zero_images += int((flat.abs().sum(dim=1) == 0.0).sum().item())
+            if capture_replay_evidence:
+                thresholds = raw_view.new_tensor((0.25, 0.50, 0.75))
+                margins = (raw_view.flatten(1).unsqueeze(-1) - thresholds.view(1, 1, -1)).abs().amin(dim=1)
+                threshold_margin_rows.append(margins.detach().to(device="cpu", dtype=torch.float64))
+        l336_rows.append(per_row_336.detach().to(device="cpu", dtype=torch.float64))
+        floor_rows.append(floor_per_row.detach().to(device="cpu", dtype=torch.float64))
+        soft_rows.append(soft.detach().to(device="cpu", dtype=torch.float64))
+        reconstruction_rows.append(reconstruction.detach().cpu())
+        for name in semantic_rows:
+            semantic_rows[name].append(semantic[name].detach().to(device="cpu", dtype=torch.float64))
+        views.append(raw_view.detach().cpu())
+    raw_views = torch.cat(views)
+    hard = precision._hard_measurement(raw_views, labels_cpu, reference, device)
+    official_targets = hard["nearest_reference_index"]
+    reference_info = {
+        "raw_signature": torch.as_tensor(reference["structural_fit"]["raw_signature"], dtype=torch.float64).cpu(),
+        "scale": torch.as_tensor(reference["normalization"]["population_std_clamped_scale"], dtype=torch.float64).cpu(),
+    }
+    floor_metrics = precision._floor_contributions(hard, official_targets, reference_info, FLOOR_INDEX_TENSOR)
+    fit = reference["structural_fit"]
+    source_indices = torch.as_tensor(fit["canonical_source_indices"], dtype=torch.long).cpu()
+    official_source_targets = source_indices.index_select(0, official_targets)
+    soft_matrix = torch.cat(soft_rows)
+    fixed_rows = torch.cat(fixed_target_rows)
+    fixed_targets = raw_reference.index_select(0, fixed_rows).index_select(1, FLOOR_INDEX_TENSOR)
+    soft_error_by_axis = (soft_matrix - fixed_targets).square()
+    hard_residual = hard["raw_signature"].index_select(1, FLOOR_INDEX_TENSOR) - raw_reference.index_select(0, official_targets).index_select(1, FLOOR_INDEX_TENSOR)
+    scale = torch.as_tensor(reference["normalization"]["population_std_clamped_scale"], dtype=torch.float64).cpu().index_select(0, FLOOR_INDEX_TENSOR)
+    per_axis_hard_contribution = (hard_residual / scale).square() / 337.0
+    l336 = torch.cat(l336_rows)
+    floor_raw = torch.cat(floor_rows)
+    semantics = {name: torch.cat(values) for name, values in semantic_rows.items()}
+    nonfloor = floor_metrics["total_squared_distance"] - floor_metrics["floor_squared_distance_contribution"]
+    metrics = {
+        "L_struct_336_macro": _class_macro(l336, labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "soft_floor_macro": _class_macro(floor_raw, labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "hard_floor_macro": _class_macro(floor_metrics["floor_squared_distance_contribution"], labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "nonfloor_macro": _class_macro(nonfloor, labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "hard_logrho_macro": _class_macro(hard["log_rho"], labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "hard_distance_macro_secondary": _class_macro(hard["distance"], labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "hard_distance_squared_macro_secondary": _class_macro(hard["distance"].square(), labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "hard_floor_class1": _class_macro(floor_metrics["floor_squared_distance_contribution"], labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"]["1"],
+        "hard_floor_class8": _class_macro(floor_metrics["floor_squared_distance_contribution"], labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"]["8"],
+        "semantic": {name: _class_macro(value, labels_cpu, expected_rows=ROWS_PER_CLASS) for name, value in semantics.items()},
+        "reconstruction_mse": float(torch.cat(reconstruction_rows).mean()),
+        "raw_cmos_finite": True,
+        "nonconstant_fraction": nonconstant / int(indices.numel()),
+        "zero_image_count": zero_images,
+        "class_hard_floor": _class_macro(floor_metrics["floor_squared_distance_contribution"], labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"],
+        "class_hard_nonfloor": _class_macro(nonfloor, labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"],
+        "class_hard_logrho": _class_macro(hard["log_rho"], labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"],
+        "class_L_struct_336": _class_macro(l336, labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"],
+        "class_soft_floor": _class_macro(floor_raw, labels_cpu, expected_rows=ROWS_PER_CLASS)["per_class"],
+        "nearest_reference_source_index_by_sample": official_source_targets.tolist(),
+        "q95_macro": _class_macro(hard["q95"], labels_cpu, expected_rows=ROWS_PER_CLASS)["macro"],
+        "hard_distance_reconstruction": hard["distance_reconstruction"],
+        "hard_floor_by_axis": {},
+        "soft_floor_by_axis": {},
+        "hard_residual_by_axis": {},
+        "hard_contribution_by_axis": {},
+        "fixed_reference_rows": fixed_rows,
+        "official_reference_rows": official_targets,
+        "official_reference_source_rows": official_source_targets,
+        "raw_signature": hard["raw_signature"],
+        "standardized_full_distance": hard["distance"],
+        "official_logrho": hard["log_rho"],
+        "labels": labels_cpu,
+        "soft_floor_error_by_axis": soft_error_by_axis,
+        "hard_residual_by_axis_tensor": hard_residual.abs(),
+        "hard_contribution_by_axis_tensor": per_axis_hard_contribution,
+    }
+    if capture_replay_evidence:
+        metrics.update(
+            {
+                "replay_soft_floor_raw_by_axis": soft_matrix,
+                "replay_nonfloor_by_sample": nonfloor.detach().to(device="cpu", dtype=torch.float64),
+                "replay_hard_logrho_by_sample": hard["log_rho"].detach().to(device="cpu", dtype=torch.float64),
+                "replay_hard_q95_by_sample": hard["q95"].detach().to(device="cpu", dtype=torch.float64),
+                "replay_threshold_margin_min_by_sample": torch.cat(threshold_margin_rows),
+            }
+        )
+    for axis_position, axis in enumerate(FLOOR_INDICES):
+        metrics["hard_floor_by_axis"][str(axis)] = _class_macro(per_axis_hard_contribution[:, axis_position], labels_cpu, expected_rows=ROWS_PER_CLASS)
+        metrics["soft_floor_by_axis"][str(axis)] = _class_macro(soft_error_by_axis[:, axis_position], labels_cpu, expected_rows=ROWS_PER_CLASS)
+        metrics["hard_residual_by_axis"][str(axis)] = _class_macro(hard_residual[:, axis_position].abs(), labels_cpu, expected_rows=ROWS_PER_CLASS)
+    return metrics
+
+
+def _population_manifest(populations: Mapping[str, Any]) -> dict[str, Any]:
+    q = populations["qualification_indices"].tolist()
+    f = populations["future_paired_evaluation_indices"].tolist()
+    return {
+        "schema": "n3_floor_axis_qualification_fixed_populations.v1",
+        "selection_rule": "SHA256(task namespace, role, class, canonical source index); lowest digest/index pairs; selected rows sorted by canonical index within class",
+        "qualification_indices": q,
+        "future_paired_evaluation_indices": f,
+        "qualification_indices_sha256": populations["qualification_indices_sha256"],
+        "future_paired_evaluation_indices_sha256": populations["future_paired_evaluation_indices_sha256"],
+        "qualification_population_sha256": populations["qualification_population_sha256"],
+        "future_paired_population_sha256": populations["future_paired_population_sha256"],
+        "rows_per_class": ROWS_PER_CLASS,
+        "qualification_rows": len(q),
+        "future_paired_evaluation_rows": len(f),
+        "canonical_train_split_indices_sha256": populations["canonical_train_split_indices_sha256"],
+        "reference_overlap_rows": populations["reference_overlap_rows"],
+        "reference_independence_claim": False,
+        "future_paired_evaluation_read": False,
+    }
+
+
+def _record_fixed_target_manifest(
+    attempt: Path,
+    calibration: Mapping[str, Any],
+    qualification_before: Mapping[str, Any],
+    reference: Mapping[str, Any],
+) -> dict[str, Any]:
+    source_indices = torch.as_tensor(reference["structural_fit"]["canonical_source_indices"], dtype=torch.long).cpu()
+    fit_rows = calibration["fixed_reference_rows"].to(torch.long).cpu()
+    qual_rows = qualification_before["fixed_reference_rows"].to(torch.long).cpu()
+    fit_sources = source_indices.index_select(0, fit_rows)
+    qual_sources = source_indices.index_select(0, qual_rows)
+    payload = {
+        "schema": "n3_floor_axis_qualification_fixed_reference_targets.v1",
+        "selection_basis": "theta0 hard 337D signature; true-class full standardized squared distance; ties by canonical source index then frozen row position",
+        "fit_reference_row_indices": fit_rows.tolist(),
+        "fit_reference_source_indices": fit_sources.tolist(),
+        "qualification_reference_row_indices": qual_rows.tolist(),
+        "qualification_reference_source_indices": qual_sources.tolist(),
+        "fit_source_indices_sha256": tensor_sha256(fit_sources),
+        "qualification_source_indices_sha256": tensor_sha256(qual_sources),
+        "floor_indices": list(FLOOR_INDICES),
+        "frozen_before_temporary_update": True,
+    }
+    atomic_write_new_json(attempt / "fixed_reference_targets.json", payload, artifact_kind="N3 floor-axis fixed reference target identities")
+    return payload
+
+
+def _validate_q_evidence(before: Mapping[str, Any], after: Mapping[str, Any]) -> None:
+    _q_trace(before, after)
+    for population in (before, after):
+        for key in _METRIC_KEYS:
+            _finite_scalar(population[key], key)
+        for name in ("L_S", "L_I", "L_C"):
+            _finite_scalar(population["semantic"][name]["macro"], name)
+        _finite_scalar(population["reconstruction_mse"], "reconstruction_mse")
+        _finite_scalar(population["q95_macro"], "q95_macro")
+        nonconstant_fraction = _finite_scalar(population["nonconstant_fraction"], "nonconstant_fraction")
+        _require(0.0 <= nonconstant_fraction <= 1.0, "nonconstant fraction is outside [0,1]")
+        zero_image_count = population["zero_image_count"]
+        _require(type(zero_image_count) is int and 0 <= zero_image_count <= ROWS_PER_CLASS * CLASS_COUNT, "zero image count is invalid")
+        for digit in ("1", "8"):
+            _finite_scalar(population["class_hard_logrho"][digit], f"class {digit} hard log-rho")
+            _finite_scalar(population["class_hard_floor"][digit], f"class {digit} hard floor")
+        _require(population["raw_cmos_finite"] is True, "raw CMOS finiteness evidence is invalid")
+        _require(population["hard_distance_reconstruction"]["passed"] is True, "official hard distance reconstruction failed")
+
+
+def _evaluator_grad_snapshot(evaluators: tuple[Any, Any, Any]) -> dict[str, list[torch.Tensor | None]]:
+    return {
+        type(module).__name__: [None if p.grad is None else p.grad.detach().clone() for p in module.parameters()]
+        for module in evaluators
+    }
+
+
+def _evaluator_grad_restore(evaluators: tuple[Any, Any, Any], snapshot: Mapping[str, Sequence[torch.Tensor | None]]) -> None:
+    for module in evaluators:
+        gradients = snapshot[type(module).__name__]
+        for parameter, gradient in zip(module.parameters(), gradients, strict=True):
+            parameter.grad = None if gradient is None else gradient.detach().clone()
+
+
+def _rollback_transaction(
+    model: n3.N3ClassConditionedModel,
+    optimizer: torch.optim.Adam,
+    sampler: n3.N3FitSampler,
+    evaluators: tuple[Any, Any, Any],
+    snapshot: Mapping[str, Any],
+) -> dict[str, bool]:
+    n3._restore_runtime(model, snapshot["runtime"])
+    optimizer.load_state_dict(copy.deepcopy(snapshot["optimizer"]))
+    sampler.cursor = int(snapshot["sampler_cursor"])
+    _evaluator_grad_restore(evaluators, snapshot["evaluator_gradients"])
+    n3._restore_rng(snapshot["rng"])
+    runtime_equal = n3._tensor_state_sha256(model.state_dict()) == snapshot["runtime_state_sha256"]
+    optimizer_equal = n3._exact_equal(optimizer.state_dict(), snapshot["optimizer"])
+    rng_equal = n3._rng_equal(n3._rng_snapshot(), snapshot["rng"])
+    sampler_equal = sampler.cursor == snapshot["sampler_cursor"]
+    evaluator_equal = n3._exact_equal(_evaluator_grad_snapshot(evaluators), snapshot["evaluator_gradients"])
+    return {
+        "model_runtime_exact": runtime_equal,
+        "optimizer_exact": optimizer_equal,
+        "rng_exact": rng_equal,
+        "sampler_cursor_exact": sampler_equal,
+        "evaluator_gradients_exact": evaluator_equal,
+        "passed": all((runtime_equal, optimizer_equal, rng_equal, sampler_equal, evaluator_equal)),
+    }
+
+
+def _prepare_runtime_transaction(
+    root: Path,
+    authorities: Mapping[str, Any],
+    protocol: Mapping[str, Any],
+    device: torch.device,
+) -> dict[str, Any]:
+    """Load and validate the exact temporary runtime before opening an attempt."""
+    process_rng = n3._rng_snapshot()
+    previous_mean, previous_scale = n3._ACTIVE_MEAN, n3._ACTIVE_SCALE
+    try:
+        model = n3._new_model(2, authorities["checkpoint"], device).train()
+        expected_basis, expected_coefficients = n3.initialize_factors(2, device=device)
+        initialization_exact = torch.equal(model.B.detach(), expected_basis) and torch.equal(model.A.detach(), expected_coefficients)
+        _require(initialization_exact, "rank2 canonical initialization changed")
+
+        trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+        _require(trainable == ["B", "A"], "rank2 trainable parameter boundary changed")
+        optimizer = n3._optimizer(model)
+        optimizer_group = optimizer.param_groups[0]
+        optimizer_exact = (
+            len(optimizer.param_groups) == 1
+            and optimizer_group["params"] == [model.B, model.A]
+            and optimizer_group["lr"] == n3.LEARNING_RATE
+            and tuple(optimizer_group["betas"]) == tuple(n3.ADAM_BETAS)
+            and optimizer_group["eps"] == n3.ADAM_EPS
+            and optimizer_group["weight_decay"] == n3.WEIGHT_DECAY
+            and optimizer_group["amsgrad"] is False
+            and not optimizer.state
+        )
+        _require(optimizer_exact, "fresh-zero Adam semantics changed")
+
+        sampler = n3.N3FitSampler(authorities["indices_by_class"])
+        _require(sampler.cursor == 0, "qualification sampler did not start at cursor zero")
+        evaluators = n3._load_evaluators(root, device, protocol)
+        for evaluator in evaluators:
+            evaluator.eval()
+        evaluator_firewall = all(
+            not evaluator.training and all(not parameter.requires_grad for parameter in evaluator.parameters())
+            for evaluator in evaluators
+        )
+        _require(evaluator_firewall, "semantic evaluator freeze/eval boundary changed")
+        reference, mean, scale = _load_reference_and_mean(authorities, device)
+
+        # Construction of modules can consume RNG even when their loaded state is fixed.
+        # Return the caller's exact process RNG state before making the rollback snapshot.
+        n3._restore_rng(process_rng)
+        _require(n3._rng_equal(n3._rng_snapshot(), process_rng), "runtime loading changed process RNG")
+        snapshot = {
+            "runtime": n3._runtime_snapshot(model),
+            "runtime_state_sha256": n3._tensor_state_sha256(model.state_dict()),
+            "optimizer": copy.deepcopy(optimizer.state_dict()),
+            "sampler_cursor": sampler.cursor,
+            "rng": process_rng,
+            "evaluator_gradients": _evaluator_grad_snapshot(evaluators),
+        }
+        evaluator_gradients_clear = all(
+            gradient is None
+            for gradients in snapshot["evaluator_gradients"].values()
+            for gradient in gradients
+        )
+        _require(evaluator_gradients_clear, "frozen evaluator had pre-existing gradients")
+
+        rollback_probe = _rollback_transaction(model, optimizer, sampler, evaluators, snapshot)
+        runtime_exact = n3._exact_equal(n3._runtime_snapshot(model), snapshot["runtime"])
+        rollback_probe = {
+            **rollback_probe,
+            "full_runtime_exact": runtime_exact,
+            "passed": bool(rollback_probe.get("passed") is True and runtime_exact),
+        }
+        _require(rollback_probe["passed"], "no-op runtime rollback probe failed")
+        _require(n3._rng_equal(n3._rng_snapshot(), process_rng), "runtime rollback probe changed process RNG")
+        checks = {
+            "rank2_canonical_initialization": "PASS",
+            "trainable_boundary_B_A_only": "PASS",
+            "fresh_zero_adam_contract": "PASS",
+            "sampler_cursor_zero": "PASS",
+            "semantic_evaluator_authority_loaded_frozen_eval": "PASS",
+            "evaluator_gradients_initially_clear": "PASS",
+            "no_op_full_runtime_rollback": "PASS",
+            "process_rng_unchanged": "PASS",
+            "persistent_updates_before_attempt": 0,
+        }
+        return {
+            "model": model,
+            "optimizer": optimizer,
+            "sampler": sampler,
+            "evaluators": evaluators,
+            "reference": reference,
+            "mean": mean,
+            "scale": scale,
+            "snapshot": snapshot,
+            "process_rng": process_rng,
+            "rollback_probe": rollback_probe,
+            "checks": checks,
+        }
+    except BaseException:
+        n3._restore_rng(process_rng)
+        _require(n3._rng_equal(n3._rng_snapshot(), process_rng), "failed runtime preflight could not restore process RNG")
+        raise
+    finally:
+        n3._ACTIVE_MEAN, n3._ACTIVE_SCALE = previous_mean, previous_scale
+
+
+def _adam_update_geometry(
+    raw_gradients: Sequence[torch.Tensor],
+    effective_deltas: Sequence[torch.Tensor],
+    *,
+    names: Sequence[str] = ("B", "A"),
+) -> dict[str, Any]:
+    _require(len(raw_gradients) == len(effective_deltas) == len(names) > 0, "Adam geometry parameter mapping changed")
+    gradient_parts = []
+    delta_parts = []
+    per_parameter = {}
+    for name, gradient, delta in zip(names, raw_gradients, effective_deltas, strict=True):
+        _require(gradient.shape == delta.shape, f"Adam geometry shape changed for {name}")
+        gradient64 = gradient.detach().to(device="cpu", dtype=torch.float64).reshape(-1)
+        delta64 = delta.detach().to(device="cpu", dtype=torch.float64).reshape(-1)
+        _require(bool(torch.isfinite(gradient64).all()) and bool(torch.isfinite(delta64).all()), f"Adam geometry is nonfinite for {name}")
+        gradient_norm = float(gradient64.norm())
+        delta_norm = float(delta64.norm())
+        cosine = (
+            float(torch.dot(-gradient64, delta64) / (gradient64.norm() * delta64.norm()))
+            if gradient_norm > 0.0 and delta_norm > 0.0
+            else None
+        )
+        per_parameter[name] = {
+            "raw_gradient_l2": gradient_norm,
+            "effective_update_l2": delta_norm,
+            "cosine_raw_descent_to_adam_delta": cosine,
+            "update_to_gradient_l2_ratio": None if gradient_norm == 0.0 else delta_norm / gradient_norm,
+        }
+        gradient_parts.append(gradient64)
+        delta_parts.append(delta64)
+    gradient_vector = torch.cat(gradient_parts)
+    delta_vector = torch.cat(delta_parts)
+    gradient_norm = float(gradient_vector.norm())
+    delta_norm = float(delta_vector.norm())
+    _require(gradient_norm > 0.0 and delta_norm > 0.0, "combined Adam geometry has a zero vector")
+    cosine = float(torch.dot(-gradient_vector, delta_vector) / (gradient_vector.norm() * delta_vector.norm()))
+    _require(all(math.isfinite(value) for value in (gradient_norm, delta_norm, cosine)), "combined Adam geometry is nonfinite")
+    return {
+        "raw_gradient_l2": gradient_norm,
+        "effective_update_l2": delta_norm,
+        "cosine_raw_descent_to_adam_delta": cosine,
+        "update_to_gradient_l2_ratio": delta_norm / gradient_norm,
+        "per_parameter": per_parameter,
+    }
+
+
+def _authorization_binding(
+    authorization: Mapping[str, Any],
+    source: Mapping[str, Any],
+    populations: Mapping[str, Any],
+) -> dict[str, Any]:
+    required = {
+        "schema": "n3_floor_axis_surrogate_alignment_execution_authorization.v1",
+        "authorization_id": AUTHORIZATION_ID,
+        "contract_v1_sha256": V1_SHA256,
+        "contract_v2_sha256": V2_SHA256,
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "active_fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "frozen_structural_reference_sha256": n3.STRUCTURAL_REFERENCE_SHA256,
+        "surrogate_normalization_sha256": n3.SURROGATE_NORMALIZATION_SHA256,
+        "source_manifest_id": source["source_manifest_id"],
+        "execution_source_semantics_id": source["execution_source_semantics_id"],
+        "qualification_population_sha256": populations["qualification_population_sha256"],
+        "future_paired_population_sha256": populations["future_paired_population_sha256"],
+    }
+    for key, expected in required.items():
+        _require(authorization.get(key) == expected, f"execution authorization binding mismatch: {key}")
+    return {key: authorization[key] for key in required}
+
+
+def _authority(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], n3.N3ActiveAuthorityIdentity]:
+    _require(file_sha256(root / V1_PATH) == V1_SHA256, "immutable V1 contract SHA mismatch")
+    _require(file_sha256(root / V2_PATH) == V2_SHA256, "immutable V2 contract SHA mismatch")
+    v1 = dict(_mapping(json.loads((root / V1_PATH).read_text(encoding="utf-8")), "V1 contract"))
+    v2 = dict(_mapping(json.loads((root / V2_PATH).read_text(encoding="utf-8")), "V2 contract"))
+    _require(v1.get("classification") == "N3_FLOOR_AXIS_SURROGATE_ALIGNMENT_CONTRACT_DEFINED", "V1 classification changed")
+    _require(v2.get("supersession", {}).get("v1_sha256") == V1_SHA256, "V2 supersession does not bind exact V1")
+    _require(v2.get("inherited_scientific_definitions", {}).get("source_contract_sha256") == V1_SHA256, "V2 scientific inheritance binding changed")
+    _require(tuple(v2.get("inherited_scientific_definitions", {}).get("frozen_floor_indices", [])) == FLOOR_INDICES, "V2 floor feature set changed")
+    _require(v2.get("official_full_hard_criterion", {}).get("qualification_control") == "macro official 337D log-rho", "V2 full-hard control changed")
+    _require(v2.get("official_full_hard_criterion", {}).get("raw_or_standardized_full_hard_distance", "").startswith("SECONDARY_DIAGNOSTIC_ONLY"), "full hard distance is not diagnostic-only")
+    _require(file_sha256(root / Path("scripts/research/lightgen/n3/execute_lightgen_2d_n3_low_rank_model_order_v1.py")) == N3_OPTICAL_SOURCE_SHA256, "frozen N3 optical predicate source changed")
+    contract, protocol, active = n3._load_contract_and_protocol(root)
+    n3._verify_authority_file_identities(root, protocol)
+    _require(contract["data_roles"]["canonical_split"]["train_indices_sha256"] == v1["bound_authorities"]["canonical_train_source"]["n3_canonical_train_split_indices_sha256"], "canonical TRAIN split binding differs between V1 and N3")
+    return v1, v2, dict(contract), active
+
+
+def _load_reference_and_mean(authorities: Mapping[str, Any], device: torch.device) -> tuple[dict[str, Any], torch.Tensor, torch.Tensor]:
+    reference = dict(authorities["structural_reference"])
+    floor_scale = torch.as_tensor(reference["normalization"]["population_std_clamped_scale"], dtype=torch.float64).cpu()
+    _require(tuple(floor_scale.shape) == (337,) and torch.equal(floor_scale.index_select(0, FLOOR_INDEX_TENSOR), torch.full((4,), 1.0e-6, dtype=torch.float64)), "frozen floor feature scales changed")
+    _require(reference["descriptor"]["dimension"] == 337, "frozen hard signature dimension changed")
+    mean = authorities["mean"].to(device=device, dtype=torch.float64)
+    scale = authorities["scale"].to(device=device, dtype=torch.float64)
+    _require(tuple(mean.shape) == tuple(scale.shape) == (336,), "frozen surrogate normalization geometry changed")
+    return reference, mean, scale
+
+
+def _preflight_receipt(source: Mapping[str, Any], runtime: Mapping[str, Any], populations: Mapping[str, Any], authorization_sha: str) -> PreflightReceipt:
+    checks = {
+        CORRECTNESS_INVARIANTS: {
+            "status": "PASS",
+            "checks": {
+                "contract_and_authority_identity": "PASS",
+                "producer_consumer_provenance": "PASS; consumer identity recorded separately",
+                "authorization_and_population_binding": "PASS",
+                "fixed_populations_and_role_exclusions": "PASS",
+                "V1_optical_semantic_control_bindings": "PASS",
+                "rank2_canonical_initialization": "PASS",
+                "trainable_boundary_B_A_only": "PASS",
+                "fresh_zero_adam_contract": "PASS",
+                "sampler_cursor_zero": "PASS",
+                "semantic_evaluator_authority_loaded_frozen_eval": "PASS",
+                "evaluator_gradients_initially_clear": "PASS",
+                "no_op_full_runtime_rollback": runtime["rollback_probe"],
+                "process_rng_unchanged": "PASS",
+                "protected_test_sealed_reads": 0,
+            },
+        },
+        RESOURCE_ENVELOPE: {
+            "status": "PASS",
+            "checks": {
+                "cuda_runtime": runtime,
+                "memory_after_runtime_load": runtime["memory_after_runtime_load"],
+                "runtime_loaded_before_attempt": True,
+            },
+        },
+        IMPLEMENTATION_SELECTION: {
+            "status": "PASS",
+            "checks": {
+                "temporary_optimizer": "fresh-zero Adam contract checked before attempt; exactly one in-memory update is permitted by the attempt contract",
+                "runtime_preflight_persistent_updates": 0,
+                "persistent_backend": "NONE",
+            },
+        },
+    }
+    return PreflightReceipt(
+        source_semantics_id=str(source["execution_source_semantics_id"]),
+        authorization_id=AUTHORIZATION_ID,
+        checks=checks,
+        selected_engine="ONE_TEMPORARY_FRESH_ZERO_ADAM_UPDATE_NO_PERSISTENT_STATE",
+        resource={
+            "execution_source_identity": {
+                key: source[key]
+                for key in ("branch", "head", "dirty", "source_manifest_id", "execution_source_semantics_id", "dirty_patch_digest")
+            },
+            "authorization_sha256": authorization_sha,
+            "qualification_population_sha256": populations["qualification_population_sha256"],
+            "future_paired_population_sha256": populations["future_paired_population_sha256"],
+            "cuda_runtime": dict(runtime),
+        },
+    )
+
+
+def _preflight_failure_records(root: Path) -> list[dict[str, Any]]:
+    run_root = root / RUNS_ROOT
+    records = []
+    for path in sorted(run_root.glob("preflight_failure_*.json")):
+        suffix = path.stem.removeprefix("preflight_failure_")
+        if len(suffix) != 2 or not suffix.isdigit():
+            continue
+        record = dict(_mapping(json.loads(path.read_text(encoding="utf-8")), "preflight failure evidence"))
+        _require(record.get("schema") == "n3_floor_axis_surrogate_alignment_preflight_failure.v1", "preflight failure schema changed")
+        _require(record.get("sequence") == int(suffix), "preflight failure sequence does not match its path")
+        signature = record.get("signature")
+        _require(isinstance(signature, str) and len(signature) == 64, "preflight failure signature is malformed")
+        _require(record.get("decision") in {"RECHECK_ALLOWED", "ROOT_CAUSE_REVIEW_REQUIRED"}, "preflight failure decision is malformed")
+        records.append(record)
+    _require(
+        [record["sequence"] for record in records] == list(range(1, len(records) + 1)),
+        "preflight failure sequence has a gap or duplicate",
+    )
+    return records
+
+
+def _write_preflight_failure(
+    root: Path,
+    error: Exception,
+    *,
+    source: Mapping[str, Any] | None,
+    read_ledger: n3.SampleReadLedger | None,
+    elapsed: float,
+) -> dict[str, Any]:
+    records = _preflight_failure_records(root)
+    signature = hashlib.sha256(f"{type(error).__name__}:{error}".encode("utf-8")).hexdigest()
+    prior_matches = sum(record["signature"] == signature for record in records)
+    decision = "RECHECK_ALLOWED" if prior_matches == 0 else "ROOT_CAUSE_REVIEW_REQUIRED"
+    sequence = len(records) + 1
+    path = PREFLIGHT_FAILURE_PATH.with_name(f"preflight_failure_{sequence:02d}.json")
+    identity_keys = (
+        "branch",
+        "head",
+        "dirty",
+        "source_manifest_id",
+        "execution_source_semantics_id",
+        "dirty_patch_digest",
+    )
+    payload = {
+        "schema": "n3_floor_axis_surrogate_alignment_preflight_failure.v1",
+        "sequence": sequence,
+        "status": "BLOCKED",
+        "decision": decision,
+        "component": "strict_preflight",
+        "signature": signature,
+        "error_type": type(error).__name__,
+        "reason": str(error),
+        "source_identity": {} if source is None else {key: source.get(key) for key in identity_keys},
+        "preflight_elapsed_seconds": elapsed,
+        "scientific_attempt_created": False,
+        "persistent_update_count": 0,
+        "checkpoint_write_count": 0,
+        "read_ledger": None if read_ledger is None else read_ledger.summary(),
+        "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+    }
+    atomic_write_new_json(root / path, payload, artifact_kind="N3 floor-axis preflight failure evidence")
+    return payload
+
+
+def execute(*, repo_root: Path | None = None) -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[4] if repo_root is None else repo_root.resolve()
+    preflight_started = time.perf_counter()
+    _require(not (root / PREFLIGHT_DIR).exists(), "preflight_01 is write-once and already exists")
+    _require(not (root / ATTEMPT_DIR).exists(), "attempt_01 is write-once and already exists")
+    auth_path = root / AUTHORIZATION_PATH
+    _require(auth_path.is_file(), "explicit qualification authorization is missing")
+    failure_history = _preflight_failure_records(root)
+    _require(
+        not any(record["decision"] == "ROOT_CAUSE_REVIEW_REQUIRED" for record in failure_history),
+        "ROOT_CAUSE_REVIEW_REQUIRED after repeated strict preflight failure",
+    )
+    source = None
+    read_ledger = None
+    try:
+        v1, v2, contract, active = _authority(root)
+        source = _source_manifest(root)
+        _require(source.get("branch") and source.get("head") and source.get("source_manifest_id"), "current source provenance is incomplete")
+        _require(v2["qualification_execution_authorization"]["id"] == AUTHORIZATION_ID, "V2 execution authorization identity changed")
+        authorization, authorization_sha = _load_authorization(root, source)
+
+        protocol = json.loads((root / n3.PROTOCOL_PATH).read_text(encoding="utf-8"))
+        read_ledger = n3.SampleReadLedger()
+        authorities = n3._load_authorities(root, contract, protocol, read_ledger)
+        _, populations = _load_frozen_indices(root, v1, authorities)
+        identity = _make_identity(source, populations)
+        control = ResearchRunControl(identity, AUTHORIZATION_ID)
+        auth_binding = _authorization_binding(authorization, source, populations)
+
+        runtime_rng = n3._rng_snapshot()
+        runtime = n3._prepare_cuda_runtime()
+        n3._restore_rng(runtime_rng)
+        n3._require(n3._rng_equal(n3._rng_snapshot(), runtime_rng), "CUDA preflight changed process RNG")
+        device = torch.device("cuda:0")
+        torch.cuda.reset_peak_memory_stats(device)
+        prepared = _prepare_runtime_transaction(root, authorities, protocol, device)
+        torch.cuda.synchronize(device)
+        free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+        memory_after_runtime_load = n3._cuda_memory(device)
+        runtime = {
+            **runtime,
+            "free_memory_gb": free_bytes / (1024**3),
+            "total_memory_gb": total_bytes / (1024**3),
+            "memory_after_runtime_load": memory_after_runtime_load,
+            "runtime_preparation": prepared["checks"],
+            "rollback_probe": prepared["rollback_probe"],
+        }
+        n3._require(torch.cuda.is_available() and free_bytes > 0, "CUDA device is not technically viable")
+        receipt = _preflight_receipt(source, runtime, populations, authorization_sha)
+        control.mark_preflight_ready(receipt)
+        preflight_payload = {
+            "schema": "n3_floor_axis_surrogate_alignment_preflight.v1",
+            "status": "READY",
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "authorization_sha256": authorization_sha,
+            "authorization_binding": auth_binding,
+            "v1_sha256": V1_SHA256,
+            "v2_sha256": V2_SHA256,
+            "active_n3_contract_sha256": n3.CONTRACT_SHA256,
+            "active_fit_protocol_sha256": n3.PROTOCOL_SHA256,
+            "active_authority_identity": n3.asdict(active),
+            "source_manifest": source,
+            "population_identity": {key: value for key, value in populations.items() if not key.endswith("indices") and not key.endswith("by_class")},
+            "preflight_receipt": receipt.to_dict(),
+            "preflight_seconds": time.perf_counter() - preflight_started,
+            "no_model_forward": True,
+            "runtime_loaded_and_rollback_checked_before_attempt": True,
+        }
+        atomic_write_new_json(root / PREFLIGHT_DIR / "preflight.json", preflight_payload, artifact_kind="N3 floor-axis READY receipt")
+    except Exception as error:
+        failure = _write_preflight_failure(
+            root,
+            error,
+            source=source,
+            read_ledger=read_ledger,
+            elapsed=time.perf_counter() - preflight_started,
+        )
+        raise QualificationError(f"strict preflight {failure['decision']}: {error}") from error
+
+    control.open_scientific_attempt(root / ATTEMPT_DIR, "n3-floor-axis-alignment-qualification:attempt_01", receipt)
+    attempt = root / ATTEMPT_DIR
+    atomic_write_new_json(attempt / "source_manifest.json", source, artifact_kind="N3 floor-axis execution source manifest")
+    population_payload = _population_manifest(populations)
+    atomic_write_new_json(attempt / "population_manifest.json", population_payload, artifact_kind="N3 floor-axis frozen population manifest")
+    atomic_write_json(
+        attempt / "status.json",
+        {"state": "SCIENTIFIC_ACTIVE", "phase": "TEMPORARY_QUALIFICATION", "authorization_id": AUTHORIZATION_ID},
+    )
+
+    model = prepared["model"]
+    optimizer = prepared["optimizer"]
+    sampler = prepared["sampler"]
+    evaluators = prepared["evaluators"]
+    reference = prepared["reference"]
+    mean = prepared["mean"]
+    scale = prepared["scale"]
+    snapshot = prepared["snapshot"]
+    process_rng = prepared["process_rng"]
+    torch.cuda.reset_peak_memory_stats(device)
+
+    measurements: dict[str, Any] | None = None
+    calibration: dict[str, Any] | None = None
+    rollback: dict[str, bool] | None = None
+    technical_error: BaseException | None = None
+    update_count = 0
+    started = time.perf_counter()
+    try:
+        calibration = _calibrate_lambda(
+            model,
+            authorities,
+            authorities["roles"]["N3_FIT"].to(torch.long).cpu(),
+            reference,
+            mean,
+            scale,
+            device,
+        )
+        qualification_indices = populations["qualification_indices"].to(torch.long).cpu()
+        before = _measure_population(
+            model,
+            authorities,
+            qualification_indices,
+            reference,
+            mean,
+            scale,
+            evaluators,
+            device,
+            fixed_reference_rows=None,
+        )
+        target_manifest = _record_fixed_target_manifest(attempt, calibration, before, reference)
+        model.train()
+        optimizer.zero_grad(set_to_none=True)
+        model.B.grad = calibration["g_aligned"][0].to(device=device, dtype=model.B.dtype)
+        model.A.grad = calibration["g_aligned"][1].to(device=device, dtype=model.A.dtype)
+        initial_B = snapshot["runtime"]["model"]["B"]
+        initial_A = snapshot["runtime"]["model"]["A"]
+        optimizer.step()
+        update_count = 1
+        n3._finite(model.A, "temporary updated A")
+        n3._finite(model.B, "temporary updated B")
+        adam_geometry = _adam_update_geometry(
+            [model.B.grad.detach(), model.A.grad.detach()],
+            [model.B.detach() - initial_B, model.A.detach() - initial_A],
+            names=("B", "A"),
+        )
+        after = _measure_population(
+            model,
+            authorities,
+            qualification_indices,
+            reference,
+            mean,
+            scale,
+            evaluators,
+            device,
+            fixed_reference_rows=before["fixed_reference_rows"],
+        )
+        measurements = {"before": before, "after": after, "target_manifest": target_manifest, "adam_update_geometry": adam_geometry}
+    except BaseException as error:
+        technical_error = error
+    finally:
+        try:
+            rollback = _rollback_transaction(model, optimizer, sampler, evaluators, snapshot)
+        except BaseException as rollback_error:
+            technical_error = rollback_error
+            rollback = {"passed": False, "error": f"{type(rollback_error).__name__}: {rollback_error}"}
+        finally:
+            try:
+                n3._restore_rng(process_rng)
+            except BaseException as rng_error:
+                technical_error = rng_error
+                rollback = {**(rollback or {}), "passed": False, "rng_exact": False, "rng_restore_error": f"{type(rng_error).__name__}: {rng_error}"}
+
+    try:
+        peak_memory = n3._cuda_memory(device)
+    except BaseException as memory_error:
+        peak_memory = {"measurement_error": f"{type(memory_error).__name__}: {memory_error}"}
+        if technical_error is None:
+            technical_error = memory_error
+    elapsed = time.perf_counter() - started
+    optical = None
+    semantic = None
+    try:
+        _require(rollback is not None and rollback.get("passed") is True, "exact rollback failed")
+        _require(technical_error is None and measurements is not None and calibration is not None, "temporary measurement did not complete")
+        _validate_q_evidence(measurements["before"], measurements["after"])
+        optical = _optical_control(measurements["before"], measurements["after"])
+        semantic_before = {name: measurements["before"]["semantic"][name]["macro"] for name in ("L_S", "L_I", "L_C")}
+        semantic_after = {name: measurements["after"]["semantic"][name]["macro"] for name in ("L_S", "L_I", "L_C")}
+        semantic = _semantic_control(semantic_before, semantic_after)
+        decision = _decision(
+            measurements["before"],
+            measurements["after"],
+            optical,
+            semantic,
+            rollback_verified=True,
+            evidence_valid=True,
+        )
+    except BaseException as error:
+        if technical_error is None:
+            technical_error = error
+        reason = "exact rollback failed" if rollback is None or not rollback.get("passed") else f"{type(technical_error).__name__}: {technical_error}"
+        decision = {"attempt_status": RUN_INVALID_HARNESS, "qualification_result": "NONE", "reason": reason}
+    report = _report_payload(
+        decision,
+        calibration,
+        measurements,
+        optical,
+        semantic,
+        rollback or {"passed": False},
+        update_count,
+        elapsed,
+        peak_memory,
+        source,
+        authorization_sha,
+        populations,
+        read_ledger,
+    )
+    try:
+        atomic_write_new_json(attempt / "report.json", report, artifact_kind="N3 floor-axis qualification report")
+    except BaseException as error:
+        decision = {"attempt_status": RUN_INVALID_HARNESS, "qualification_result": "NONE", "reason": f"evidence persistence failed: {error}"}
+        report = {**report, "attempt_status": decision["attempt_status"], "qualification_result": decision["qualification_result"], "failure_reason": decision["reason"]}
+        atomic_write_json(attempt / "status.json", {"state": RUN_INVALID_HARNESS, "phase": "EVIDENCE_PERSISTENCE_FAILED", "reason": decision["reason"]})
+        control.invalid_harness()
+        raise QualificationError(decision["reason"]) from error
+    if decision["attempt_status"] == "VALID_COMPLETED":
+        if decision["qualification_result"] == CLASSIFICATION_QUALIFIED:
+            control.complete()
+            run_state = RUN_COMPLETED
+        else:
+            control.valid_failed()
+            run_state = RUN_VALID_FAILED
+    else:
+        control.invalid_harness()
+        run_state = RUN_INVALID_HARNESS
+    atomic_write_json(attempt / "status.json", {"state": run_state, "phase": decision["attempt_status"], "qualification_result": decision["qualification_result"]})
+    if technical_error is not None:
+        raise QualificationError(decision["reason"]) from technical_error
+    return report
+
+
+def _axis_changes(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    result = {}
+    for position, axis in enumerate(FLOOR_INDICES):
+        result[str(axis)] = {
+            "soft_floor_squared_error_change_macro": before["soft_floor_by_axis"][str(axis)]["macro"] - after["soft_floor_by_axis"][str(axis)]["macro"],
+            "hard_absolute_residual_change_macro": before["hard_residual_by_axis"][str(axis)]["macro"] - after["hard_residual_by_axis"][str(axis)]["macro"],
+            "hard_squared_contribution_change_macro": before["hard_floor_by_axis"][str(axis)]["macro"] - after["hard_floor_by_axis"][str(axis)]["macro"],
+            "class1": {
+                "soft_change": before["soft_floor_by_axis"][str(axis)]["per_class"]["1"] - after["soft_floor_by_axis"][str(axis)]["per_class"]["1"],
+                "hard_residual_change": before["hard_residual_by_axis"][str(axis)]["per_class"]["1"] - after["hard_residual_by_axis"][str(axis)]["per_class"]["1"],
+                "hard_squared_contribution_change": before["hard_floor_by_axis"][str(axis)]["per_class"]["1"] - after["hard_floor_by_axis"][str(axis)]["per_class"]["1"],
+            },
+            "class8": {
+                "soft_change": before["soft_floor_by_axis"][str(axis)]["per_class"]["8"] - after["soft_floor_by_axis"][str(axis)]["per_class"]["8"],
+                "hard_residual_change": before["hard_residual_by_axis"][str(axis)]["per_class"]["8"] - after["hard_residual_by_axis"][str(axis)]["per_class"]["8"],
+                "hard_squared_contribution_change": before["hard_floor_by_axis"][str(axis)]["per_class"]["8"] - after["hard_floor_by_axis"][str(axis)]["per_class"]["8"],
+            },
+        }
+    return result
+
+
+def _json_measurements(value: Mapping[str, Any]) -> dict[str, Any]:
+    skip = {
+        "fixed_reference_rows",
+        "official_reference_rows",
+        "official_reference_source_rows",
+        "raw_signature",
+        "standardized_full_distance",
+        "official_logrho",
+        "labels",
+        "soft_floor_error_by_axis",
+        "hard_residual_by_axis_tensor",
+        "hard_contribution_by_axis_tensor",
+    }
+    return {key: item for key, item in value.items() if key not in skip}
+
+
+def _report_payload(
+    decision: Mapping[str, Any],
+    calibration: Mapping[str, Any] | None,
+    measurements: Mapping[str, Any] | None,
+    optical: Mapping[str, Any] | None,
+    semantic: Mapping[str, Any] | None,
+    rollback: Mapping[str, Any],
+    update_count: int,
+    elapsed: float,
+    peak_memory: Mapping[str, Any],
+    source: Mapping[str, Any],
+    authorization_sha: str,
+    populations: Mapping[str, Any],
+    read_ledger: n3.SampleReadLedger,
+) -> dict[str, Any]:
+    before = None if measurements is None else measurements["before"]
+    after = None if measurements is None else measurements["after"]
+    axis = None if before is None or after is None else _axis_changes(before, after)
+    return {
+        "schema": "n3_floor_axis_surrogate_alignment_qualification_report.v1",
+        "outer_gate": OUTER_GATE,
+        "attempt_status": decision["attempt_status"],
+        "qualification_result": decision["qualification_result"],
+        "decision": dict(decision),
+        "failure_reason": decision.get("reason"),
+        "failed_criteria": decision.get("failed_criteria", []),
+        "structural_core_pass": decision.get("structural_core_pass"),
+        "optical_control_pass": decision.get("optical_control_pass"),
+        "semantic_control_pass": decision.get("semantic_control_pass"),
+        "final_qualification_pass": decision.get("final_qualification_pass"),
+        "v1_sha256": V1_SHA256,
+        "v2_sha256": V2_SHA256,
+        "authorization_id": AUTHORIZATION_ID,
+        "authorization_sha256": authorization_sha,
+        "active_n3_contract_sha256": n3.CONTRACT_SHA256,
+        "active_fit_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "source_manifest": dict(source),
+        "populations": {key: value for key, value in populations.items() if not key.endswith("indices") and not key.endswith("by_class")},
+        "lambda_calibration": None
+        if calibration is None
+        else {
+            key: value
+            for key, value in calibration.items()
+            if key not in {"g336", "gfloor", "g_aligned", "fixed_reference_rows"}
+        },
+        "adam_effective_update_geometry": None if measurements is None else measurements.get("adam_update_geometry"),
+        "qualification_before": None if before is None else _json_measurements(before),
+        "qualification_after": None if after is None else _json_measurements(after),
+        "per_axis_change": axis,
+        "C_OPTICAL": optical,
+        "C_SEMANTIC": semantic,
+        "rollback": dict(rollback),
+        "temporary_update_count": update_count,
+        "persistent_update_count": 0,
+        "checkpoint_write_count": 0,
+        "N3_SELECT_reads": 0,
+        "N3_CONFIRM_reads": 0,
+        "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+        "read_ledger": read_ledger.summary(),
+        "elapsed_seconds": elapsed,
+        "peak_cuda_memory": dict(peak_memory),
+        "continued_after_result": False,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    args = parser.parse_args(argv)
+    result = execute(repo_root=args.repo_root)
+    print(json.dumps({"attempt_status": result["attempt_status"], "qualification_result": result["qualification_result"]}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

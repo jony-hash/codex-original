@@ -1,0 +1,1058 @@
+"""Freeze the next N3 q-producer family without consuming q values.
+
+This definition-only consumer binds the completed N4 result and the exact V2
+development authority, then publishes one write-once contract for a fixed-R,
+fit-only empirical-marginal Student-t copula.  It hashes the q artifact as an
+authority boundary but never deserializes it, reads held-out q values, fits a
+producer, samples a bank, or consumes sealed confirmation.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import math
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Callable, Mapping
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+
+
+TASK_ID = "DEFINE_N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_CONTRACT_V1"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_contract.v1"
+READY_CLASSIFICATION = "DEFINE_N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_CONTRACT_V1_READY"
+CLAIM_CLASSIFICATION = "N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_MODEL_ASSUMPTION_DEFINED"
+FAMILY_ID = "EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1"
+
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+V2_SOURCE_MANIFEST = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_source_manifest_v1_attempt_01/"
+    "n3_development_bank_v2_source_manifest.v1.json"
+)
+V2_SOURCE_MANIFEST_SHA256 = "4bc251af91b3a6cd0235fe113117443d871a564bd05634fa9e61b5ab0b36f812"
+V2_Q_ARTIFACT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_q_materialization_v1_attempt_01/"
+    "n3_development_bank_v2_q.v1.pt"
+)
+V2_Q_ARTIFACT_SHA256 = "fe48c8fdb9bb2bf732076fabdf475288baa6f7d628ca10039a83bbda54fcfcbf"
+V2_Q_TENSOR_SHA256 = "d660fd8dc449725edab081d00c8f553f151029cddef9210360a7a6fad4281209"
+V2_FOLD_MANIFEST = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_five_fold_protocol_v1_attempt_01/"
+    "n3_development_bank_v2_fold_manifest.v1.json"
+)
+V2_FOLD_MANIFEST_SHA256 = "4898a0e477d583b9a9e60c83238e6d8524d43967efe24277a952089e8adc447e"
+V2_FOLD_ASSIGNMENT_SHA256 = "43ee0ce28e143fffdf2bcac98394625ccd766166ea717f23db66ed8770ef18a9"
+V2_CEILING_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_empirical_ceiling_v1_attempt_01/"
+    "n3_development_bank_v2_empirical_ceiling_report.v1.json"
+)
+V2_CEILING_REPORT_SHA256 = "731cf826dc081e7cc5629790ba2fb74946f7cc41f1a7f0035bf3a3ca96a31826"
+
+N4_REGISTRY = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_candidate_registry_v1_attempt_02/"
+    "n4_q_producer_candidate_registry.v1.json"
+)
+N4_REGISTRY_SHA256 = "0329b23675a7d306c88f26c80a4757ce83d39c8c68b718bf7a1d966f53f4f27b"
+N4_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_comparison_report.v1.json"
+)
+N4_REPORT_SHA256 = "393d84617ec7b1e6c60b8c654b859dc3afe822f5dee207ca93816e232fea78be"
+N4_LINEAGE = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_lineage_manifest.v1.json"
+)
+N4_LINEAGE_SHA256 = "4c40fcd64c7856722fe3c3ca9bf61ef1ad2362d10f1f05d349038edc45a2cce5"
+
+GAUSSIAN_IMPLEMENTATION = Path(
+    "scripts/research/lightgen/n3/execute_n3_empirical_marginal_gaussian_copula_producer_v1.py"
+)
+GAUSSIAN_IMPLEMENTATION_SHA256 = "5f1fa3fa6be35e96f345c3b7f7c6cce5ca0b45fe4619b1ead4455e86dcae538a"
+GAUSSIAN_CONTRACT = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract.v1.json"
+)
+GAUSSIAN_CONTRACT_SHA256 = "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4"
+GAUSSIAN_REPORT = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_report.v1.json"
+)
+GAUSSIAN_REPORT_SHA256 = "78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d"
+
+GOVERNANCE_STATE = Path("docs/status/research_governance_state.json")
+
+OUTPUT_DIR = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_empirical_marginal_fixed_r_student_t_copula_contract_v1_attempt_01"
+)
+CONTRACT_NAME = "n3_empirical_marginal_fixed_r_student_t_copula_contract.v1.json"
+
+CLASS_COUNT = 10
+DIMENSION = 100
+POOL_COUNT = 5000
+ROWS_PER_CLASS = 500
+FOLD_COUNT = 5
+FIT_COUNT_PER_FOLD = 4000
+HELDOUT_COUNT_PER_FOLD = 1000
+FIT_PER_CLASS_PER_FOLD = 400
+HELDOUT_PER_CLASS_PER_FOLD = 100
+MODEL_SAMPLE_COUNT = 200
+DATA_VS_MODEL_REPLICATES = 4
+MODEL_VS_MODEL_REPLICATES = 8
+MODEL_REFERENCE_PAIRS = ((0, 1), (2, 3), (4, 5), (6, 7))
+COMPATIBILITY_Q = 0.95
+SCALAR_METRICS = (
+    "energy_distance",
+    "covariance_relative_frobenius",
+    "norm_energy_distance",
+    "squared_norm_energy_distance",
+    "marginal_mean_l2",
+    "marginal_std_l2",
+    "marginal_energy_distance_mean",
+    "marginal_energy_distance_max",
+)
+
+# The lower bound keeps the Student-t covariance finite.  The upper bound is
+# finite but close enough to the Gaussian limit to retain that boundary as a
+# legal fitted outcome.
+NU_LOWER = 2.01
+NU_UPPER = 1_000_000.0
+ETA_LOWER = math.log(NU_LOWER - 2.0)
+ETA_UPPER = math.log(NU_UPPER - 2.0)
+OPTIMIZER_ABS_TOLERANCE = 1.0e-10
+OPTIMIZER_REL_TOLERANCE = 1.0e-10
+OPTIMIZER_MAX_ITERATIONS = 64
+OBJECTIVE_TIE_TOLERANCE = 1.0e-12
+T_CDF_TOLERANCE = 1.0e-14
+T_CDF_MAX_ITERATIONS = 256
+T_CDF_DENOMINATOR_FLOOR = 1.0e-300
+T_QUANTILE_ABS_TOLERANCE = 1.0e-12
+T_QUANTILE_REL_TOLERANCE = 1.0e-12
+T_QUANTILE_MAX_ITERATIONS = 256
+T_QUANTILE_BRACKET = 1_000_000.0
+RNG_NAMESPACE = "N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1_CPU"
+
+EMPIRICAL_MARGINAL_SLOTS = FIT_COUNT_PER_FOLD * DIMENSION
+R_UNIQUE_ENTRIES = DIMENSION * (DIMENSION + 1) // 2
+BASELINE_EFFECTIVE_FITTED_SCALARS = EMPIRICAL_MARGINAL_SLOTS + R_UNIQUE_ENTRIES
+NEW_FITTED_SCALARS_PER_FOLD = 1
+FAMILY_EFFECTIVE_FITTED_SCALARS = BASELINE_EFFECTIVE_FITTED_SCALARS + NEW_FITTED_SCALARS_PER_FOLD
+
+
+class ContractDefinitionBlocked(RuntimeError):
+    """The requested family cannot be totally specified without a new choice."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(
+    repo_root: Path,
+    path: Path,
+    expected_sha256: str,
+    name: str,
+) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    return dict(_mapping(json.loads(target.read_text(encoding="utf-8")), name))
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _authority_ref(repo_root: Path, path: Path, sha256: str, role: str) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{role} is missing: {target}")
+    _require(file_sha256(target) == sha256, f"{role} hash changed: {target}")
+    return {"path": _relative(repo_root, target), "sha256": sha256, "role": role}
+
+
+def _validate_v2_authority(repo_root: Path) -> dict[str, Any]:
+    source = _read_json_exact(repo_root, V2_SOURCE_MANIFEST, V2_SOURCE_MANIFEST_SHA256, "V2 source manifest")
+    fold = _read_json_exact(repo_root, V2_FOLD_MANIFEST, V2_FOLD_MANIFEST_SHA256, "V2 five-fold manifest")
+    ceiling = _read_json_exact(repo_root, V2_CEILING_REPORT, V2_CEILING_REPORT_SHA256, "V2 empirical ceiling report")
+
+    q_path = repo_root / V2_Q_ARTIFACT
+    _require(q_path.is_file(), f"V2 q artifact is missing: {q_path}")
+    # This is a byte digest boundary only.  The q artifact is intentionally
+    # never passed to a tensor loader or any tensor deserializer here.
+    _require(file_sha256(q_path) == V2_Q_ARTIFACT_SHA256, "V2 q artifact hash changed")
+
+    _require(source.get("schema") == "n3_development_bank_v2_source_manifest.v1", "V2 source schema changed")
+    _require(source.get("status") == "FROZEN_SOURCE_ROWS", "V2 source status changed")
+    source_selection = _mapping(source.get("selection"), "V2 source selection")
+    for key in ("q_values_used", "ols_values_used", "image_values_used", "rng_used"):
+        _require(source_selection.get(key) is False, f"V2 source selection changed: {key}")
+    _require(source_selection.get("pool_count") == POOL_COUNT, "V2 source pool count changed")
+    _require(source_selection.get("rows_per_class") == ROWS_PER_CLASS, "V2 source class balance changed")
+    _require(source.get("materialization_boundary", {}).get("q_values_materialized") is False, "V2 source materialized q values")
+
+    _require(fold.get("schema") == "n3_development_bank_v2_five_fold_protocol.v1", "V2 fold schema changed")
+    _require(fold.get("status") == "FROZEN_BEFORE_VALIDATION", "V2 fold status changed")
+    protocol = _mapping(fold.get("protocol"), "V2 fold protocol")
+    expected_protocol = {
+        "assignment_sha256": V2_FOLD_ASSIGNMENT_SHA256,
+        "class_count": CLASS_COUNT,
+        "fit_count_per_fold": FIT_COUNT_PER_FOLD,
+        "fit_per_class_per_fold": FIT_PER_CLASS_PER_FOLD,
+        "fold_count": FOLD_COUNT,
+        "heldout_count_per_fold": HELDOUT_COUNT_PER_FOLD,
+        "heldout_per_class_per_fold": HELDOUT_PER_CLASS_PER_FOLD,
+        "pool_count": POOL_COUNT,
+        "q_values_used": False,
+        "rng_used": False,
+        "rows_per_class": ROWS_PER_CLASS,
+    }
+    for key, expected in expected_protocol.items():
+        _require(protocol.get(key) == expected, f"V2 fold protocol changed: {key}")
+    fold_boundary = _mapping(fold.get("execution_boundary"), "V2 fold boundary")
+    _require(fold_boundary.get("q_values_loaded") is False, "V2 fold definition loaded q values")
+    _require(fold_boundary.get("producer_evaluated") is False, "V2 fold definition evaluated a producer")
+
+    _require(ceiling.get("schema") == "n3_development_bank_v2_empirical_ceiling_report.v1", "V2 ceiling schema changed")
+    _require(ceiling.get("status") == "valid_completed" and ceiling.get("result") == "VALID_COMPLETED", "V2 ceiling is incomplete")
+    _require(ceiling.get("classification") == "N3_DEVELOPMENT_BANK_V2_VALIDATED", "V2 ceiling classification changed")
+    aggregate = _mapping(ceiling.get("aggregate"), "V2 ceiling aggregate")
+    for key, expected in (
+        ("fold_count", FOLD_COUNT),
+        ("compatible_fold_count", FOLD_COUNT),
+        ("compatible_fold_pattern", [True] * FOLD_COUNT),
+        ("all_five_folds_required", True),
+        ("operationally_valid", True),
+        ("development_supported", True),
+        ("producer_evaluated", False),
+        ("producer_selection", False),
+    ):
+        _require(aggregate.get(key) == expected, f"V2 ceiling aggregate changed: {key}")
+
+    return {
+        "source_manifest": _authority_ref(repo_root, V2_SOURCE_MANIFEST, V2_SOURCE_MANIFEST_SHA256, "V2 source manifest"),
+        "q_artifact": {
+            **_authority_ref(repo_root, V2_Q_ARTIFACT, V2_Q_ARTIFACT_SHA256, "V2 q artifact"),
+            "tensor_sha256": V2_Q_TENSOR_SHA256,
+            "deserialized_by_this_consumer": False,
+        },
+        "fold_manifest": {
+            **_authority_ref(repo_root, V2_FOLD_MANIFEST, V2_FOLD_MANIFEST_SHA256, "V2 five-fold manifest"),
+            "assignment_sha256": V2_FOLD_ASSIGNMENT_SHA256,
+        },
+        "empirical_ceiling_report": {
+            **_authority_ref(repo_root, V2_CEILING_REPORT, V2_CEILING_REPORT_SHA256, "V2 empirical ceiling report"),
+            "classification": ceiling["classification"],
+            "fold_pattern": aggregate["compatible_fold_pattern"],
+        },
+        "identity": {
+            "coordinate": "R2_AMPLITUDE",
+            "dimension": DIMENSION,
+            "pool_count": POOL_COUNT,
+            "rows_per_class": ROWS_PER_CLASS,
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+            "fit_per_class_per_fold": FIT_PER_CLASS_PER_FOLD,
+            "heldout_per_class_per_fold": HELDOUT_PER_CLASS_PER_FOLD,
+            "fold_count": FOLD_COUNT,
+            "assignment_sha256": V2_FOLD_ASSIGNMENT_SHA256,
+        },
+        "q_values_loaded_by_definition_consumer": False,
+        "heldout_values_loaded_by_definition_consumer": False,
+    }
+
+
+def _validate_n4_authority(repo_root: Path) -> dict[str, Any]:
+    registry = _read_json_exact(repo_root, N4_REGISTRY, N4_REGISTRY_SHA256, "N4 candidate registry")
+    report = _read_json_exact(repo_root, N4_REPORT, N4_REPORT_SHA256, "N4 comparison report")
+    lineage = _read_json_exact(repo_root, N4_LINEAGE, N4_LINEAGE_SHA256, "N4 lineage manifest")
+    gaussian_contract = _read_json_exact(repo_root, GAUSSIAN_CONTRACT, GAUSSIAN_CONTRACT_SHA256, "historical Gaussian contract")
+    gaussian_report = _read_json_exact(repo_root, GAUSSIAN_REPORT, GAUSSIAN_REPORT_SHA256, "historical Gaussian report")
+
+    _require(registry.get("schema") == "n4_q_producer_candidate_registry.v1", "N4 registry schema changed")
+    _require(registry.get("status") == "FROZEN", "N4 registry is not frozen")
+    expected_ids = [
+        "SHRINKAGE_ELLIPTICAL_GAUSSIAN_AMPLITUDE_V1",
+        "RADIAL_SCALE_MIXTURE_AMPLITUDE_V1",
+        "EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1",
+    ]
+    candidates = registry.get("candidates")
+    _require(isinstance(candidates, list), "N4 registry candidates are not a list")
+    _require([item.get("candidate_id") for item in candidates] == expected_ids, "N4 candidate set changed")
+    _require(registry.get("candidate_count") == len(expected_ids), "N4 candidate count changed")
+    registry_git = _mapping(registry.get("git"), "N4 registry git")
+    _require(registry_git.get("branch") == EXPECTED_BRANCH, "N4 registry branch changed")
+    _require(registry_git.get("head") == EXPECTED_STARTING_HEAD, "N4 registry HEAD changed")
+    registry_authorities = registry.get("v2_authorities")
+    expected_authorities = [
+        {"path": V2_SOURCE_MANIFEST.as_posix(), "sha256": V2_SOURCE_MANIFEST_SHA256},
+        {"path": V2_Q_ARTIFACT.as_posix(), "sha256": V2_Q_ARTIFACT_SHA256},
+        {"path": V2_FOLD_MANIFEST.as_posix(), "sha256": V2_FOLD_MANIFEST_SHA256},
+        {"path": V2_CEILING_REPORT.as_posix(), "sha256": V2_CEILING_REPORT_SHA256},
+    ]
+    _require(registry_authorities == expected_authorities, "N4 registry V2 authority chain changed")
+    freeze = _mapping(registry.get("freeze"), "N4 registry freeze")
+    for key, expected in (
+        ("registry_frozen_before_first_evaluator_call", True),
+        ("candidate_addition_after_freeze", False),
+        ("candidate_deletion_after_freeze", False),
+        ("fit_method_mutation_after_freeze", False),
+        ("heldout_driven_tuning", False),
+        ("parameter_mutation_after_freeze", False),
+    ):
+        _require(freeze.get(key) == expected, f"N4 registry freeze changed: {key}")
+
+    gaussian_candidate = next(item for item in candidates if item.get("candidate_id") == expected_ids[-1])
+    _require(gaussian_candidate.get("implementation_path") == GAUSSIAN_IMPLEMENTATION.as_posix(), "Gaussian implementation path changed")
+    _require(gaussian_candidate.get("implementation_sha256") == GAUSSIAN_IMPLEMENTATION_SHA256, "Gaussian implementation digest changed")
+    implementation_path = repo_root / GAUSSIAN_IMPLEMENTATION
+    _require(implementation_path.is_file() and file_sha256(implementation_path) == GAUSSIAN_IMPLEMENTATION_SHA256, "Gaussian implementation source changed")
+    fixed = _mapping(gaussian_candidate.get("fixed_hyperparameters"), "Gaussian fixed hyperparameters")
+    for key, expected in (
+        ("dependence_denominator", "n_fit-1"),
+        ("epsilon_clamp", False),
+        ("fit_rows", FIT_COUNT_PER_FOLD),
+        ("plotting_positions", "(rank-0.5)/n_fit"),
+        ("quantile_interpolation", "piecewise-linear with observed endpoint tails"),
+        ("standardization_denominator", "n_fit-1"),
+        ("tie_rule", "average rank with stable value-then-original-row order"),
+        ("unit_diagonal_renormalization", False),
+    ):
+        _require(fixed.get(key) == expected, f"Gaussian fixed hyperparameter changed: {key}")
+    historical = _mapping(gaussian_candidate.get("historical_lineage"), "Gaussian historical lineage")
+    _require(historical.get("producer_contract", {}).get("sha256") == GAUSSIAN_CONTRACT_SHA256, "Gaussian contract lineage changed")
+    _require(historical.get("development_report", {}).get("sha256") == GAUSSIAN_REPORT_SHA256, "Gaussian report lineage changed")
+
+    _require(report.get("schema") == "n4_q_producer_comparison_report.v1", "N4 report schema changed")
+    _require(report.get("status") == "valid_completed" and report.get("result") == "VALID_COMPLETED", "N4 report is incomplete")
+    _require(report.get("classification") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "N4 classification changed")
+    _require(report.get("development_supported_candidates") == [], "N4 unexpectedly selected a candidate")
+    _require(report.get("development_unsupported_candidates") == expected_ids, "N4 unsupported candidate set changed")
+    exposure = _mapping(report.get("evaluator_exposure"), "N4 evaluator exposure")
+    _require(exposure.get("total_evaluator_calls") == 15 and exposure.get("planned_evaluator_calls") == 15, "N4 evaluator exposure changed")
+    _require(exposure.get("adaptive_development_exposure") is False, "N4 adaptive exposure changed")
+    report_governance = _mapping(report.get("governance"), "N4 report governance")
+    _validate_closed_governance(report_governance, "N4 report governance")
+    sealed = _mapping(report.get("sealed_confirmation"), "N4 report sealed boundary")
+    _validate_sealed_summary(sealed, "N4 report sealed boundary")
+
+    summaries = report.get("candidate_summaries")
+    _require(isinstance(summaries, list), "N4 candidate summaries are not a list")
+    gaussian_summary = next(item for item in summaries if item.get("candidate_id") == expected_ids[-1])
+    _require(gaussian_summary.get("compatible_fold_count") == 4, "N4 Gaussian compatible count changed")
+    _require(gaussian_summary.get("fold_pass_pattern") == [True, True, True, True, False], "N4 Gaussian fold pattern changed")
+    failure_taxonomy = gaussian_summary.get("failure_taxonomy")
+    _require(isinstance(failure_taxonomy, list) and len(failure_taxonomy) == 1, "N4 Gaussian failure taxonomy changed")
+    _require(failure_taxonomy[0].get("fold") == 4, "N4 Gaussian failed fold changed")
+    _require(
+        failure_taxonomy[0].get("failed_metrics") == ["norm_energy_distance", "squared_norm_energy_distance"],
+        "N4 Gaussian failed metrics changed",
+    )
+
+    statistics = _mapping(_mapping(report.get("configuration"), "N4 configuration").get("statistics"), "N4 statistics")
+    fold_definition = _mapping(statistics.get("fold_definition"), "N4 fold definition")
+    for key, expected in (
+        ("assignment_sha256", V2_FOLD_ASSIGNMENT_SHA256),
+        ("fit_per_class_per_fold", FIT_PER_CLASS_PER_FOLD),
+        ("fit_rows_per_fold", FIT_COUNT_PER_FOLD),
+        ("fold_count", FOLD_COUNT),
+        ("heldout_per_class_per_fold", HELDOUT_PER_CLASS_PER_FOLD),
+        ("heldout_rows_per_fold", HELDOUT_COUNT_PER_FOLD),
+    ):
+        _require(fold_definition.get(key) == expected, f"N4 fold definition changed: {key}")
+    metric_contract = _mapping(statistics.get("metric_contract"), "N4 metric contract")
+    _require(metric_contract.get("scalar_metrics") == list(SCALAR_METRICS), "N4 scalar metric set changed")
+    _require(metric_contract.get("biased_empirical_ed") is True, "N4 metric ED semantics changed")
+    reference_contract = _mapping(statistics.get("reference_contract"), "N4 reference contract")
+    _require(reference_contract.get("threshold_quantile") == COMPATIBILITY_Q, "N4 q95 changed")
+    _require(reference_contract.get("reference_pair_construction") == [list(pair) for pair in MODEL_REFERENCE_PAIRS], "N4 reference pairs changed")
+    _require(reference_contract.get("threshold_is_calibrated_confidence") is False, "N4 q95 confidence interpretation changed")
+
+    _require(lineage.get("schema") == "n4_q_producer_lineage_manifest.v1", "N4 lineage schema changed")
+    _require(lineage.get("status") == "valid_completed", "N4 lineage status changed")
+    _require(lineage.get("consumer_report_path") == N4_REPORT.as_posix(), "N4 lineage report path changed")
+    _require(lineage.get("all_artifacts_write_once") is True, "N4 lineage write-once policy changed")
+    _require(lineage.get("source_row_lineage_recorded") is True, "N4 row lineage policy changed")
+    _require(lineage.get("authorities") == expected_authorities, "N4 lineage authorities changed")
+    lineage_sealed = _mapping(lineage.get("sealed_confirmation"), "N4 lineage sealed boundary")
+    _validate_sealed_summary(lineage_sealed, "N4 lineage sealed boundary")
+
+    _require(gaussian_contract.get("schema") == "n3_empirical_marginal_gaussian_copula_producer_contract.v1", "historical Gaussian contract schema changed")
+    _require(gaussian_report.get("schema") == "n3_empirical_marginal_gaussian_copula_producer_report.v1", "historical Gaussian report schema changed")
+    return {
+        "registry": {
+            **_authority_ref(repo_root, N4_REGISTRY, N4_REGISTRY_SHA256, "N4 candidate registry"),
+            "status": registry["status"],
+            "candidate_ids": expected_ids,
+        },
+        "comparison_report": {
+            **_authority_ref(repo_root, N4_REPORT, N4_REPORT_SHA256, "N4 comparison report"),
+            "status": report["status"],
+            "result": report["result"],
+            "classification": report["classification"],
+            "gaussian_candidate_fold_pattern": gaussian_summary["fold_pass_pattern"],
+            "gaussian_candidate_compatible_folds": gaussian_summary["compatible_fold_count"],
+        },
+        "lineage_manifest": {
+            **_authority_ref(repo_root, N4_LINEAGE, N4_LINEAGE_SHA256, "N4 lineage manifest"),
+            "artifact_count": len(lineage.get("artifacts", [])),
+            "artifact_hashes_rechecked": False,
+        },
+        "baseline_gaussian": {
+            "implementation": _authority_ref(repo_root, GAUSSIAN_IMPLEMENTATION, GAUSSIAN_IMPLEMENTATION_SHA256, "Gaussian implementation"),
+            "historical_contract": _authority_ref(repo_root, GAUSSIAN_CONTRACT, GAUSSIAN_CONTRACT_SHA256, "historical Gaussian contract"),
+            "historical_report": _authority_ref(repo_root, GAUSSIAN_REPORT, GAUSSIAN_REPORT_SHA256, "historical Gaussian report"),
+            "role": "N4 baseline lineage only; not a new comparison selector or success threshold",
+        },
+        "sealed_confirmation": {
+            "path": lineage_sealed.get("path"),
+            "sha256": lineage_sealed.get("sha256"),
+            "status": lineage_sealed.get("status"),
+            "consumed": False,
+            "values_loaded": False,
+            "manifest_read_by_this_consumer": False,
+        },
+        "governance": dict(report_governance),
+    }
+
+
+def _validate_sealed_summary(summary: Mapping[str, Any], name: str) -> None:
+    _require(summary.get("status") == "RESERVED_NOT_MATERIALIZED", f"{name} status changed")
+    _require(summary.get("consumed") is False, f"{name} consumed sealed confirmation")
+    if "materialized" in summary:
+        _require(summary.get("materialized") is False, f"{name} materialized sealed confirmation")
+    if "values_loaded" in summary:
+        _require(summary.get("values_loaded") is False, f"{name} loaded sealed values")
+
+
+def _validate_closed_governance(governance: Mapping[str, Any], name: str) -> None:
+    expected = {
+        "selected_producer": None,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "sealed_confirmation_consumed": False,
+    }
+    for key, value in expected.items():
+        _require(governance.get(key) == value, f"{name} changed: {key}")
+
+
+def _validate_current_governance(repo_root: Path) -> dict[str, Any]:
+    state = _read_json_exact(repo_root, GOVERNANCE_STATE, file_sha256(repo_root / GOVERNANCE_STATE), "current governance state")
+    _require(state.get("active_objective") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "current active objective changed")
+    _require(state.get("hard_blocker") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "current hard blocker changed")
+    _require(state.get("authorization_tier") == "R0", "current authorization tier changed")
+    aliases = _mapping(state.get("evidence_aliases"), "current governance aliases")
+    n4 = _mapping(aliases.get("N4_Q_PRODUCER_DEVELOPMENT_COMPARISON"), "N4 governance alias")
+    _require(n4.get("classification") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "N4 governance classification changed")
+    _require(n4.get("selected_producer") is None, "N4 governance selected a producer")
+    for key, expected in (
+        ("sealed_confirmation_consumed", False),
+        ("training_authorized", False),
+        ("formal_promotion", False),
+        ("generation_readiness", "not_ready"),
+    ):
+        _require(n4.get(key) == expected, f"N4 governance alias changed: {key}")
+    return {
+        "path": _relative(repo_root, GOVERNANCE_STATE),
+        "sha256_observed_before_contract_registration": file_sha256(repo_root / GOVERNANCE_STATE),
+        "active_objective": state["active_objective"],
+        "hard_blocker": state["hard_blocker"],
+        "authorization_tier": state["authorization_tier"],
+        "n4_alias": dict(n4),
+        "flags_closed": True,
+    }
+
+
+def golden_section_maximize(
+    objective: Callable[[float], float],
+    lower: float,
+    upper: float,
+    *,
+    abs_tolerance: float = OPTIMIZER_ABS_TOLERANCE,
+    rel_tolerance: float = OPTIMIZER_REL_TOLERANCE,
+    max_iterations: int = OPTIMIZER_MAX_ITERATIONS,
+) -> dict[str, Any]:
+    """Reference the frozen deterministic bounded 1-D maximizer on a scalar domain."""
+
+    _require(math.isfinite(lower) and math.isfinite(upper) and lower < upper, "optimizer domain is invalid")
+    _require(abs_tolerance > 0.0 and rel_tolerance > 0.0 and max_iterations > 0, "optimizer controls are invalid")
+
+    def evaluate(x: float) -> float:
+        value = float(objective(float(x)))
+        if not math.isfinite(value):
+            raise ValueError("optimizer objective is non-finite")
+        return value
+
+    golden = (math.sqrt(5.0) - 1.0) / 2.0
+    left = float(lower)
+    right = float(upper)
+    endpoint_values = {left: evaluate(left), right: evaluate(right)}
+    c = right - golden * (right - left)
+    d = left + golden * (right - left)
+    fc = evaluate(c)
+    fd = evaluate(d)
+    evaluations = 4
+    iterations = 0
+
+    def tolerance(a: float, b: float) -> float:
+        return max(abs_tolerance, rel_tolerance * max(1.0, abs(a), abs(b)))
+
+    def right_is_better(value_right: float, value_left: float, x_right: float, x_left: float) -> bool:
+        tie = OBJECTIVE_TIE_TOLERANCE * max(1.0, abs(value_right), abs(value_left))
+        if value_right > value_left + tie:
+            return True
+        if abs(value_right - value_left) <= tie:
+            return x_right > x_left
+        return False
+
+    while right - left > tolerance(left, right):
+        if iterations >= max_iterations:
+            raise ValueError("bounded optimizer did not converge within the frozen iteration cap")
+        iterations += 1
+        if right_is_better(fd, fc, d, c):
+            left = c
+            c = d
+            fc = fd
+            d = left + golden * (right - left)
+            fd = evaluate(d)
+        else:
+            right = d
+            d = c
+            fd = fc
+            c = right - golden * (right - left)
+            fc = evaluate(c)
+        evaluations += 1
+
+    midpoint = (left + right) / 2.0
+    candidates = [(left, evaluate(left)), (midpoint, evaluate(midpoint)), (right, evaluate(right))]
+    evaluations += 3
+    candidates.extend(endpoint_values.items())
+    best_x, best_value = candidates[0]
+    for candidate_x, candidate_value in candidates[1:]:
+        if right_is_better(candidate_value, best_value, float(candidate_x), float(best_x)):
+            best_x, best_value = float(candidate_x), float(candidate_value)
+    return {
+        "x": float(best_x),
+        "objective": float(best_value),
+        "iterations": iterations,
+        "evaluations": evaluations,
+        "boundary_hit": bool(best_x == lower or best_x == upper),
+    }
+
+
+def _run_contract_totality_checks() -> dict[str, Any]:
+    if not (math.isfinite(NU_LOWER) and math.isfinite(NU_UPPER) and 2.0 < NU_LOWER < NU_UPPER):
+        raise ContractDefinitionBlocked("Student-t nu domain is not finite, bounded, and covariance-safe")
+    if not (math.isfinite(ETA_LOWER) and math.isfinite(ETA_UPPER) and ETA_LOWER < ETA_UPPER):
+        raise ContractDefinitionBlocked("log(nu-2) optimizer domain is not finite and ordered")
+    if T_CDF_MAX_ITERATIONS <= 0 or T_QUANTILE_MAX_ITERATIONS <= 0:
+        raise ContractDefinitionBlocked("Student-t CDF/quantile iteration bounds are not fixed")
+    if not (T_CDF_TOLERANCE > 0.0 and T_QUANTILE_ABS_TOLERANCE > 0.0 and T_QUANTILE_REL_TOLERANCE > 0.0):
+        raise ContractDefinitionBlocked("Student-t numerical tolerances are not fixed")
+
+    def synthetic_objective(x: float) -> float:
+        return -((x - 0.25) ** 2)
+
+    first = golden_section_maximize(synthetic_objective, -1.0, 1.0)
+    second = golden_section_maximize(synthetic_objective, -1.0, 1.0)
+    _require(first == second, "bounded optimizer is not deterministic on the synthetic contract check")
+    _require(abs(first["x"] - 0.25) < 1.0e-5, "bounded optimizer failed the synthetic interior maximum check")
+    tie = golden_section_maximize(lambda _x: 1.0, -1.0, 1.0)
+    _require(tie["boundary_hit"] is True and tie["x"] == 1.0, "optimizer tie/boundary rule is not deterministic")
+
+    return {
+        "status": "passed",
+        "future_runtime_math_choices": [],
+        "validated_domains": {
+            "nu_lower": NU_LOWER,
+            "nu_upper": NU_UPPER,
+            "eta_lower": ETA_LOWER,
+            "eta_upper": ETA_UPPER,
+            "cdf_iterations": T_CDF_MAX_ITERATIONS,
+            "quantile_iterations": T_QUANTILE_MAX_ITERATIONS,
+            "optimizer_iterations": OPTIMIZER_MAX_ITERATIONS,
+        },
+        "synthetic_optimizer_checks": {
+            "interior_maximum_deterministic": True,
+            "boundary_tie_prefers_larger_nu": True,
+            "no_development_q_used": True,
+            "no_sealed_confirmation_used": True,
+        },
+        "estimator_totality": {
+            "one_new_fitted_scalar_per_fold": True,
+            "fit_rows_only": True,
+            "fixed_R": True,
+            "cdf_and_inverse_cdf_defined": True,
+            "sampler_defined": True,
+            "nonfinite_and_endpoint_policy_defined": True,
+            "failure_rules_defined": True,
+        },
+    }
+
+
+def _build_payload(
+    repo_root: Path,
+    git: Mapping[str, Any],
+    v2: Mapping[str, Any],
+    n4: Mapping[str, Any],
+    governance: Mapping[str, Any],
+    totality: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "claim_classification": CLAIM_CLASSIFICATION,
+        "semantic_authority_id": TASK_ID,
+        "definition_only": True,
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "git": {
+            **dict(git),
+            "starting_committed_head": EXPECTED_STARTING_HEAD,
+            "contract_script": _relative(repo_root, Path(__file__).resolve()),
+            "contract_script_sha256": file_sha256(Path(__file__).resolve()),
+        },
+        "authorities": {
+            "v2_development": dict(v2),
+            "n4_result": dict(n4),
+            "current_governance_snapshot": dict(governance),
+        },
+        "family": {
+            "family_id": FAMILY_ID,
+            "candidate_family_count": 1,
+            "candidate_ids": [FAMILY_ID],
+            "coordinate": "R2_AMPLITUDE",
+            "dimension": DIMENSION,
+            "support": "q_j>=0 for every coordinate j",
+            "labels_as_model_inputs": False,
+            "changed_component": "copula radial law and one fitted global degrees-of-freedom scalar nu",
+            "unchanged_components": [
+                "fit-only empirical marginal order statistics and inverse quantiles",
+                "stable tie and interpolation convention",
+                "Gaussianized-score construction used to derive R_shrunk",
+                "analytic shrinkage formula and the fitting-derived matrix R_shrunk",
+                "V2 development bank, fold assignment, count and class balance",
+                "raw-q evaluator and all eight compatibility guardrails",
+            ],
+            "new_fitted_parameter": "nu",
+            "new_fitted_scalar_count_per_fold": NEW_FITTED_SCALARS_PER_FOLD,
+            "mixture": False,
+            "vine": False,
+            "flow": False,
+            "neural_density": False,
+            "class_conditioning": False,
+            "optical_forward": False,
+        },
+        "marginal_contract": {
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "fit_only": True,
+            "sorted_values": "q_(1),j<=...<=q_(n),j for each coordinate j",
+            "tie_sorting": "stable value-then-original-fit-row-index order",
+            "tie_rank": "for a tied block with one-based ranks L..U, average_rank=(L+U)/2",
+            "plotting_position": "u_ij=(average_rank_ij-0.5)/n",
+            "plotting_position_domain": "u_ij in ((1-0.5)/n,(n-0.5)/n)",
+            "strict_interior": True,
+            "epsilon_clamp": False,
+            "quantile_table": "(p_r,q_(r),j), p_r=(r-0.5)/n for r=1..n",
+            "inverse_quantile": "Q_fit,j(u) is piecewise-linear between adjacent table points",
+            "below_first_position": "return q_(1),j",
+            "above_last_position": "return q_(n),j",
+            "outside_support_extrapolation": False,
+            "support_preservation": "q_fit is finite and nonnegative; interpolation is convex and endpoint tails are observed values",
+            "heldout_parameter_leakage": False,
+            "labels_as_model_inputs": False,
+        },
+        "baseline_dependence_contract": {
+            "source": dict(n4["baseline_gaussian"]["implementation"]),
+            "input": "fit-only empirical-marginal u and z=Phi^-1(u)",
+            "gaussianization": "z_ij=Phi^-1(u_ij), deterministic CPU float64 standard-normal inverse CDF",
+            "center": "z_centered=z-mean_fit(z)",
+            "standard_deviation": "s_j=sqrt(sum_i z_centered_ij^2/(n-1))",
+            "standardized_rows": "y_ij=z_centered_ij/s_j",
+            "empirical_dependence": "R_emp=(Y^T Y)/(n-1)",
+            "shrinkage": "tau=trace(R_emp)/d; beta=n^-2 sum_i ||y_i y_i^T-R_emp||_F^2; delta=||R_emp-tau I||_F^2; alpha=0 if delta=0 else clip(beta/delta,0,1); R_shrunk=(1-alpha)R_emp+alpha*tau I",
+            "symmetrization": "R_shrunk=(R_shrunk+R_shrunk^T)/2 exactly",
+            "fixed_R": "R=R_shrunk from the baseline Gaussianized fit; it is never refit as a function of nu",
+            "factorization": "L=torch.linalg.cholesky(R) lower factor; all quadratic forms use triangular solves, never a pseudoinverse",
+            "unit_diagonal_renormalization": False,
+            "finite_and_positive_definite": "all intermediate matrices finite; Cholesky succeeds; all eigenvalues finite and strictly positive",
+            "heldout_parameter_leakage": False,
+        },
+        "student_t_copula_fit_contract": {
+            "copula": "one global multivariate Student-t copula with scale/correlation matrix R=R_shrunk",
+            "latent_law": "z~t_d(nu,0,R), equivalently g~Normal(0,R), w~ChiSquare(nu)/nu independently, z=g/sqrt(w)",
+            "observed_pseudo_observations": "u_ij from the unchanged fit-only empirical marginal rank transform",
+            "t_score_transform": "x_ij(nu)=T_nu^{-1}(u_ij), where T_nu is the standard univariate Student-t CDF",
+            "log_pseudo_likelihood": "ell(nu)=n^-1 sum_i log c_nu(u_i;R)",
+            "copula_density": "log c_nu(u_i;R)=log f_t_d(x_i;nu,R)-sum_j log f_t_1(x_ij;nu)",
+            "multivariate_log_density": "log f_t_d=lgamma((nu+d)/2)-lgamma(nu/2)-(d/2)log(nu*pi)-0.5log|R|-((nu+d)/2)log1p((x_i^T R^-1 x_i)/nu)",
+            "univariate_log_density_sum": "sum_j log f_t_1(x_ij)=sum_j[lgamma((nu+1)/2)-lgamma(nu/2)-0.5log(nu*pi)-((nu+1)/2)log1p(x_ij^2/nu)]",
+            "R_refit": False,
+            "marginal_refit_under_nu": False,
+            "fit_rows_only": True,
+            "labels_as_model_inputs": False,
+            "nu_domain": {
+                "lower": NU_LOWER,
+                "upper": NU_UPPER,
+                "closed_interval": True,
+                "variance_finite": True,
+                "upper_boundary_role": "finite Gaussian-limit approximation; legal fitted boundary, not infinity",
+            },
+            "optimizer_parameterization": "eta=log(nu-2), so eta in [log(0.01),log(999998)] and nu=2+exp(eta)",
+            "optimizer": {
+                "algorithm": "deterministic bounded golden-section maximization of ell(2+exp(eta))",
+                "golden_ratio": "(sqrt(5)-1)/2",
+                "absolute_interval_tolerance": OPTIMIZER_ABS_TOLERANCE,
+                "relative_interval_tolerance": OPTIMIZER_REL_TOLERANCE,
+                "max_iterations": OPTIMIZER_MAX_ITERATIONS,
+                "endpoint_evaluated": True,
+                "objective_evaluation_failure": "any nonfinite objective or nonfinite t inverse at a visited point is INVALID_HARNESS; do not skip the point",
+                "convergence_rule": "stop only when interval width <= max(abs_tolerance, rel_tolerance*max(1,abs(eta_lo),abs(eta_hi))); exceeding max_iterations is INVALID_HARNESS",
+                "boundary_rule": "include both endpoints in final comparison; endpoint optimum is valid and records boundary_hit=true; no clipping",
+                "objective_tie_tolerance": OBJECTIVE_TIE_TOLERANCE,
+                "tie_rule": "when objective values differ by no more than tolerance, choose the larger eta, equivalently larger nu",
+                "one_nu_per_fold": True,
+                "heldout_selected_grid": False,
+                "post_result_retuning": False,
+            },
+        },
+        "student_t_numerical_contract": {
+            "dtype": "IEEE-754 binary64 / float64 throughout fit, CDF, inverse-CDF, factorization and accumulation",
+            "device": "CPU only",
+            "log_gamma": "lgamma/gammaln in float64",
+            "t_cdf": {
+                "formula": "for a=nu/2, b=1/2, x=nu/(nu+t^2): T_nu(t)=0.5 I_x(a,b) for t<0 and 1-0.5 I_x(a,b) for t>=0",
+                "zero": "T_nu(0)=0.5 exactly",
+                "regularized_beta": "deterministic modified-Lentz continued fraction; use the smaller-tail branch; denominator floor=1e-300",
+                "tolerance": T_CDF_TOLERANCE,
+                "max_iterations": T_CDF_MAX_ITERATIONS,
+                "input_domain": "finite t, nu in the closed frozen domain; beta argument in (0,1]",
+                "output_policy": "finite probability strictly in (0,1) is required for observed/generated probability transforms; no clamp, epsilon or Gaussian fallback",
+                "nonconvergence": "INVALID_HARNESS",
+            },
+            "t_inverse_cdf": {
+                "algorithm": "deterministic scalar bisection solving T_nu(x)=u",
+                "probability_domain": "finite u strictly in (0,1); no endpoint clamp",
+                "fixed_bracket": [-T_QUANTILE_BRACKET, T_QUANTILE_BRACKET],
+                "bracket_expansion": False,
+                "absolute_x_tolerance": T_QUANTILE_ABS_TOLERANCE,
+                "relative_x_tolerance": T_QUANTILE_REL_TOLERANCE,
+                "probability_tolerance": T_CDF_TOLERANCE,
+                "max_iterations": T_QUANTILE_MAX_ITERATIONS,
+                "termination": "both bracket-width tolerance and absolute CDF residual tolerance must pass",
+                "nonconvergence_or_unbracketed_probability": "INVALID_HARNESS",
+            },
+            "nonfinite_policy": "any nonfinite fit input, transform, objective term, matrix, latent, probability or output is INVALID_HARNESS",
+            "positivity_policy": "q output must be finite and q_j>=0; empirical endpoint/interpolation support supplies nonnegativity; no rejection or repair",
+            "repair_policy": {
+                "clamp": False,
+                "abs": False,
+                "relu": False,
+                "softplus": False,
+                "epsilon_repair": False,
+                "adaptive_resampling": False,
+                "seed_retry": False,
+            },
+        },
+        "sampling_contract": {
+            "law": "g~Normal(0,R), w~Gamma(nu/2, rate=nu/2) independently, z=g/sqrt(w), u_j=T_nu(z_j), q_j=Q_fit,j(u_j)",
+            "factorized_normal_draw": "draw epsilon~Normal(0,I_d) with the CPU Generator, then g=epsilon@L^T",
+            "radial_draw": "draw w with torch._standard_gamma on CPU float64 concentration nu/2 and scale by 2/nu; pass the same explicit CPU Generator",
+            "draw_order": "d-dimensional Gaussian draw precedes the radial Gamma draw for each bank; no other random draw is permitted",
+            "rng_device": "cpu",
+            "dtype": "float64",
+            "rng_generator": "torch.Generator(device='cpu')",
+            "rng_namespace": RNG_NAMESPACE,
+            "seed_derivation": "sha256(namespace|role|fold|replicate) first 64 bits masked to signed 63-bit",
+            "generated_bank_size": MODEL_SAMPLE_COUNT,
+            "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+            "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+            "reference_pair_order": [
+                {"pair_index": index, "left_replicate": left, "right_replicate": right}
+                for index, (left, right) in enumerate(MODEL_REFERENCE_PAIRS)
+            ],
+            "bank_level_rejection": False,
+            "best_of_n": False,
+            "samplewise_normalization": False,
+            "heldout_seed_tuning": False,
+            "post_evaluation_resampling": False,
+            "finite_and_nonnegative_required": True,
+            "cdf_endpoint_clamp": False,
+        },
+        "future_development_evaluation_contract": {
+            "selection_scope": "DEVELOPMENT_ONLY",
+            "authority": "reuse the exact V2 source/q/five-fold/ceiling authority bound above",
+            "fold_count": FOLD_COUNT,
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+            "fit_per_class_per_fold": FIT_PER_CLASS_PER_FOLD,
+            "heldout_per_class_per_fold": HELDOUT_PER_CLASS_PER_FOLD,
+            "model_sample_count": MODEL_SAMPLE_COUNT,
+            "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+            "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+            "model_reference_pairs": [list(pair) for pair in MODEL_REFERENCE_PAIRS],
+            "primary_metric": "validated biased empirical energy distance in raw q space",
+            "primary_metric_formula": "ED(X,Y)=2*mean d(X_i,Y_k)-mean d(X_i,X_i')-mean d(Y_k,Y_k') with diagonal terms included",
+            "distance": "d(a,b)=sqrt(sum_j(a_j-b_j)^2)",
+            "guardrails": list(SCALAR_METRICS),
+            "per_coordinate_marginal_energy_distance": "descriptive vector of length 100; not a separate compatibility gate",
+            "model_vs_model_q": COMPATIBILITY_Q,
+            "q95_interpolation": "torch.quantile over four scalar model-reference pairs with default linear interpolation",
+            "q95_is_calibrated_confidence": False,
+            "fold_rule": "all eight fixed-replicate mean DATA-vs-MODEL raw-q metrics <= same-family fold-local model-vs-model q95; equality passes",
+            "family_support_rule": "all five folds operationally valid and compatible",
+            "strict_five_of_five": True,
+            "four_of_five_supported": False,
+            "relative_improvement_vs_n4_gaussian": "descriptive only; never a support, selection or promotion rule",
+            "n4_semantic_selector": False,
+            "heldout_parameter_tuning": False,
+            "best_of_n": False,
+            "seed_retry": False,
+            "sealed_confirmation": False,
+            "optical_forward": False,
+            "image_or_generator_metric": False,
+        },
+        "complexity": {
+            "counting_convention": "one scalar per retained empirical order-statistic slot and one per unique symmetric R entry; the only new fitted scalar is nu per fold; fixed bounds/tolerances do not count",
+            "baseline_gaussian_effective_fitted_scalars": BASELINE_EFFECTIVE_FITTED_SCALARS,
+            "empirical_marginal_slots": EMPIRICAL_MARGINAL_SLOTS,
+            "R_unique_entries": R_UNIQUE_ENTRIES,
+            "new_fitted_scalar_count_per_fold": NEW_FITTED_SCALARS_PER_FOLD,
+            "family_effective_fitted_scalars_per_fold": FAMILY_EFFECTIVE_FITTED_SCALARS,
+            "one_global_nu_per_fold": True,
+            "model_order_choices": 0,
+            "mixture_components": 1,
+            "optimizer_required": True,
+            "max_objective_evaluations": 68,
+            "relative_improvement_is_not_complexity_selection": True,
+        },
+        "one_shot_semantics": {
+            "future_execution_count": 1,
+            "family_frozen_before_execution": True,
+            "marginal_convention_frozen_before_execution": True,
+            "tie_convention_frozen_before_execution": True,
+            "R_convention_frozen_before_execution": True,
+            "nu_domain_frozen_before_execution": True,
+            "optimizer_frozen_before_execution": True,
+            "CDF_and_inverse_CDF_frozen_before_execution": True,
+            "sampler_frozen_before_execution": True,
+            "metrics_frozen_before_execution": True,
+            "compatibility_frozen_before_execution": True,
+            "no_post_result_nu_domain_change": True,
+            "no_post_result_R_refit": True,
+            "no_post_result_marginal_change": True,
+            "no_post_result_budget_change": True,
+            "no_confirmation_consumption": True,
+        },
+        "contract_totality": dict(totality),
+        "execution_boundary": {
+            "v2_q_artifact_bytes_hashed": True,
+            "q_tensor_deserialized_by_this_consumer": False,
+            "q_values_loaded_by_this_consumer": False,
+            "fit_q_values_loaded_by_this_consumer": False,
+            "heldout_q_values_loaded_by_this_consumer": False,
+            "heldout_evaluation_executed": False,
+            "new_candidate_results_observed": False,
+            "real_nu_fit_executed": False,
+            "real_producer_sampling_executed": False,
+            "synthetic_optimizer_check_only": True,
+            "sealed_confirmation_manifest_read": False,
+            "sealed_confirmation_consumed": False,
+            "cuda": False,
+            "evaluator": False,
+            "training": False,
+            "promotion": False,
+        },
+        "claim_boundary": {
+            "allowed": [CLAIM_CLASSIFICATION],
+            "not_established": [
+                "a fitted nu value",
+                "Student-t copula development support",
+                "selected producer",
+                "N4 replacement or improvement result",
+                "population stationarity or generalization",
+                "full complex OLS distribution",
+                "sealed confirmation",
+                "N5/N6 support",
+                "semantic generation",
+                "optical compatibility",
+                "training authorization",
+                "generation readiness",
+            ],
+        },
+        "governance": {
+            "active_objective_remains": "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED",
+            "hard_blocker_remains": "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED",
+            "selected_producer": None,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "sealed_confirmation_status": "RESERVED_NOT_MATERIALIZED",
+            "sealed_confirmation_consumed": False,
+            "definition_ready_does_not_authorize_future_execution": True,
+            "future_execution_requires_separate_gate": True,
+        },
+        "not_executed": [
+            "V2 q tensor deserialization",
+            "fit-row q loading",
+            "heldout q loading",
+            "real empirical marginal fitting",
+            "real R_shrunk fitting",
+            "real nu fitting",
+            "real Student-t sampling",
+            "heldout compatibility evaluation",
+            "N4 semantic selector",
+            "sealed confirmation loading or materialization",
+            "novel OLS",
+            "optical forward",
+            "image or generator metric",
+            "CUDA",
+            "training",
+            "promotion",
+            "generation",
+        ],
+        "artifact_policy": {
+            "write_once": True,
+            "immutable_after_publish": True,
+            "definition_only": True,
+            "existing_v2_authorities_modified": False,
+            "existing_n4_evidence_modified": False,
+            "sealed_reservation_modified": False,
+            "q_values_embedded": False,
+        },
+    }
+
+
+def _write_contract(repo_root: Path, output_dir: Path, payload: Mapping[str, Any]) -> Path:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once contract output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(
+            temporary / CONTRACT_NAME,
+            payload,
+            artifact_kind="N3 fixed-R Student-t copula contract",
+        )
+        if output_dir.exists():
+            raise FileExistsError(f"contract output appeared during definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return output_dir / CONTRACT_NAME
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "starting committed HEAD changed")
+    _require(not output_dir.exists(), f"write-once contract output already exists: {output_dir}")
+
+    v2 = _validate_v2_authority(repo_root)
+    n4 = _validate_n4_authority(repo_root)
+    governance = _validate_current_governance(repo_root)
+    totality = _run_contract_totality_checks()
+    payload = _build_payload(repo_root, git, v2, n4, governance, totality)
+    contract_path = _write_contract(repo_root, output_dir, payload)
+    ending_git = _git_state(repo_root)
+    return {
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "claim_classification": CLAIM_CLASSIFICATION,
+        "semantic_authority": TASK_ID,
+        "family_id": FAMILY_ID,
+        "contract": _relative(repo_root, contract_path),
+        "contract_sha256": file_sha256(contract_path),
+        "git_branch": git["branch"],
+        "git_starting_head": git["head"],
+        "git_ending_head": ending_git["head"],
+        "new_candidate_results_observed": False,
+        "q_tensor_deserialized": False,
+        "heldout_evaluation_executed": False,
+        "sealed_confirmation_consumed": False,
+        "selected_producer": None,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = args.repo_root.resolve()
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    try:
+        result = execute(repo_root, output_dir)
+    except ContractDefinitionBlocked as exc:
+        result = {
+            "result": "BLOCKED",
+            "classification": None,
+            "semantic_authority": TASK_ID,
+            "blocker": str(exc),
+            "q_tensor_deserialized": False,
+            "heldout_evaluation_executed": False,
+            "sealed_confirmation_consumed": False,
+        }
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

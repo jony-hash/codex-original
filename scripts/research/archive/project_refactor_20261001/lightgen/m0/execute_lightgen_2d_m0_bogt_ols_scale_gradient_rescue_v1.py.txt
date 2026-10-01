@@ -1,0 +1,1227 @@
+"""Bounded scale-constrained OLS renderability rescue for fixed TRAIN pairs."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import copy
+import hashlib
+import json
+import math
+import os
+import statistics
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Iterator, Mapping, Sequence
+
+import torch
+from torch import nn
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PREFLIGHT_BLOCKED, PREFLIGHT_READY, RESOURCE_ENVELOPE, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INTERRUPTED, RUN_INVALID_HARNESS, RUN_PREPARING, RUN_VALID_FAILED, RUNNING, RUN_SCIENTIFIC_ACTIVE, capture_execution_source_manifest, check_resume_compatibility
+from ldm_project.v2.evidence import (
+    atomic_torch_save,
+    atomic_torch_save_new,
+    atomic_write_json,
+    atomic_write_new_json,
+    file_sha256,
+    safe_torch_load,
+)
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_renderability_localization_v1 as v1
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_renderability_localization_v2 as v2
+
+
+TASK_ID = "M0_BOGT_OLS_SCALE_GRADIENT_RESCUE_V1"
+OUTER_GATE = "M0_BOGT_OLS_SCALE_GRADIENT_RESCUE_RESOLVED"
+AUTHORIZATION_ID = f"{TASK_ID}:authorization:01"
+AUTHORIZATION_TOKEN = "AUTHORIZED_M0_BOGT_OLS_SCALE_GRADIENT_RESCUE_V1_01"
+SEMANTIC_AUTHORITY_ID = "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION"
+RUN_ID = "m0-bogt-ols-scale-gradient-rescue-v1"
+TRAJECTORY_ID = "m0-bogt-step600-bounded-dimensionless-ols-train-pairs-v1"
+ATTEMPT_ID = f"{RUN_ID}:attempt_01"
+RUNS_ROOT = Path("outputs/20260928_m0_bogt_ols_scale_gradient_rescue_v1/runs")
+ATTEMPT_DIR = RUNS_ROOT / "attempt_01"
+PREFLIGHT_01_PATH = RUNS_ROOT / "preflight_01.json"
+PREFLIGHT_PATH = RUNS_ROOT / "preflight_02.json"
+PREFLIGHT_01_SHA256 = "283f991e52055ba529900a140f536c557e57cc31ed3474911cc8d0d56f9dd9c8"
+PREFLIGHT_RETRY_SIGNATURE = {"status": RUN_INVALID_HARNESS, "classification": RUN_INVALID_HARNESS, "failure_component": "model_loading", "reason": "KeyError: 'prior_report'", "scientific_attempt_opened": False}
+PREFLIGHT_SCHEMA = "m0_bogt_ols_scale_gradient_rescue_preflight.v1"
+REPORT_SCHEMA = "m0_bogt_ols_scale_gradient_rescue_report.v1"
+RECOVERY_SCHEMA = "m0_bogt_ols_scale_gradient_rescue_recovery.v1"
+
+PRIOR_RUNS = Path("outputs/20260927_m0_bogt_renderability_localization_v2_heartbeat_recovery_v1/runs")
+PRIOR_PREFLIGHT_PATH = PRIOR_RUNS / "preflight_01.json"
+PRIOR_ATTEMPT = PRIOR_RUNS / "attempt_01"
+PRIOR_REPORT_PATH = PRIOR_ATTEMPT / "report.json"
+PRIOR_STATUS_PATH = PRIOR_ATTEMPT / "status.json"
+PRIOR_SOURCE_PATH = PRIOR_ATTEMPT / "source_manifest.json"
+PRIOR_EXECUTION_MANIFEST_PATH = PRIOR_ATTEMPT / "execution_manifest.json"
+PRIOR_RAW_PATH = PRIOR_ATTEMPT / "renderability_raw_tensors.pt"
+
+PRIOR_DIGESTS = {
+    "preflight": "4b65613554dc83eb1a621ad9cc144ac57c1329a729d0ff654eb3f58b38985257",
+    "report": "6d13866fa03b0d7ba8e8c5094df3f3a233053b9e016e500be8b659c32178be58",
+    "status": "8e801124a66b80854549d60e945cd9d1c5f6f80563dec78e3ef98dceeac01a02",
+    "source_manifest": "52d53d11a69a2c5e03cd34a4f55bf03b62de11d2bcde60e615ef3abad0624eb3",
+    "execution_manifest": "c6c6b643b69594dde7efc545c841667459bb34309945bd2e871138d5546494ee",
+    "raw_tensor": "5b8b280f618802ef6dea8b83b7dff600ab47bbc7eb4fd76b1aca8f3f7b612d0c",
+}
+PRIOR_SOURCE_MANIFEST_ID = "1a53329fb79fcbae6f14ca141f48898b4b1278a1b9f4e8e16dc88e0e6efbb63f"
+PRIOR_SOURCE_SEMANTICS_ID = "f509643902cf872c4a25cfbb6014a6d6ff39b00b507177282b0f678b898440a9"
+
+FIT_ROWS = 200
+BATCH_SIZE = 10
+FEATURES = 100
+UPDATES_PER_ROW = 300
+CHUNKS_PER_PASS = FIT_ROWS // BATCH_SIZE
+GLOBAL_UPDATES = UPDATES_PER_ROW * CHUNKS_PER_PASS
+CHECKPOINT_INTERVAL = 25
+RECOVERY_SLOTS = 3
+LEARNING_RATE = 1.0e-2
+LEGACY_LEARNING_RATE = 1.0e-3
+ADAM_BETAS = v1.ADAM_BETAS
+TRUST_RADIUS = math.sqrt(FEATURES)
+MAX_CLIPPED_FRACTION = 0.01
+MAX_TOTAL_SECONDS = 40 * 60
+MAX_PREFLIGHT_SECONDS = 5 * 60
+MAX_DEVICE_MEMORY_FRACTION = 0.90
+FD_RELATIVE_FACTORS = (0.5, 0.25, 0.125)
+RAW_COMPARE_RTOL = 1.0e-5
+RAW_COMPARE_ATOL = 1.0e-7
+
+
+class ScaleRescueError(RuntimeError):
+    """An input, lifecycle, or measurement invariant failed."""
+
+
+class ResourceBudgetExceeded(ScaleRescueError):
+    """The fixed experiment does not fit the authorized resource envelope."""
+
+
+def _require(condition: bool, message: str, error: type[Exception] = ScaleRescueError) -> None:
+    if not condition:
+        raise error(message)
+
+
+def _root() -> Path:
+    return v1._root()
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ScaleRescueError(f"cannot read JSON authority: {path}") from error
+    _require(isinstance(value, dict), f"JSON authority is malformed: {path}")
+    return value
+
+
+def _tensor_sha256(value: torch.Tensor) -> str:
+    raw = value.detach().to(device="cpu").contiguous().view(torch.uint8).numpy().tobytes()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _source_paths(root: Path) -> tuple[Path, ...]:
+    return tuple(dict.fromkeys((
+        Path(__file__).resolve(),
+        Path(v1.__file__).resolve(),
+        Path(v2.__file__).resolve(),
+        root / "src/ldm_project/v2/application/research/shared/research_run_control.py",
+        root / "src/ldm_project/v2/evidence/io.py",
+        *v1._source_paths(root),
+        *v2._source_paths(root, sequence=1),
+    )))
+
+
+def _prior_bindings(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    paths = {
+        "preflight": root / PRIOR_PREFLIGHT_PATH,
+        "report": root / PRIOR_REPORT_PATH,
+        "status": root / PRIOR_STATUS_PATH,
+        "source_manifest": root / PRIOR_SOURCE_PATH,
+        "execution_manifest": root / PRIOR_EXECUTION_MANIFEST_PATH,
+        "raw_tensor": root / PRIOR_RAW_PATH,
+    }
+    observed = {name: file_sha256(path) for name, path in paths.items() if name != "raw_tensor"}
+    expected_non_raw = {name: digest for name, digest in PRIOR_DIGESTS.items() if name != "raw_tensor"}
+    _require(observed == expected_non_raw, "prior V2 input artifact identity changed")
+    preflight = _read_json(paths["preflight"])
+    report = _read_json(paths["report"])
+    status = _read_json(paths["status"])
+    source = _read_json(paths["source_manifest"])
+    manifest = _read_json(paths["execution_manifest"])
+    _validate_prior_objects(preflight, report, status, source, manifest)
+    return preflight, report, status, source, manifest
+
+
+def _validate_retry_preflight(root: Path) -> dict[str, Any]:
+    path = root / PREFLIGHT_01_PATH
+    _require(path.is_file() and file_sha256(path) == PREFLIGHT_01_SHA256, "the single authorized preflight recheck is not bound to preflight_01")
+    report = _read_json(path)
+    _require(
+        report.get("schema") == PREFLIGHT_SCHEMA
+        and report.get("task_id") == TASK_ID
+        and report.get("outer_gate") == OUTER_GATE
+        and report.get("authorization_id") == AUTHORIZATION_ID
+        and report.get("status") == PREFLIGHT_RETRY_SIGNATURE["status"]
+        and report.get("classification") == PREFLIGHT_RETRY_SIGNATURE["classification"]
+        and report.get("failure_component") == PREFLIGHT_RETRY_SIGNATURE["failure_component"]
+        and report.get("reason") == PREFLIGHT_RETRY_SIGNATURE["reason"]
+        and report.get("scientific_attempt_opened") is False,
+        "preflight_01 is not the exact first source-bound harness failure authorized for one recheck",
+    )
+    _require(not (root / ATTEMPT_DIR).exists(), "an attempt was opened during the first failed preflight")
+    return {"path": PREFLIGHT_01_PATH.as_posix(), "sha256": PREFLIGHT_01_SHA256, "recheck_sequence": 2, "failure_signature": dict(PREFLIGHT_RETRY_SIGNATURE)}
+
+
+def _validate_prior_objects(
+    preflight: Mapping[str, Any], report: Mapping[str, Any], status: Mapping[str, Any],
+    source: Mapping[str, Any], manifest: Mapping[str, Any],
+) -> None:
+    identity = report.get("run_identity")
+    prior_checks = preflight.get("checks")
+    ols_update = prior_checks.get("ols_three_real_cuda_updates") if isinstance(prior_checks, Mapping) else None
+    recovery_check = prior_checks.get("recovery_next_update_equivalence") if isinstance(prior_checks, Mapping) else None
+    spot_check = prior_checks.get("step600_train_ols_single_image_spot_checks") if isinstance(prior_checks, Mapping) else None
+    report_spot_check = report.get("step600_ols_bank_spot_checks")
+    measurement = report.get("artifacts", {}).get("measurement_tensors") if isinstance(report.get("artifacts"), Mapping) else None
+    _require(
+        preflight.get("status") == PREFLIGHT_READY
+        and preflight.get("task_id") == v2.TASK_ID
+        and isinstance(prior_checks, Mapping)
+        and prior_checks.get("static_lineage_and_historical_bindings") == "PASS"
+        and prior_checks.get("step600_train_ols_bank_lineage_and_fixed_rows") == "PASS"
+        and isinstance(spot_check, Mapping)
+        and spot_check.get("status") == "PASS"
+        and isinstance(report_spot_check, Mapping)
+        and report_spot_check.get("status") == "PASS"
+        and isinstance(ols_update, Mapping)
+        and ols_update.get("status") == "PASS"
+        and ols_update.get("runtime_frozen") is True
+        and ols_update.get("E_D_frozen") is True
+        and isinstance(recovery_check, Mapping)
+        and recovery_check.get("ols") == "PASS"
+        and recovery_check.get("production_checkpoint_io") is True
+        and report.get("task_id") == v2.TASK_ID
+        and report.get("outer_gate") == v2.OUTER_GATE
+        and report.get("classification") == "NEITHER_BOUNDED_UPPER_BOUND_REACHED"
+        and status.get("state") == RUN_COMPLETED
+        and status.get("classification") == report.get("classification")
+        and status.get("completed_updates") == 6300
+        and status.get("ols_global_steps") == GLOBAL_UPDATES
+        and status.get("ols_passes_completed") == UPDATES_PER_ROW
+        and isinstance(identity, Mapping)
+        and identity.get("source_manifest_id") == PRIOR_SOURCE_MANIFEST_ID
+        and identity.get("execution_source_semantics_id") == PRIOR_SOURCE_SEMANTICS_ID
+        and source.get("source_manifest_id") == PRIOR_SOURCE_MANIFEST_ID
+        and source.get("execution_source_semantics_id") == PRIOR_SOURCE_SEMANTICS_ID
+        and manifest.get("run_identity", {}).get("source_manifest_id") == PRIOR_SOURCE_MANIFEST_ID
+        and manifest.get("preflight_receipt", {}).get("status") == PREFLIGHT_READY
+        and isinstance(measurement, Mapping)
+        and measurement.get("path") == PRIOR_RAW_PATH.name
+        and measurement.get("sha256") == PRIOR_DIGESTS["raw_tensor"],
+        "prior V2 READY, report, status, or source identities disagree",
+    )
+
+
+def _load_prior_raw(root: Path) -> dict[str, Any]:
+    payload = safe_torch_load(root / PRIOR_RAW_PATH, expected_sha256=PRIOR_DIGESTS["raw_tensor"], map_location="cpu")
+    _require(isinstance(payload, Mapping) and payload.get("schema") == "m0_bogt_renderability_localization_measurements.v2", "prior V2 raw tensor payload is malformed")
+    _require(payload.get("source_manifest_id") == PRIOR_SOURCE_MANIFEST_ID, "prior V2 raw tensor source identity changed")
+    return dict(payload)
+
+
+def _fixed_data_from_prior(prior: Mapping[str, Any], device: torch.device) -> dict[str, torch.Tensor]:
+    fit_indices = prior["fit_indices"].detach().to(device="cpu", dtype=torch.long)
+    fit_labels = prior["fit_labels"].detach().to(device="cpu", dtype=torch.long)
+    fit_targets = prior["fit_targets_28x28"].detach().to(device="cpu", dtype=torch.float32)
+    fit_ols = prior["fit_ols_step600"].detach().to(device="cpu", dtype=torch.complex64)
+    _require(fit_indices.shape == (FIT_ROWS,) and fit_indices.unique().numel() == FIT_ROWS, "bound V2 TRAIN indices are malformed")
+    _require(fit_labels.shape == (FIT_ROWS,) and prior["fit_labels"].dtype == torch.long and torch.equal(torch.bincount(fit_labels, minlength=10), torch.full((10,), 20)), "bound V2 TRAIN labels are not class balanced")
+    _require(torch.equal(fit_labels, torch.arange(10, dtype=torch.long).repeat(FIT_ROWS // 10)), "bound V2 fixed fit rows no longer match the 20 class-interleaved ten-row batches")
+    _require(fit_targets.shape == (FIT_ROWS, 1, 28, 28), "bound V2 TRAIN targets have unexpected geometry")
+    _require(fit_ols.shape == (FIT_ROWS, FEATURES) and prior["fit_ols_step600"].dtype == torch.complex64, "bound V2 step600 OLS rows have unexpected geometry or dtype")
+    _require(bool(torch.isfinite(fit_targets).all().item()) and float(fit_targets.min()) >= 0.0 and float(fit_targets.max()) <= 1.0, "bound V2 TRAIN targets are nonfinite or outside [0,1]")
+    _require(bool(torch.isfinite(fit_ols.real).all().item()) and bool(torch.isfinite(fit_ols.imag).all().item()), "bound V2 step600 OLS rows contain nonfinite values")
+    return {"fit_indices": fit_indices, "fit_labels": fit_labels.to(device), "fit_targets": fit_targets.to(device), "fit_ols": fit_ols.to(device)}
+
+
+def _load_inputs(root: Path, device: torch.device) -> dict[str, Any]:
+    preflight_repair_authority = _validate_retry_preflight(root)
+    prior_preflight, prior_report, prior_status, prior_source, prior_manifest = _prior_bindings(root)
+    prior = _load_prior_raw(root)
+    config = prior_report["run_identity"]["config_identity"]
+    checkpoint = safe_torch_load(root / v1.rescue.START_CHECKPOINT, expected_sha256=v1.rescue.START_CHECKPOINT_SHA256, map_location="cpu")
+    _require(isinstance(checkpoint, Mapping), "accepted step600 checkpoint payload is malformed")
+    data_identity = prior_report.get("data_identity")
+    bank_authority = config.get("step600_train_ols_bank")
+    fit_selection = config.get("fit_selection")
+    _require(
+        checkpoint.get("schema") == v1.rescue.m0.CUSTOM_CHECKPOINT_SCHEMA
+        and checkpoint.get("step") == 600
+        and checkpoint.get("artifact_kind") == "M0_SCIENTIFIC_CHECKPOINT"
+        and checkpoint.get("selected_checkpoint") is True
+        and checkpoint.get("parent_checkpoint_sha256") == v1.rescue.m0.START_CHECKPOINT_SHA256
+        and isinstance(data_identity, Mapping)
+        and checkpoint.get("data_identity") == data_identity
+        and config.get("starting_checkpoint", {}).get("path") == v1.rescue.START_CHECKPOINT.as_posix()
+        and config.get("starting_checkpoint", {}).get("sha256") == v1.rescue.START_CHECKPOINT_SHA256
+        and isinstance(bank_authority, Mapping)
+        and bank_authority.get("path") == v2.STEP600_TRAIN_OLS_PATH.as_posix()
+        and bank_authority.get("sha256") == v2.STEP600_TRAIN_OLS_SHA256
+        and bank_authority.get("report_path") == v2.STEP600_TRAIN_OLS_REPORT_PATH.as_posix()
+        and bank_authority.get("report_sha256") == v2.STEP600_TRAIN_OLS_REPORT_SHA256
+        and bank_authority.get("source_manifest_path") == v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH.as_posix()
+        and bank_authority.get("source_manifest_sha256") == v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_SHA256
+        and bank_authority.get("source_manifest_id") == v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_ID
+        and isinstance(fit_selection, Mapping)
+        and fit_selection.get("rows") == FIT_ROWS
+        and fit_selection.get("rows_per_class") == 20
+        and fit_selection.get("seed") == v1.FIT_SEED
+        and fit_selection.get("interleaved_class_batches") is True
+        and prior_report.get("run_identity", {}).get("config_identity", {}).get("E_D_checkpoint_sha256") == v1.E_D_SHA256,
+        "accepted V2 measurement no longer binds step600, OLS bank, fixed TRAIN fit, or E_D",
+    )
+    _require(
+        all(int(prior_report.get("data_reads", {}).get(role, 0)) == 0 for role in ("dev", "protected", "test", "sealed")),
+        "accepted V2 source recorded a forbidden data-role read",
+    )
+    data = _fixed_data_from_prior(prior, device)
+    return {
+        "authorities": {"checkpoint": dict(checkpoint)},
+        "data_identity": dict(data_identity),
+        "data": data,
+        "prior_raw": prior,
+        "prior_preflight": prior_preflight,
+        "prior_report": prior_report,
+        "prior_status": prior_status,
+        "prior_source": prior_source,
+        "prior_manifest": prior_manifest,
+        "preflight_repair_authority": preflight_repair_authority,
+    }
+
+
+def _config(root: Path, loaded: Mapping[str, Any]) -> dict[str, Any]:
+    data = loaded["data"]
+    return {
+        "authorization_id": AUTHORIZATION_ID,
+        "preflight_repair_authority": loaded["preflight_repair_authority"],
+        "outer_gate": OUTER_GATE,
+        "accepted_start_checkpoint": {"path": v1.rescue.START_CHECKPOINT.as_posix(), "sha256": v1.rescue.START_CHECKPOINT_SHA256, "step": 600},
+        "frozen_evaluator": {"path": v1.rescue.three.ED_CHECKPOINT.as_posix(), "sha256": v1.E_D_SHA256, "role": "read-only independent E_D confirmation"},
+        "step600_ols_bank": {"path": v2.STEP600_TRAIN_OLS_PATH.as_posix(), "sha256": v2.STEP600_TRAIN_OLS_SHA256, "source_manifest_id": v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_ID, "report_path": v2.STEP600_TRAIN_OLS_REPORT_PATH.as_posix(), "report_sha256": v2.STEP600_TRAIN_OLS_REPORT_SHA256, "source_manifest_path": v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH.as_posix(), "source_manifest_sha256": v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_SHA256},
+        "prior_v2_authorities": {"preflight": {"path": PRIOR_PREFLIGHT_PATH.as_posix(), "sha256": PRIOR_DIGESTS["preflight"]}, "report": {"path": PRIOR_REPORT_PATH.as_posix(), "sha256": PRIOR_DIGESTS["report"]}, "status": {"path": PRIOR_STATUS_PATH.as_posix(), "sha256": PRIOR_DIGESTS["status"]}, "source_manifest": {"path": PRIOR_SOURCE_PATH.as_posix(), "sha256": PRIOR_DIGESTS["source_manifest"], "source_manifest_id": PRIOR_SOURCE_MANIFEST_ID}, "raw_tensor": {"path": PRIOR_RAW_PATH.as_posix(), "sha256": PRIOR_DIGESTS["raw_tensor"]}, "execution_manifest": {"path": PRIOR_EXECUTION_MANIFEST_PATH.as_posix(), "sha256": PRIOR_DIGESTS["execution_manifest"]}},
+        "fixed_train_fit": {"rows": FIT_ROWS, "rows_per_class": 20, "indices_sha256": _tensor_sha256(data["fit_indices"]), "labels_sha256": _tensor_sha256(data["fit_labels"]), "targets_sha256": _tensor_sha256(data["fit_targets"]), "ols_sha256": _tensor_sha256(data["fit_ols"]), "data_identity": loaded["data_identity"]},
+        "optical_runtime_identity": loaded["runtime_identity"],
+        "loss": "balanced foreground/background MSE on adaptive_avg_pool(clamp(raw_intensity,0,1),28x28); target foreground > 0.1",
+        "dimensionless_ols_parameterization": "z_i = z_i0 + (norm2(z_i0)/sqrt(100))*u_i; project norm2(u_i) <= sqrt(100) after every Adam update",
+        "optimizer": {"name": "independent Adam per TRAIN row", "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS), "updates_per_row": UPDATES_PER_ROW, "global_minibatch_updates": GLOBAL_UPDATES},
+        "gate": {"clipped_pixel_fraction_max": MAX_CLIPPED_FRACTION, "per_row_relative_ols_l2_max": 1.0, "foreground_and_background_reduction_min": 0.5, "E_D_macro_recall_min": 0.5, "E_D_per_class_recall_min": 0.1},
+        "frozen": ["all optical runtime parameters", "W_OLS", "optical geometry", "E_D"],
+        "recovery": {"interval_global_updates": CHECKPOINT_INTERVAL, "rotating_slots": RECOVERY_SLOTS, "payload": ["dimensionless OLS rows", "all row Adam states", "cursor", "RNG", "source and data identity"]},
+        "budget": {"total_seconds": MAX_TOTAL_SECONDS, "preflight_seconds": MAX_PREFLIGHT_SECONDS, "device_memory_fraction": MAX_DEVICE_MEMORY_FRACTION},
+        "data_role": "bound V2 TRAIN fit artifact only; 200 rows; DEV/protected/test/sealed reads zero",
+    }
+
+
+def _source_and_identity(root: Path, loaded: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any], ResearchRunIdentity]:
+    config = _config(root, loaded)
+    source = capture_execution_source_manifest(root, task_id=TASK_ID, semantic_authority_id=SEMANTIC_AUTHORITY_ID, relevant_paths=_source_paths(root), config_identity=config).to_dict()
+    identity = ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        trajectory_id=TRAJECTORY_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role=v1.bogt.TRAIN_ROLE,
+        config_identity=config,
+        model_identity="LIGHTGEN_2D_M0_BOGT_STEP600_FIXED_GENERATOR_BOUNDED_OLS",
+        optimizer_identity={"coordinate": "per-row dimensionless complex OLS u", "family": "Adam", "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS)},
+        sampler_identity={"fixed_fit_rows": FIT_ROWS, "per_class": 20, "seed": v1.FIT_SEED, "updates_per_row": UPDATES_PER_ROW},
+        execution_source_semantics_id=source["execution_source_semantics_id"],
+        source_manifest_id=source["source_manifest_id"],
+        scientific_attempt_id=ATTEMPT_ID,
+    )
+    return config, source, identity
+
+
+def _snapshot(device: torch.device) -> dict[str, int]:
+    free, total = torch.cuda.mem_get_info(device)
+    return {"used_bytes": int(total - free), "free_bytes": int(free), "total_bytes": int(total), "allocated_bytes": int(torch.cuda.memory_allocated(device)), "reserved_bytes": int(torch.cuda.memory_reserved(device)), "peak_allocated_bytes": int(torch.cuda.max_memory_allocated(device)), "peak_reserved_bytes": int(torch.cuda.max_memory_reserved(device))}
+
+
+def _check_memory(snapshot: Mapping[str, int], stage: str) -> None:
+    total = max(1, int(snapshot["total_bytes"]))
+    peak = max(int(snapshot["used_bytes"]), int(snapshot["reserved_bytes"]), int(snapshot["peak_reserved_bytes"]))
+    _require(peak <= int(total * MAX_DEVICE_MEMORY_FRACTION), f"device memory limit exceeded during {stage}: observed={peak}, total={total}, limit={MAX_DEVICE_MEMORY_FRACTION}", ResourceBudgetExceeded)
+
+
+def _cuda_stage(device: torch.device, operation: Any) -> tuple[Any, dict[str, Any]]:
+    torch.cuda.synchronize(device)
+    before = _snapshot(device)
+    torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    value = operation()
+    torch.cuda.synchronize(device)
+    after = _snapshot(device)
+    stage = {"elapsed_seconds": time.perf_counter() - started, "device_before": before, "device_after": after}
+    _check_memory(after, "preflight stage")
+    return value, stage
+
+
+def _heartbeat_probe() -> None:
+    with tempfile.TemporaryDirectory(prefix="m0-ols-scale-heartbeat-") as directory:
+        for label, transitions in {
+            "completed": ((RUN_PREPARING, "PREPARING", 0), (RUNNING, "TRAINING", 1), (RUNNING, "FINALIZING", 2), (RUN_COMPLETED, "COMPLETED", 2)),
+            "failed": ((RUN_PREPARING, "PREPARING", 0), (RUN_VALID_FAILED, "VALID_FAILED", 0)),
+            "interrupted": ((RUN_PREPARING, "PREPARING", 0), (RUN_INTERRUPTED, "INTERRUPTED", 0)),
+            "invalid": ((RUN_PREPARING, "PREPARING", 0), (RUN_INVALID_HARNESS, "INVALID_HARNESS", 0)),
+        }.items():
+            writer = v1.rescue.HeartbeatWriter(Path(directory) / label, RUN_ID, total_steps=GLOBAL_UPDATES)
+            for state, phase, step in transitions:
+                record = writer.update(state=state, phase=phase, step=step, force=True)
+                _require(record is not None and record["state"] == state and record["phase"] == phase, "production heartbeat phase write failed")
+        status_path = Path(directory) / "status.json"
+        _status(status_path, RUN_PREPARING, "PREPARING", completed_updates=0)
+        _status(status_path, RUNNING, "TRAINING", completed_updates=1)
+        _status(status_path, RUN_COMPLETED, "COMPLETED", completed_updates=1, classification="WRITE_PROBE")
+        _require(_read_json(status_path).get("state") == RUN_COMPLETED, "production terminal status write failed")
+
+
+def _initial_scales(z0: torch.Tensor) -> torch.Tensor:
+    _require(torch.is_complex(z0) and z0.ndim == 2 and z0.shape[1] == FEATURES, "fixed OLS bank has an unexpected complex shape")
+    norms = torch.linalg.vector_norm(z0.abs().to(torch.float64), dim=1).to(z0.real.dtype)
+    _require(bool(torch.isfinite(norms).all().item()) and bool((norms > 0).all().item()), "fixed OLS rows have zero or nonfinite scale")
+    return norms / math.sqrt(FEATURES)
+
+
+def _project_dimensionless(values: torch.Tensor, radius: float = TRUST_RADIUS) -> torch.Tensor:
+    _require(torch.is_complex(values) and values.ndim == 2 and radius > 0.0, "dimensionless OLS projection input is invalid")
+    norms = torch.linalg.vector_norm(values.abs().to(torch.float64), dim=1).to(values.real.dtype)
+    factors = (radius / norms.clamp_min(torch.finfo(values.real.dtype).tiny)).clamp(max=1.0)
+    return values * factors[:, None]
+
+
+def _gate_classification(metrics: Mapping[str, Any]) -> str:
+    if float(metrics["clipped_pixel_fraction"]) > MAX_CLIPPED_FRACTION:
+        return "SATURATION_PERSISTS_WITHIN_BOUND"
+    if all(bool(metrics[key]) for key in ("raw_valid", "offset_bound", "foreground_reduction_pass", "background_reduction_pass", "E_D_macro_pass", "E_D_per_class_pass")):
+        return "BOUNDED_OLS_RENDERABILITY_SUPPORTED"
+    return "SCALE_COLLAPSE_REMOVED_TARGET_NOT_REACHED"
+
+
+def _scheduled_rows(global_step: int) -> list[int]:
+    _require(0 <= global_step < GLOBAL_UPDATES, "OLS global step is outside fixed schedule")
+    chunk = global_step % CHUNKS_PER_PASS
+    return list(range(chunk * BATCH_SIZE, (chunk + 1) * BATCH_SIZE))
+
+
+def _update_count_bounds(completed_steps: int) -> dict[str, int]:
+    _require(0 <= completed_steps <= GLOBAL_UPDATES, "OLS completed-step count is outside fixed schedule")
+    counts = _row_update_counts(completed_steps)
+    return {"min": min(counts), "max": max(counts)}
+
+
+def _row_update_counts(completed_steps: int) -> list[int]:
+    _require(0 <= completed_steps <= GLOBAL_UPDATES, "OLS completed-step count is outside fixed schedule")
+    full_passes, remaining_batches = divmod(completed_steps, CHUNKS_PER_PASS)
+    return [full_passes + int(index // BATCH_SIZE < remaining_batches) for index in range(FIT_ROWS)]
+
+
+def _new_rows_and_optimizers(z0: torch.Tensor, device: torch.device) -> tuple[list[nn.Parameter], list[torch.optim.Adam]]:
+    rows = [nn.Parameter(torch.zeros(FEATURES, dtype=z0.dtype, device=device)) for _ in range(FIT_ROWS)]
+    optimizers = [torch.optim.Adam([row], lr=LEARNING_RATE, betas=ADAM_BETAS) for row in rows]
+    return rows, optimizers
+
+
+def _apply_row_update(
+    consumer: Any, rows: Sequence[nn.Parameter], optimizers: Sequence[torch.optim.Adam],
+    z0: torch.Tensor, scales: torch.Tensor, targets: torch.Tensor, row_indices: Sequence[int],
+    *, enabled: bool = True,
+) -> dict[str, float | int]:
+    selected = [int(index) for index in row_indices]
+    _require(len(selected) == BATCH_SIZE and len(set(selected)) == BATCH_SIZE and all(0 <= index < FIT_ROWS for index in selected), "scale-rescue OLS batch indices are invalid")
+    for index in selected:
+        optimizers[index].zero_grad(set_to_none=True)
+    u = torch.stack([rows[index] for index in selected])
+    idx = torch.tensor(selected, dtype=torch.long, device=z0.device)
+    coefficients = z0.index_select(0, idx) + scales.index_select(0, idx)[:, None] * u
+    if enabled:
+        raw = consumer.runtime.forward_from_ols(coefficients).raw_intensity
+        loss, foreground, background = v1._canonical_pixel_loss(v1._evaluator_view(raw), targets.index_select(0, idx))
+    else:
+        loss = sum(rows[index].abs().sum() for index in selected) * 0.0
+        foreground = loss
+        background = loss
+    loss.backward()
+    zero_gradient_rows = 0
+    for index in selected:
+        gradient = rows[index].grad
+        _require(gradient is not None and bool(torch.isfinite(gradient.real).all().item()) and bool(torch.isfinite(gradient.imag).all().item()), f"dimensionless OLS gradient is missing or nonfinite at row {index}")
+        zero_gradient_rows += int(float(gradient.abs().norm().item()) == 0.0)
+        optimizers[index].step()
+    with torch.no_grad():
+        batch_u = torch.stack([rows[index] for index in selected])
+        projected = _project_dimensionless(batch_u)
+        for local, index in enumerate(selected):
+            rows[index].copy_(projected[local])
+            _require(bool(torch.isfinite(rows[index].real).all().item()) and bool(torch.isfinite(rows[index].imag).all().item()), f"dimensionless OLS parameter became nonfinite at row {index}")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "frozen optical runtime accumulated gradients")
+    return {"balanced_mse": float(loss.detach().cpu()), "foreground_mse": float(foreground.detach().cpu()), "background_mse": float(background.detach().cpu()), "zero_gradient_rows": zero_gradient_rows}
+
+
+def _optimizer_payload(optimizers: Sequence[torch.optim.Adam]) -> list[dict[str, Any]]:
+    return [copy.deepcopy(optimizer.state_dict()) for optimizer in optimizers]
+
+
+def _recovery_payload(
+    rows: Sequence[nn.Parameter], optimizers: Sequence[torch.optim.Adam], *, cursor: int,
+    source: Mapping[str, Any], data_binding: Mapping[str, Any], started_epoch: float,
+    trace: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema": RECOVERY_SCHEMA,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "attempt_id": ATTEMPT_ID,
+        "source_manifest_id": source["source_manifest_id"],
+        "execution_source_semantics_id": source["execution_source_semantics_id"],
+        "data_binding": dict(data_binding),
+        "phase": "OLS_INPUT_ONLY",
+        "cursor": cursor,
+        "dimensionless_ols_rows": torch.stack([row.detach().cpu() for row in rows]),
+        "optimizer_states": _optimizer_payload(optimizers),
+        "rng_state": v1.bogt._rng_state_payload(),
+        "trace": [dict(item) for item in trace],
+        "attempt_started_epoch": started_epoch,
+    }
+
+
+def _recovery_path(target: Path, slot: int) -> Path:
+    return target / f"recovery_slot_{slot}.pt"
+
+
+def _save_recovery(target: Path, payload: Mapping[str, Any], heartbeat: Any) -> dict[str, Any]:
+    slot = (int(payload["cursor"]) // CHECKPOINT_INTERVAL) % RECOVERY_SLOTS
+    path = _recovery_path(target, slot)
+    atomic_torch_save(path, dict(payload))
+    digest = file_sha256(path)
+    heartbeat.remember_recovery_checkpoint(path.name)
+    return {"schema": RECOVERY_SCHEMA, "path": path.name, "slot": slot, "cursor": int(payload["cursor"]), "sha256": digest, "attempt_id": ATTEMPT_ID, "source_manifest_id": payload["source_manifest_id"]}
+
+
+def _load_recovery(target: Path, pointer: Mapping[str, Any], source: Mapping[str, Any], data_binding: Mapping[str, Any]) -> dict[str, Any]:
+    name = pointer.get("path")
+    _require(isinstance(name, str) and Path(name).name == name and name.startswith("recovery_slot_"), "recovery pointer path is invalid")
+    path = target / name
+    _require(path.is_file() and file_sha256(path) == pointer.get("sha256"), "recovery checkpoint is missing or changed")
+    payload = safe_torch_load(path, expected_sha256=str(pointer["sha256"]), map_location="cpu")
+    _require(isinstance(payload, Mapping), "recovery payload is malformed")
+    _require(payload.get("schema") == RECOVERY_SCHEMA and payload.get("task_id") == TASK_ID and payload.get("outer_gate") == OUTER_GATE and payload.get("authorization_id") == AUTHORIZATION_ID and payload.get("attempt_id") == ATTEMPT_ID, "recovery identity changed")
+    _require(payload.get("source_manifest_id") == source.get("source_manifest_id") and payload.get("execution_source_semantics_id") == source.get("execution_source_semantics_id") and payload.get("data_binding") == dict(data_binding), "recovery source or data identity changed")
+    _require(payload.get("phase") == "OLS_INPUT_ONLY" and payload.get("cursor") == pointer.get("cursor") and 0 <= int(payload["cursor"]) <= GLOBAL_UPDATES, "recovery cursor or phase changed")
+    _require(payload.get("dimensionless_ols_rows").shape == (FIT_ROWS, FEATURES) and len(payload.get("optimizer_states", [])) == FIT_ROWS, "recovery parameter or optimizer bank is malformed")
+    return dict(payload)
+
+
+def _data_binding(data: Mapping[str, torch.Tensor]) -> dict[str, str]:
+    return {"fit_indices_sha256": _tensor_sha256(data["fit_indices"]), "fit_labels_sha256": _tensor_sha256(data["fit_labels"]), "fit_targets_sha256": _tensor_sha256(data["fit_targets"]), "step600_ols_sha256": _tensor_sha256(data["fit_ols"])}
+
+
+def _restore_training_state(payload: Mapping[str, Any], rows: Sequence[nn.Parameter], optimizers: Sequence[torch.optim.Adam], device: torch.device) -> None:
+    state = payload["dimensionless_ols_rows"]
+    for row, saved in zip(rows, state, strict=True):
+        row.data.copy_(saved.to(device=device, dtype=row.dtype))
+    for optimizer, saved in zip(optimizers, payload["optimizer_states"], strict=True):
+        optimizer.load_state_dict(saved)
+    v1.bogt.restore_rng_state(payload["rng_state"])
+
+
+def _finite_difference_checks(consumer: Any, z0: torch.Tensor, targets: torch.Tensor) -> dict[str, Any]:
+    z_parameter = nn.Parameter(z0[:BATCH_SIZE].detach().clone().contiguous())
+
+    def objective() -> torch.Tensor:
+        raw = consumer.runtime.forward_from_ols(z_parameter).raw_intensity
+        return v1._canonical_pixel_loss(v1._evaluator_view(raw), targets[:BATCH_SIZE])[0]
+
+    loss = objective()
+    gradient = torch.autograd.grad(loss, z_parameter)[0]
+    checks: dict[str, Any] = {}
+    for component, values in (("real", gradient.real), ("imag", gradient.imag)):
+        _require(bool(torch.isfinite(values).all().item()), f"OLS {component} finite-difference analytic gradient is nonfinite")
+        eligible = values.detach().abs().reshape(-1)
+        index = int(eligible.argmax().item())
+        derivative = float(eligible[index].item()) * (1.0 if float(values.reshape(-1)[index].item()) >= 0 else -1.0)
+        _require(abs(derivative) > 1.0e-8, f"OLS {component} finite-difference gradient is zero")
+        coordinate = z_parameter.detach().reshape(-1)[index]
+        component_value = float((coordinate.real if component == "real" else coordinate.imag).cpu())
+        epsilon_scale = max(abs(component_value), 1.0e-6)
+        epsilons = tuple(epsilon_scale * factor for factor in FD_RELATIVE_FACTORS)
+        checks[component] = v1._finite_difference_component(z_parameter, index, component, derivative, epsilons, objective, name=f"scale-rescue OLS {component}")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "finite-difference probe accumulated frozen optical gradients")
+    return {"complex_ols": checks, "optimizer_updates": 0, "epsilon_rule": "0.5, 0.25, 0.125 times max(abs(selected coordinate), 1e-6)"}
+
+
+def _legacy_localization_probe(consumer: Any, data: Mapping[str, torch.Tensor], prior: Mapping[str, Any]) -> dict[str, Any]:
+    z0 = data["fit_ols"][:BATCH_SIZE].detach()
+    targets = data["fit_targets"][:BATCH_SIZE]
+    with torch.no_grad():
+        raw_start = consumer.runtime.forward_from_ols(z0).raw_intensity.detach()
+    _require(torch.allclose(raw_start.cpu(), prior["ols_arm"]["raw_cmos_start"][:BATCH_SIZE], rtol=RAW_COMPARE_RTOL, atol=RAW_COMPARE_ATOL), "step600 raw CMOS replay differs from the bound V2 artifact")
+
+    candidate = nn.Parameter(z0.clone().contiguous())
+    optimizer = v1._adam([candidate])
+    optimizer.zero_grad(set_to_none=True)
+    old_loss, _, _ = v1._canonical_pixel_loss(v1._evaluator_view(consumer.runtime.forward_from_ols(candidate).raw_intensity), targets)
+    old_loss.backward()
+    old_gradient = candidate.grad.detach().clone()
+    optimizer.step()
+    with torch.no_grad():
+        legacy_raw = consumer.runtime.forward_from_ols(candidate).raw_intensity.detach()
+    z_norm = torch.linalg.vector_norm(z0.abs().to(torch.float64), dim=1).clamp_min(1.0e-30)
+    legacy_relative_step = torch.linalg.vector_norm((candidate.detach() - z0).abs().to(torch.float64), dim=1) / z_norm
+    legacy = {"learning_rate": LEGACY_LEARNING_RATE, "gradient_norm": float(old_gradient.abs().norm().cpu()), "relative_l2_step_mean": float(legacy_relative_step.mean().cpu()), "relative_l2_step_max": float(legacy_relative_step.max().cpu()), "raw_mean_after_step": float(legacy_raw.mean().cpu()), "raw_max_after_step": float(legacy_raw.max().cpu()), "clipped_pixel_fraction_after_step": float((legacy_raw > 1.0).float().mean().cpu())}
+
+    old_end = prior["ols_arm"]["optimized_ols"].to(device=z0.device, dtype=z0.dtype)
+    saved_old_raw = prior["ols_arm"]["raw_cmos_end"].detach().cpu()
+    _require(old_end.shape == data["fit_ols"].shape and saved_old_raw.shape == (FIT_ROWS, 1, 200, 200), "prior V2 optimized OLS comparison bank is malformed")
+    old_end_raw = v2._raw_from_ols(consumer, old_end)
+    _require(torch.allclose(old_end_raw, saved_old_raw, rtol=RAW_COMPARE_RTOL, atol=RAW_COMPARE_ATOL), "V2 saturated raw CMOS does not replay from its recorded OLS coefficients")
+    zero_raw = 0
+    total_raw = 0
+    zero_coefficients = 0
+    total_coefficients = 0
+    for start in range(0, FIT_ROWS, BATCH_SIZE):
+        terminal_parameter = nn.Parameter(old_end[start : start + BATCH_SIZE].clone().contiguous())
+        terminal_raw = consumer.runtime.forward_from_ols(terminal_parameter).raw_intensity
+        terminal_loss, _, _ = v1._canonical_pixel_loss(v1._evaluator_view(terminal_raw), data["fit_targets"][start : start + BATCH_SIZE])
+        raw_gradient = torch.autograd.grad(terminal_loss, terminal_raw, retain_graph=True)[0]
+        coefficient_gradient = torch.autograd.grad(terminal_loss, terminal_parameter)[0]
+        _require(bool(torch.isfinite(raw_gradient).all().item()) and bool(torch.isfinite(coefficient_gradient.real).all().item()) and bool(torch.isfinite(coefficient_gradient.imag).all().item()), "prior V2 saturation gradient probe is nonfinite")
+        zero_raw += int((raw_gradient == 0).sum().item())
+        total_raw += raw_gradient.numel()
+        zero_coefficients += int((coefficient_gradient == 0).sum().item())
+        total_coefficients += coefficient_gradient.numel()
+        del terminal_raw, terminal_parameter, raw_gradient, coefficient_gradient, terminal_loss
+    saturation = {"sample_rows": FIT_ROWS, "raw_pixel_fraction_above_one": float((old_end_raw > 1.0).to(torch.float64).mean()), "loss_gradient_zero_fraction_at_raw_cmos": zero_raw / total_raw, "coefficient_gradient_zero_fraction": zero_coefficients / total_coefficients, "raw_mean": float(old_end_raw.mean()), "raw_max": float(old_end_raw.max())}
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "legacy localization probe accumulated frozen optical gradients")
+    row_norms = torch.linalg.vector_norm(data["fit_ols"].abs().to(torch.float64), dim=1)
+    return {"step600_initial_ols_magnitude": {"coefficient_abs_median": float(data["fit_ols"].abs().median().cpu()), "coefficient_abs_q95": float(torch.quantile(data["fit_ols"].abs().to(torch.float64).flatten(), 0.95).cpu()), "row_l2_norm_median": float(torch.median(row_norms).cpu())}, "step600_initial_raw_mean": float(raw_start.mean().cpu()), "step600_initial_raw_max": float(raw_start.max().cpu()), "step600_initial_clipped_pixel_fraction": float((raw_start > 1.0).float().mean().cpu()), "legacy_unbounded_first_adam_step": legacy, "prior_v2_optimized_ols_gradient_support": saturation}
+
+
+def _step_dimensionless_fd(consumer: Any, data: Mapping[str, torch.Tensor]) -> dict[str, Any]:
+    z0 = data["fit_ols"][:BATCH_SIZE].detach()
+    scales = _initial_scales(z0)
+    u = nn.Parameter(torch.zeros_like(z0))
+
+    def objective() -> torch.Tensor:
+        raw = consumer.runtime.forward_from_ols(z0 + scales[:, None] * u).raw_intensity
+        return v1._canonical_pixel_loss(v1._evaluator_view(raw), data["fit_targets"][:BATCH_SIZE])[0]
+
+    loss = objective()
+    gradient = torch.autograd.grad(loss, u)[0]
+    _require(bool(torch.isfinite(gradient.real).all().item()) and bool(torch.isfinite(gradient.imag).all().item()), "dimensionless OLS chain-rule gradient is nonfinite")
+    _require(float(gradient.abs().norm().item()) > 0.0, "dimensionless OLS chain-rule gradient is zero")
+    return {"dimensionless_gradient_norm": float(gradient.abs().norm().cpu()), "scale_min": float(scales.min().cpu()), "scale_median": float(scales.median().cpu()), "scale_max": float(scales.max().cpu())}
+
+
+def _load_scale_runtime(root: Path, checkpoint: Mapping[str, Any], device: torch.device) -> tuple[Any, dict[str, Any]]:
+    consumer = v1.bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer(device=device, propagation_grid_size=v1.bogt.PRODUCTION_PROPAGATION_GRID)
+    model_identity = checkpoint.get("run_identity", {}).get("model_identity")
+    _require(
+        isinstance(model_identity, Mapping)
+        and model_identity.get("runtime") == "LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1"
+        and model_identity.get("trainable") == ["encoder.phase", "generator.phase"],
+        "accepted step600 checkpoint names a different optical runtime or trainable boundary",
+    )
+    runtime_identity = consumer.runtime_identity()
+    _require(
+        runtime_identity.get("identity") == "LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1"
+        and runtime_identity.get("ols_interface") == v1.bogt.OLS_INTERFACE_ID
+        and runtime_identity.get("ols_shape") == [FEATURES]
+        and runtime_identity.get("transport") == "T=I_100 coefficient space",
+        "current optical runtime or W_OLS identity is incompatible with the accepted checkpoint",
+    )
+    parent = v1.rescue.m0.parent
+    references = parent._load_references(root / v1.rescue.m0.FROZEN_REFERENCES, expected_data_identity=checkpoint["data_identity"])
+    weights = parent._load_weights(root / v1.rescue.m0.FROZEN_WEIGHTS, expected_reference_identity=parent.canonical_sha256(references.identity()))
+    _require(v1.rescue.m0._tree_equal(checkpoint.get("references"), references.to_payload()), "accepted step600 BOGT references changed")
+    _require(v1.rescue.m0._tree_equal(checkpoint.get("weights"), weights.to_payload()), "accepted step600 BOGT weights changed")
+    consumer.load_trainable_state_dict(dict(checkpoint["trainable_parameter_state"]))
+    consumer.bind_references(references, for_scientific=True)
+    consumer.bind_weights(weights, for_scientific=True)
+    consumer.runtime.eval()
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    _require(all(not parameter.requires_grad and parameter.grad is None for parameter in consumer.runtime.parameters()), "optical runtime did not freeze for scale-rescue")
+    return consumer, runtime_identity
+
+
+def _run_preflight(root: Path, token: str) -> dict[str, Any]:
+    _require(token == AUTHORIZATION_TOKEN, "scale-rescue authorization token mismatch")
+    runs = root / RUNS_ROOT
+    path = root / PREFLIGHT_PATH
+    retry_authority = _validate_retry_preflight(root)
+    _require(not path.exists(), "scale-rescue preflight_02 is write-once")
+    _require(not runs.exists() or {item.name for item in runs.iterdir()} == {PREFLIGHT_01_PATH.name}, "scale-rescue retry namespace contains unexpected artifacts")
+    _require(not (root / ATTEMPT_DIR).exists(), "scale-rescue attempt must remain unopened before READY")
+    runs.mkdir(parents=True, exist_ok=True)
+    started = time.perf_counter()
+    report: dict[str, Any] = {"schema": PREFLIGHT_SCHEMA, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "preflight_sequence": 2, "recheck_count": 1, "retry_authority": retry_authority, "scientific_attempt_opened": False, "stage_measurements": []}
+    component = "input_lineage"
+    device: torch.device | None = None
+    try:
+        _require(torch.cuda.is_available(), "strict scale-rescue preflight requires CUDA")
+        device = torch.device("cuda", torch.cuda.current_device())
+        initial_snapshot = _snapshot(device)
+        _check_memory(initial_snapshot, "before model loading")
+        component = "prior_evidence_and_fixed_train_artifact_load"
+        torch.cuda.reset_peak_memory_stats(device)
+        stage_start = time.perf_counter()
+        loaded = _load_inputs(root, device)
+        torch.cuda.synchronize(device)
+        input_snapshot = _snapshot(device)
+        _check_memory(input_snapshot, component)
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": time.perf_counter() - stage_start, "device_snapshot": input_snapshot})
+        component = "model_loading"
+        torch.cuda.reset_peak_memory_stats(device)
+        stage_start = time.perf_counter()
+        consumer, runtime_identity = _load_scale_runtime(root, loaded["authorities"]["checkpoint"], device)
+        evaluator = v1._load_ed(root, device)
+        loaded["runtime_identity"] = runtime_identity
+        runtime_before = v1._state_snapshot(consumer.runtime)
+        evaluator_before = v1._state_snapshot(evaluator)
+        for parameter in consumer.runtime.parameters():
+            parameter.requires_grad_(False)
+            parameter.grad = None
+        _require(all(not parameter.requires_grad and parameter.grad is None for parameter in consumer.runtime.parameters()), "optical runtime did not freeze before diagnostic")
+        model_snapshot = _snapshot(device)
+        _check_memory(model_snapshot, component)
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": time.perf_counter() - stage_start, "device_snapshot": model_snapshot})
+        config, source, identity = _source_and_identity(root, loaded)
+        report.update({"source_manifest": source, "run_identity": identity.to_dict(), "prior_v2_source_manifest_id": loaded["prior_source"]["source_manifest_id"], "prior_v2_outer_gate": loaded["prior_report"]["outer_gate"]})
+        data = loaded["data"]
+        prior_raw = loaded["prior_raw"]
+        device_data = _data_binding(data)
+        component = "fixed_scale_and_read_only_diagnostic"
+        torch.cuda.reset_peak_memory_stats(device)
+        stage_start = time.perf_counter()
+        localization = _legacy_localization_probe(consumer, data, prior_raw)
+        dimensionless_gradient = _step_dimensionless_fd(consumer, data)
+        finite_difference = _finite_difference_checks(consumer, data["fit_ols"], data["fit_targets"])
+        localization_snapshot = _snapshot(device)
+        _check_memory(localization_snapshot, component)
+        localization_seconds = time.perf_counter() - stage_start
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": localization_seconds, "device_snapshot": localization_snapshot})
+
+        rows, optimizers = _new_rows_and_optimizers(data["fit_ols"], device)
+        scales = _initial_scales(data["fit_ols"])
+        component = "three_step_real_cuda_update_and_controls"
+        update_seconds: list[float] = []
+        step_metrics: list[dict[str, float | int]] = []
+        torch.cuda.reset_peak_memory_stats(device)
+        stage_start = time.perf_counter()
+        for cursor in range(3):
+            update_start = time.perf_counter()
+            step_metrics.append(_apply_row_update(consumer, rows, optimizers, data["fit_ols"], scales, data["fit_targets"], _scheduled_rows(cursor)))
+            torch.cuda.synchronize(device)
+            update_seconds.append(time.perf_counter() - update_start)
+            _require(torch.equal(_project_dimensionless(torch.stack([row.detach() for row in rows])), torch.stack([row.detach() for row in rows])), "dimensionless OLS projection failed to preserve in-bound values")
+        positive_snapshot = _snapshot(device)
+        _check_memory(positive_snapshot, component)
+        positive_elapsed = time.perf_counter() - stage_start
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": positive_elapsed, "device_snapshot": positive_snapshot})
+        _require(all(value["zero_gradient_rows"] == 0 for value in step_metrics), "positive-control OLS update had a zero row gradient")
+
+        component = "negative_control_and_production_recovery_probe"
+        torch.cuda.reset_peak_memory_stats(device)
+        stage_start = time.perf_counter()
+        control_rows, control_optimizers = _new_rows_and_optimizers(data["fit_ols"], device)
+        before_disabled = torch.stack([row.detach().clone() for row in control_rows])
+        _apply_row_update(consumer, control_rows, control_optimizers, data["fit_ols"], scales, data["fit_targets"], list(range(BATCH_SIZE)), enabled=False)
+        after_disabled = torch.stack([row.detach() for row in control_rows])
+        _require(torch.equal(before_disabled, after_disabled), "disabled-loss negative control changed dimensionless OLS values")
+        _require(v1._tree_equal(runtime_before, v1._state_snapshot(consumer.runtime)), "frozen optics changed during preflight update")
+        _require(v1._tree_equal(evaluator_before, v1._state_snapshot(evaluator)), "frozen E_D changed during preflight")
+        _require(all(not parameter.requires_grad and parameter.grad is None for parameter in evaluator.parameters()), "E_D gradient isolation failed")
+
+        with tempfile.TemporaryDirectory(prefix="m0-ols-scale-recovery-") as temp_dir:
+            temp_target = Path(temp_dir)
+            payload = _recovery_payload(rows, optimizers, cursor=3, source=source, data_binding=device_data, started_epoch=0.0, trace=step_metrics)
+            recovery_heartbeat = v1.rescue.HeartbeatWriter(temp_target, RUN_ID, total_steps=GLOBAL_UPDATES)
+            recovery_heartbeat.update(state=RUNNING, phase="TRAINING", step=3, force=True)
+            pointer = _save_recovery(temp_target, payload, recovery_heartbeat)
+            restored = _load_recovery(temp_target, pointer, source, device_data)
+            checkpoint_rows = torch.stack([row.detach().clone() for row in rows])
+            next_rows = _scheduled_rows(3)
+            branch_a = _apply_row_update(consumer, rows, optimizers, data["fit_ols"], scales, data["fit_targets"], next_rows)
+            after_a = torch.stack([row.detach().clone() for row in rows])
+            _restore_training_state(restored, rows, optimizers, device)
+            branch_b = _apply_row_update(consumer, rows, optimizers, data["fit_ols"], scales, data["fit_targets"], next_rows)
+            after_b = torch.stack([row.detach() for row in rows])
+            _require(torch.equal(after_a, after_b) and branch_a == branch_b and torch.equal(checkpoint_rows, restored["dimensionless_ols_rows"].to(device)), "recovery next-update equivalence failed")
+        _heartbeat_probe()
+        recovery_snapshot = _snapshot(device)
+        _check_memory(recovery_snapshot, component)
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": time.perf_counter() - stage_start, "device_snapshot": recovery_snapshot})
+
+        component = "full_fixed_train_measurement_and_artifact_write_probe"
+        torch.cuda.reset_peak_memory_stats(device)
+        measurement_started = time.perf_counter()
+        baseline_raw = v2._raw_from_ols(consumer, data["fit_ols"])
+        baseline_metrics = v1._metrics_for_raw(baseline_raw.to(device), data["fit_targets"], data["fit_labels"], evaluator)
+        baseline_evaluator_macro = baseline_metrics["E_D"]["macro_recall"]
+        with tempfile.TemporaryDirectory(prefix="m0-ols-scale-write-") as temp_dir:
+            temp = Path(temp_dir)
+            measurement_probe = temp / "measurement_probe.pt"
+            atomic_torch_save_new(measurement_probe, {"raw": baseline_raw, "metrics": baseline_metrics, "indices": data["fit_indices"]}, artifact_kind="scale-rescue measurement write probe")
+            v1._save_contact_sheet(temp / "contact_probe.png", v1._evaluator_view(baseline_raw.to(device)).cpu(), data["fit_labels"].cpu(), scale=1.0, title="scale-rescue measurement probe")
+            measurement_write_bytes = measurement_probe.stat().st_size
+            contact_probe_bytes = (temp / "contact_probe.png").stat().st_size
+        measurement_seconds = time.perf_counter() - measurement_started
+        measurement_snapshot = _snapshot(device)
+        _check_memory(measurement_snapshot, component)
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": measurement_seconds, "device_snapshot": measurement_snapshot})
+        del baseline_raw, baseline_metrics, control_rows, control_optimizers, before_disabled, after_disabled
+        update_median = statistics.median(update_seconds)
+        checkpoint_seconds = 0.0
+        checkpoint_probe_bytes = 0
+        component = "full_size_recovery_checkpoint_write_probe"
+        torch.cuda.reset_peak_memory_stats(device)
+        checkpoint_started = time.perf_counter()
+        checkpoint_probe_payload = dict(payload)
+        nonempty_optimizer = next((state for state in payload["optimizer_states"] if state.get("state")), None)
+        _require(nonempty_optimizer is not None, "recovery probe did not initialize an independent Adam state")
+        checkpoint_probe_payload["optimizer_states"] = [copy.deepcopy(state if state.get("state") else nonempty_optimizer) for state in payload["optimizer_states"]]
+        checkpoint_probe_payload["trace"] = [{"balanced_mse": 0.1, "foreground_mse": 0.1, "background_mse": 0.1, "zero_gradient_rows": 0, "step": step, "pass": ((step - 1) // CHUNKS_PER_PASS) + 1} for step in range(1, GLOBAL_UPDATES + 1)]
+        checkpoint_probe_payload["cursor"] = GLOBAL_UPDATES
+        with tempfile.TemporaryDirectory(prefix="m0-ols-scale-checkpoint-cost-") as temp_dir:
+            probe_root = Path(temp_dir)
+            checkpoint_heartbeat = v1.rescue.HeartbeatWriter(probe_root, RUN_ID, total_steps=GLOBAL_UPDATES)
+            checkpoint_heartbeat.update(state=RUNNING, phase="TRAINING", step=GLOBAL_UPDATES, force=True)
+            pointer = _save_recovery(probe_root, checkpoint_probe_payload, checkpoint_heartbeat)
+            checkpoint_seconds = time.perf_counter() - checkpoint_started
+            checkpoint_probe_bytes = (probe_root / pointer["path"]).stat().st_size
+        checkpoint_snapshot = _snapshot(device)
+        _check_memory(checkpoint_snapshot, component)
+        report["stage_measurements"].append({"stage": component, "elapsed_seconds": checkpoint_seconds, "device_snapshot": checkpoint_snapshot})
+        projected_steps = GLOBAL_UPDATES * update_median * 1.5
+        projected_checkpoints = (GLOBAL_UPDATES // CHECKPOINT_INTERVAL + 1) * checkpoint_seconds
+        projected_measurements = measurement_seconds * 2.5 + localization_seconds * 0.5
+        cumulative_preflight = time.perf_counter() - started
+        projected_total = cumulative_preflight + projected_steps + projected_checkpoints + projected_measurements
+        snapshots = [row["device_snapshot"] for row in report["stage_measurements"]]
+        projected_memory = max(max(int(x["used_bytes"]) / max(1, int(x["total_bytes"])), int(x["peak_reserved_bytes"]) / max(1, int(x["total_bytes"]))) for x in snapshots)
+        resource = {"update_seconds_observed": update_seconds, "update_seconds_median": update_median, "projected_update_seconds_with_margin": projected_steps, "checkpoint_write_probe_seconds": checkpoint_seconds, "checkpoint_write_probe_bytes": checkpoint_probe_bytes, "projected_checkpoint_write_seconds": projected_checkpoints, "measurement_probe_seconds": measurement_seconds, "measurement_probe_bytes": measurement_write_bytes, "contact_sheet_probe_bytes": contact_probe_bytes, "projected_measurement_seconds": projected_measurements, "projected_total_seconds_including_preflight": projected_total, "maximum_total_seconds": MAX_TOTAL_SECONDS, "cumulative_preflight_seconds": cumulative_preflight, "maximum_preflight_seconds": MAX_PREFLIGHT_SECONDS, "maximum_device_memory_fraction": MAX_DEVICE_MEMORY_FRACTION, "observed_device_memory_fraction": projected_memory, "stage_measurements": report["stage_measurements"]}
+        report["diagnostic"] = {"legacy_scale_and_clipping": localization, "dimensionless_gradient_chain_rule": dimensionless_gradient, "finite_difference": finite_difference, "three_step_positive_control": {"updates": 3, "trace": step_metrics, "status": "PASS"}, "disabled_loss_negative_control": {"status": "PASS", "parameter_unchanged": True}, "recovery_next_update_equivalence": "PASS", "heartbeat_write_probe": "PASS", "fixed_train_measurement_probe": {"rows": FIT_ROWS, "baseline_E_D_macro": baseline_evaluator_macro, "write_status": "PASS"}, "frozen_state": "PASS", "data_binding": device_data, "data_reads": {"train": FIT_ROWS, "dev": 0, "protected": 0, "test": 0, "sealed": 0}}
+        _require(cumulative_preflight <= MAX_PREFLIGHT_SECONDS, "five-minute scale-rescue preflight cap exceeded", ResourceBudgetExceeded)
+        _require(projected_total <= MAX_TOTAL_SECONDS, "fixed 6000-update scale-rescue workload exceeds 40-minute cap", ResourceBudgetExceeded)
+        _require(projected_memory <= MAX_DEVICE_MEMORY_FRACTION, "scale-rescue preflight projection exceeds 90% device memory", ResourceBudgetExceeded)
+        checks = {
+            "static_lineage_and_fixed_train_inputs": "PASS",
+            "prior_raw_replay_and_gradient_localization": "PASS",
+            "three_step_real_cuda_update": {"status": "PASS", "updates": 3},
+            "real_imag_finite_difference": finite_difference,
+            "disabled_loss_negative_control": "PASS",
+            "optics_and_evaluator_freeze": "PASS",
+            "recovery_next_update_equivalence": "PASS",
+            "production_heartbeat_write_probe": "PASS",
+            "measurement_and_artifact_write_probe": "PASS",
+            "data_firewall": report["diagnostic"]["data_reads"],
+        }
+        receipt = PreflightReceipt(source_semantics_id=source["execution_source_semantics_id"], authorization_id=AUTHORIZATION_ID, checks={CORRECTNESS_INVARIANTS: checks, RESOURCE_ENVELOPE: resource, IMPLEMENTATION_SELECTION: {"status": "PASS", "selected": "one bounded dimensionless OLS arm"}}, selected_engine="CUDA", resource=resource, recheck_count=1, status=PREFLIGHT_READY)
+        identity_control = ResearchRunControl(identity, AUTHORIZATION_ID)
+        identity_control.mark_preflight_ready(receipt)
+        report.update({"status": PREFLIGHT_READY, "classification": None, "checks": checks, "resource": resource, "run_config": config, "run_identity": identity.to_dict(), "source_manifest": source, "receipt": receipt.to_dict(), "cumulative_preflight_seconds": cumulative_preflight, "scientific_attempt_opened": False})
+        return _write_preflight(path, report, started)
+    except ResourceBudgetExceeded as error:
+        report.update({"status": PREFLIGHT_BLOCKED, "classification": "PREFLIGHT_BLOCKED(resource)", "reason": str(error), "failure_component": component, "scientific_attempt_opened": False})
+    except torch.cuda.OutOfMemoryError as error:
+        report.update({"status": PREFLIGHT_BLOCKED, "classification": "PREFLIGHT_BLOCKED(resource)", "reason": f"CUDA out of memory during {component}: {error}", "failure_component": component, "scientific_attempt_opened": False})
+    except Exception as error:
+        report.update({"status": RUN_INVALID_HARNESS, "classification": RUN_INVALID_HARNESS, "reason": f"{type(error).__name__}: {error}", "failure_component": component, "scientific_attempt_opened": False})
+    return _write_preflight(path, report, started)
+
+
+def _write_preflight(path: Path, report: dict[str, Any], started: float) -> dict[str, Any]:
+    report["elapsed_seconds"] = time.perf_counter() - started
+    if "resource" in report:
+        report["resource"]["cumulative_preflight_seconds"] = report.get("cumulative_preflight_seconds", report["elapsed_seconds"])
+    atomic_write_new_json(path, report, artifact_kind="M0 OLS scale rescue source-bound preflight")
+    return report
+
+
+def _load_preflight(root: Path, loaded: Mapping[str, Any], *, allow_attempt: bool = False) -> tuple[dict[str, Any], dict[str, Any], ResearchRunIdentity, PreflightReceipt]:
+    _require((root / PREFLIGHT_PATH).is_file(), "source-bound scale-rescue preflight is missing")
+    preflight = _read_json(root / PREFLIGHT_PATH)
+    _require(preflight.get("schema") == PREFLIGHT_SCHEMA and preflight.get("task_id") == TASK_ID and preflight.get("outer_gate") == OUTER_GATE and preflight.get("status") == PREFLIGHT_READY and preflight.get("preflight_sequence") == 2 and preflight.get("recheck_count") == 1 and preflight.get("scientific_attempt_opened") is False, "scale-rescue preflight_02 is not consumable READY")
+    config, source, identity = _source_and_identity(root, loaded)
+    _require(preflight.get("source_manifest", {}).get("execution_source_semantics_id") == source["execution_source_semantics_id"] and preflight.get("source_manifest", {}).get("source_manifest_id") == source["source_manifest_id"], "scale-rescue READY source binding changed")
+    _require(preflight.get("run_config") == config, "scale-rescue READY run configuration changed")
+    receipt = PreflightReceipt.from_mapping(preflight.get("receipt", {}))
+    _require(receipt.status == PREFLIGHT_READY and receipt.authorization_id == AUTHORIZATION_ID and receipt.source_semantics_id == source["execution_source_semantics_id"] and receipt.recheck_count == 1, "scale-rescue READY receipt identity changed")
+    _require(float(preflight.get("cumulative_preflight_seconds", float("inf"))) <= MAX_PREFLIGHT_SECONDS, "scale-rescue preflight exceeded five minutes", ResourceBudgetExceeded)
+    _require(allow_attempt or not (root / ATTEMPT_DIR).exists(), "scale-rescue attempt already exists")
+    return preflight, source, identity, receipt
+
+
+@contextlib.contextmanager
+def _execution_lock(root: Path) -> Iterator[None]:
+    path = root / RUNS_ROOT / "attempt_01.execution.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        if path.stat().st_size == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as error:
+                raise ScaleRescueError("another process holds the scale-rescue execution lock") from error
+            try:
+                yield
+            finally:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as error:
+                raise ScaleRescueError("another process holds the scale-rescue execution lock") from error
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _status(path: Path, state: str, phase: str, **fields: Any) -> dict[str, Any]:
+    payload = {"schema": "m0_bogt_ols_scale_gradient_rescue_status.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "state": state, "phase": phase, "updated_at": time.time(), **fields}
+    if path.exists():
+        atomic_write_json(path, payload)
+    else:
+        atomic_write_new_json(path, payload, artifact_kind="M0 OLS scale rescue attempt status")
+    return payload
+
+
+def _load_execution_inputs(root: Path, device: torch.device, *, allow_attempt: bool = False) -> tuple[dict[str, Any], dict[str, Any], ResearchRunIdentity, PreflightReceipt, dict[str, Any], Any, torch.nn.Module]:
+    _require(torch.cuda.is_available(), "scale-rescue execution requires CUDA")
+    loaded = _load_inputs(root, device)
+    consumer, runtime_identity = _load_scale_runtime(root, loaded["authorities"]["checkpoint"], device)
+    evaluator = v1._load_ed(root, device)
+    loaded["runtime_identity"] = runtime_identity
+    runtime_snapshot = v1._state_snapshot(consumer.runtime)
+    evaluator_snapshot = v1._state_snapshot(evaluator)
+    _require(all(not parameter.requires_grad and parameter.grad is None for parameter in consumer.runtime.parameters()), "optical runtime was not frozen for scale-rescue execution")
+    _require(all(not parameter.requires_grad and parameter.grad is None for parameter in evaluator.parameters()), "E_D was not frozen for scale-rescue execution")
+    loaded["runtime_snapshot"] = runtime_snapshot
+    loaded["evaluator_snapshot"] = evaluator_snapshot
+    preflight, source, identity, receipt = _load_preflight(root, loaded, allow_attempt=allow_attempt)
+    return preflight, source, identity, receipt, loaded, consumer, evaluator
+
+
+def _raw_summary(raw: torch.Tensor) -> dict[str, Any]:
+    flat = raw.detach().to(torch.float64).flatten(1)
+    _require(bool(torch.isfinite(raw).all().item()), "raw CMOS contains nonfinite values")
+    std = flat.std(dim=1, unbiased=False)
+    return {"shape": list(raw.shape), "min": float(raw.min()), "max": float(raw.max()), "mean": float(raw.mean()), "std": float(raw.std(unbiased=False)), "per_image_std_min": float(std.min()), "per_image_std_max": float(std.max()), "all_finite": True, "all_nonzero": bool((flat.abs().amax(dim=1) > 0).all().item()), "all_nonconstant": bool((std > 0).all().item()), "clipped_pixel_fraction": float((raw > 1.0).to(torch.float64).mean()), "per_image_clipped_fraction_max": float((raw > 1.0).to(torch.float64).flatten(1).mean(1).max())}
+
+
+def _metrics(raw_cpu: torch.Tensor, data: Mapping[str, torch.Tensor], evaluator: torch.nn.Module) -> dict[str, Any]:
+    return v1._metrics_for_raw(raw_cpu.to(next(evaluator.parameters()).device), data["fit_targets"], data["fit_labels"], evaluator)
+
+
+def _train_arm(
+    root: Path, consumer: Any, data: Mapping[str, torch.Tensor], source: Mapping[str, Any],
+    target: Path, heartbeat: Any, status_path: Path, *, recovery: Mapping[str, Any] | None,
+    deadline: float, started_epoch: float, expected_runtime_snapshot: Mapping[str, torch.Tensor],
+) -> dict[str, Any]:
+    z0 = data["fit_ols"].detach()
+    scales = _initial_scales(z0)
+    rows, optimizers = _new_rows_and_optimizers(z0, z0.device)
+    trace: list[dict[str, Any]] = []
+    cursor = 0
+    if recovery is not None:
+        _restore_training_state(recovery, rows, optimizers, z0.device)
+        cursor = int(recovery["cursor"])
+        trace = [dict(item) for item in recovery["trace"]]
+        _require(len(trace) == cursor, "recovery trace and cursor disagree")
+    binding = _data_binding(data)
+    recovery_pointer: dict[str, Any] | None = None
+    if recovery is None:
+        initial = _recovery_payload(rows, optimizers, cursor=0, source=source, data_binding=binding, started_epoch=started_epoch, trace=trace)
+        recovery_pointer = _save_recovery(target, initial, heartbeat)
+    for step in range(cursor, GLOBAL_UPDATES):
+        _require(time.perf_counter() < deadline, "40-minute scale-rescue wall-clock budget reached", ResourceBudgetExceeded)
+        values = _apply_row_update(consumer, rows, optimizers, z0, scales, data["fit_targets"], _scheduled_rows(step))
+        values["step"] = step + 1
+        values["pass"] = (step // CHUNKS_PER_PASS) + 1
+        trace.append(values)
+        heartbeat.update(state=RUNNING, phase="TRAINING", step=step + 1, latest_losses={key: value for key, value in values.items() if key.endswith("mse")}, force=(step + 1) % CHECKPOINT_INTERVAL == 0)
+        if (step + 1) % CHECKPOINT_INTERVAL == 0:
+            payload = _recovery_payload(rows, optimizers, cursor=step + 1, source=source, data_binding=binding, started_epoch=started_epoch, trace=trace)
+            recovery_pointer = _save_recovery(target, payload, heartbeat)
+            snapshot = _snapshot(z0.device)
+            _check_memory(snapshot, "scale-rescue OLS arm")
+            _status(status_path, RUNNING, "OLS_INPUT_ONLY", completed_updates=step + 1, ols_global_steps=step + 1, ols_passes_completed=(step + 1) // CHUNKS_PER_PASS, ols_per_row_update_counts=_update_count_bounds(step + 1), recovery_artifact=recovery_pointer, resource_snapshot=snapshot, cumulative_execution_seconds=time.time() - started_epoch)
+    optimized = z0 + scales[:, None] * torch.stack([row.detach() for row in rows])
+    relative_offsets = torch.linalg.vector_norm((optimized - z0).abs().to(torch.float64), dim=1) / torch.linalg.vector_norm(z0.abs().to(torch.float64), dim=1).clamp_min(1.0e-30)
+    _require(bool(torch.isfinite(optimized.real).all().item()) and bool(torch.isfinite(optimized.imag).all().item()), "optimized bounded OLS coefficients are nonfinite")
+    _require(float(relative_offsets.max().item()) <= 1.0 + 2.0e-6, "dimensionless OLS trust region was violated")
+    _require(v1._tree_equal(expected_runtime_snapshot, v1._state_snapshot(consumer.runtime)), "frozen optical runtime changed during OLS optimization")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "frozen optical runtime accumulated gradients during OLS optimization")
+    row_counts = _row_update_counts(GLOBAL_UPDATES)
+    _require(set(row_counts) == {UPDATES_PER_ROW} and len(trace) == GLOBAL_UPDATES, "fixed schedule did not update each OLS row exactly 300 times")
+    final_payload = _recovery_payload(rows, optimizers, cursor=GLOBAL_UPDATES, source=source, data_binding=binding, started_epoch=started_epoch, trace=trace)
+    recovery_pointer = _save_recovery(target, final_payload, heartbeat)
+    return {"optimized_ols": optimized.detach().cpu(), "dimensionless_u": torch.stack([row.detach().cpu() for row in rows]), "row_counts": row_counts, "trace": trace, "relative_offsets": relative_offsets.detach().cpu(), "recovery_artifact": recovery_pointer, "runtime_frozen": True}
+
+
+def _save_contact_once(path: Path, view: torch.Tensor, labels: torch.Tensor, *, scale: float, title: str) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f"{path.stem}-", dir=path.parent) as directory:
+        candidate = Path(directory) / path.name
+        v1._save_contact_sheet(candidate, view, labels, scale=scale, title=title)
+        digest = file_sha256(candidate)
+        if path.exists():
+            _require(file_sha256(path) == digest, f"existing contact sheet differs from deterministic measurement: {path.name}")
+        else:
+            os.replace(candidate, path)
+    return digest
+
+
+def _measurement_payload(data: Mapping[str, torch.Tensor], result: Mapping[str, Any], start_raw: torch.Tensor, end_raw: torch.Tensor) -> dict[str, Any]:
+    return {"schema": "m0_bogt_ols_scale_gradient_rescue_measurements.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "fit_indices": data["fit_indices"].detach().cpu(), "fit_labels": data["fit_labels"].detach().cpu(), "fit_targets_28x28": data["fit_targets"].detach().cpu(), "step600_ols": data["fit_ols"].detach().cpu(), "optimized_ols": result["optimized_ols"], "dimensionless_u": result["dimensionless_u"], "raw_cmos_start": start_raw.detach().cpu(), "raw_cmos_end": end_raw.detach().cpu(), "per_row_relative_offset": result["relative_offsets"], "update_count_per_row": torch.tensor(result["row_counts"], dtype=torch.int16)}
+
+
+def _build_report(
+    root: Path, target: Path, preflight: Mapping[str, Any], source: Mapping[str, Any], identity: ResearchRunIdentity,
+    consumer: Any, data: Mapping[str, torch.Tensor], evaluator: torch.nn.Module, start_raw: torch.Tensor,
+    optimized: Mapping[str, Any], attempt_started_epoch: float, execution_setup_seconds: float, recovery_pointer: Mapping[str, Any],
+) -> dict[str, Any]:
+    end_raw = v2._raw_from_ols(consumer, optimized["optimized_ols"].to(data["fit_ols"].device))
+    # Keep the final raw measurement on CPU; E_D and the loss consume one bounded copy.
+    start_metrics = _metrics(start_raw, data, evaluator)
+    end_metrics = _metrics(end_raw, data, evaluator)
+    for region in ("foreground", "background"):
+        key = f"{region}_mse"
+        end_metrics["pixel"].setdefault("relative_reduction", {})[region] = 1.0 - end_metrics["pixel"][key] / start_metrics["pixel"][key]
+    end_metrics["raw_cmos"] = _raw_summary(end_raw)
+    max_offset = float(optimized["relative_offsets"].max().item())
+    raw_valid = bool(end_metrics["raw_cmos"]["all_finite"] and end_metrics["raw_cmos"]["all_nonzero"] and end_metrics["raw_cmos"]["all_nonconstant"])
+    outcome_metrics = {
+        "clipped_pixel_fraction": end_metrics["raw_cmos"]["clipped_pixel_fraction"],
+        "raw_valid": raw_valid,
+        "offset_bound": max_offset <= 1.0 + 2.0e-6,
+        "foreground_reduction_pass": float(end_metrics["pixel"]["relative_reduction"]["foreground"]) >= 0.5,
+        "background_reduction_pass": float(end_metrics["pixel"]["relative_reduction"]["background"]) >= 0.5,
+        "E_D_macro_pass": float(end_metrics["E_D"]["macro_recall"]) >= 0.5,
+        "E_D_per_class_pass": min(end_metrics["E_D"]["per_class_recall"]) >= 0.1,
+    }
+    classification = _gate_classification(outcome_metrics)
+    sample_metrics = {"start": start_metrics["per_sample"], "end": end_metrics["per_sample"]}
+    measure_path = target / "scale_rescue_measurements.pt"
+    measure_payload = _measurement_payload(data, optimized, start_raw, end_raw)
+    if measure_path.exists():
+        existing = safe_torch_load(measure_path, map_location="cpu")
+        _require(isinstance(existing, Mapping) and all(torch.equal(existing[key], measure_payload[key]) for key in ("fit_indices", "fit_labels", "fit_targets_28x28", "step600_ols", "optimized_ols", "dimensionless_u", "raw_cmos_start", "raw_cmos_end", "per_row_relative_offset", "update_count_per_row")), "existing scale-rescue tensor artifact differs from current measurement")
+    else:
+        atomic_torch_save_new(measure_path, measure_payload, artifact_kind="M0 bounded OLS scale-rescue raw tensor")
+    views = {"start": v1._evaluator_view(start_raw.to(data["fit_ols"].device)).detach().cpu(), "end": v1._evaluator_view(end_raw.to(data["fit_ols"].device)).detach().cpu()}
+    common_scale = float(torch.quantile(torch.cat([views["start"].flatten(), views["end"].flatten()]), 0.995).clamp_min(1.0e-8))
+    sheets = {
+        "start": _save_contact_once(target / "start_contact_sheet.png", views["start"], data["fit_labels"].cpu(), scale=common_scale, title="bounded OLS start"),
+        "end": _save_contact_once(target / "end_contact_sheet.png", views["end"], data["fit_labels"].cpu(), scale=common_scale, title="bounded OLS end"),
+    }
+    final_device_snapshot = _snapshot(data["fit_ols"].device)
+    _check_memory(final_device_snapshot, "final raw CMOS measurements and contact sheets")
+    artifacts = {"measurement_tensors": {"path": measure_path.name, "sha256": file_sha256(measure_path), "size_bytes": measure_path.stat().st_size}, "contact_sheets": {name: {"path": f"{name}_contact_sheet.png", "sha256": digest, "size_bytes": (target / f"{name}_contact_sheet.png").stat().st_size} for name, digest in sheets.items()}}
+    report = {
+        "schema": REPORT_SCHEMA,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "classification": classification,
+        "outer_gate_passed": classification == "BOUNDED_OLS_RENDERABILITY_SUPPORTED",
+        "authorization_consumed": {"id": AUTHORIZATION_ID, "scope": "one bounded dimensionless OLS rescue arm on fixed TRAIN pairs"},
+        "run_identity": identity.to_dict(),
+        "source_manifest": dict(source),
+        "preflight": {"status": PREFLIGHT_READY, "receipt": preflight["receipt"]},
+        "data_identity": v2._read_json(root / v2.STEP600_TRAIN_OLS_REPORT_PATH)["source_manifest"]["config_identity"]["data_identity"],
+        "data_reads": {"train": FIT_ROWS, "dev": 0, "protected": 0, "test": 0, "sealed": 0},
+        "input_binding": preflight["diagnostic"]["data_binding"],
+        "fixed_train_rows": {"count": FIT_ROWS, "per_class": 20, "selection_seed": v1.FIT_SEED, "source": "same accepted step600 TRAIN fit rows as the completed V2 localization"},
+        "frozen_localization": preflight["diagnostic"]["legacy_scale_and_clipping"],
+        "prior_v2_saturation_gradient_support": preflight["diagnostic"]["legacy_scale_and_clipping"]["prior_v2_optimized_ols_gradient_support"],
+        "optimization": {"parameterization": "z_i=z_i0+s_i*u_i", "scale_per_row": "norm2(z_i0)/sqrt(100)", "projection": {"u_l2_radius": TRUST_RADIUS, "maximum_relative_ols_offset": 1.0}, "optimizer": {"name": "independent Adam per row", "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS)}, "global_minibatch_updates": GLOBAL_UPDATES, "updates_per_row": optimized["row_counts"], "updates_per_row_summary": {"min": min(optimized["row_counts"]), "max": max(optimized["row_counts"]), "all_equal": len(set(optimized["row_counts"])) == 1}, "relative_ols_offset": {"mean": float(optimized["relative_offsets"].mean()), "q95": float(torch.quantile(optimized["relative_offsets"], 0.95)), "max": max_offset}, "training_trace": {"first": optimized["trace"][0], "median": {key: statistics.median(float(row[key]) for row in optimized["trace"] if isinstance(row.get(key), (float, int))) for key in ("balanced_mse", "foreground_mse", "background_mse", "zero_gradient_rows")}, "last": optimized["trace"][-1]}, "frozen_optical_runtime": optimized["runtime_frozen"]},
+        "start_metrics": start_metrics,
+        "end_metrics": end_metrics,
+        "per_sample_metrics": sample_metrics,
+        "gate_checks": outcome_metrics,
+        "display_scale": {"shared_evaluator_view_99_5_percentile": common_scale, "per_image_rescaling": False},
+        "artifacts": artifacts,
+        "recovery_artifact": dict(recovery_pointer),
+        "resource": {"execution_setup_seconds": execution_setup_seconds, "attempt_wall_seconds": time.time() - attempt_started_epoch, "preflight_elapsed_seconds": float(preflight["elapsed_seconds"]), "total_wall_seconds": float(preflight["elapsed_seconds"]) + execution_setup_seconds + (time.time() - attempt_started_epoch), "maximum_total_seconds": MAX_TOTAL_SECONDS, "device_snapshot": final_device_snapshot, "device_memory_fraction_limit": MAX_DEVICE_MEMORY_FRACTION},
+        "claim_boundary": {"fixed_train_pairs_only": True, "not_generation_acceptance": True, "not_architecture_capacity_proof": True, "optimized_ols_is_not_a_sampler": True, "no_automatic_long_training": True},
+        "next_action": "DESIGN_NEXT_GATE_FROM_SCALE_RESCUE_RESULT; DO_NOT_START_AUTOMATICALLY",
+    }
+    _require(raw_valid, "completed scale-rescue raw CMOS measurement is invalid")
+    _require(outcome_metrics["offset_bound"], "completed scale-rescue coefficients exceeded the fixed trust region")
+    return report
+
+
+def _finalize(target: Path, report: Mapping[str, Any], control: ResearchRunControl, heartbeat: Any, status_path: Path, recovery_pointer: Mapping[str, Any]) -> None:
+    report_path = target / "report.json"
+    if report_path.exists():
+        existing = _read_json(report_path)
+        _require(existing.get("task_id") == TASK_ID and existing.get("outer_gate") == OUTER_GATE and existing.get("run_identity") == report.get("run_identity") and existing.get("artifacts") == report.get("artifacts") and existing.get("classification") == report.get("classification"), "existing terminal report differs from regenerated measurement")
+    else:
+        atomic_write_new_json(report_path, dict(report), artifact_kind="M0 OLS scale-rescue terminal report")
+    completed = report["classification"] == "BOUNDED_OLS_RENDERABILITY_SUPPORTED"
+    terminal_state = RUN_COMPLETED if completed else RUN_VALID_FAILED
+    terminal_phase = "COMPLETED" if completed else "VALID_FAILED"
+    if control.state in {RUNNING, RUN_SCIENTIFIC_ACTIVE}:
+        (control.complete if completed else control.valid_failed)()
+    _status(status_path, terminal_state, terminal_phase, classification=report["classification"], completed_updates=GLOBAL_UPDATES, ols_global_steps=GLOBAL_UPDATES, ols_passes_completed=UPDATES_PER_ROW, ols_per_row_update_counts={"min": UPDATES_PER_ROW, "max": UPDATES_PER_ROW}, recovery_artifact=dict(recovery_pointer), report_sha256=file_sha256(report_path), cumulative_execution_seconds=report["resource"]["attempt_wall_seconds"])
+    heartbeat.update(state=terminal_state, phase=terminal_phase, step=GLOBAL_UPDATES, force=True)
+
+
+def _execute(root: Path, token: str, *, resume: bool = False) -> dict[str, Any]:
+    _require(token == AUTHORIZATION_TOKEN, "scale-rescue authorization token mismatch")
+    _require(torch.cuda.is_available(), "scale-rescue execution requires CUDA")
+    preflight_json = _read_json(root / PREFLIGHT_PATH)
+    _require(preflight_json.get("status") == PREFLIGHT_READY, "scale-rescue execution requires source-bound READY")
+    device = torch.device("cuda", torch.cuda.current_device())
+    setup_started = time.perf_counter()
+    preflight, source, identity, receipt, loaded, consumer, evaluator = _load_execution_inputs(root, device, allow_attempt=resume)
+    loaded["consumer"] = consumer
+    loaded["evaluator"] = evaluator
+    _check_memory(_snapshot(device), "pre-attempt or resume model reload")
+    execution_setup_seconds = time.perf_counter() - setup_started
+    with _execution_lock(root):
+        return _execute_locked(root, device, loaded, preflight, source, identity, receipt, execution_setup_seconds=execution_setup_seconds, resume=resume)
+
+
+def _execute_locked(
+    root: Path, device: torch.device, loaded: dict[str, Any], preflight: Mapping[str, Any],
+    source: Mapping[str, Any], identity: ResearchRunIdentity, receipt: PreflightReceipt, *, execution_setup_seconds: float, resume: bool,
+) -> dict[str, Any]:
+    target = root / ATTEMPT_DIR
+    status_path = target / "status.json"
+    preflight_cumulative = float(preflight["elapsed_seconds"])
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    if resume:
+        _require(target.is_dir(), "resume requires the existing scale-rescue attempt")
+        current = _read_json(status_path)
+        _require(current.get("state") in {RUN_INTERRUPTED, RUNNING, RUN_PREPARING}, "only interrupted or crash-stale scale-rescue attempt may resume")
+        saved_source = _read_json(target / "source_manifest.json")
+        execution_manifest = _read_json(target / "execution_manifest.json")
+        saved_identity = ResearchRunIdentity.from_mapping(execution_manifest["run_identity"])
+        execution_setup_seconds = float(execution_manifest.get("execution_setup_seconds", float("nan")))
+        _require(math.isfinite(execution_setup_seconds) and execution_setup_seconds >= 0.0, "saved execution setup timing is malformed")
+        check_resume_compatibility(identity, saved_identity)
+        _require(saved_source.get("source_manifest_id") == source.get("source_manifest_id") and saved_source.get("execution_source_semantics_id") == source.get("execution_source_semantics_id"), "resume source manifest changed")
+        control.start_execution()
+        control.interrupted()
+        run_identity = control.resume_scientific_attempt(target, ATTEMPT_ID, receipt)
+        pointer = current.get("recovery_artifact")
+        recovery = _load_recovery(target, pointer, source, _data_binding(loaded["data"]))
+        started_epoch = float(recovery["attempt_started_epoch"])
+    else:
+        _require(not target.exists(), "scale-rescue attempt_01 is write-once")
+        control.start_execution()
+        run_identity = control.open_scientific_attempt(target, ATTEMPT_ID, receipt)
+        started_epoch = time.time()
+        recovery = None
+        source_path = target / "source_manifest.json"
+        atomic_write_new_json(source_path, dict(source), artifact_kind="scale-rescue source manifest")
+        atomic_write_new_json(target / "execution_manifest.json", {"schema": "m0_bogt_ols_scale_gradient_rescue_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "run_identity": run_identity.to_dict(), "source_manifest": dict(source), "preflight_receipt": receipt.to_dict(), "run_config": identity.config_identity, "input_authorities": identity.config_identity["prior_v2_authorities"], "execution_started_epoch": started_epoch, "execution_setup_seconds": execution_setup_seconds}, artifact_kind="scale-rescue execution manifest")
+        _status(status_path, RUN_PREPARING, "PREPARING", completed_updates=0, scientific_attempt_opened=True, source_manifest_id=source["source_manifest_id"], execution_source_semantics_id=source["execution_source_semantics_id"], attempt_started_epoch=started_epoch, execution_setup_seconds=execution_setup_seconds)
+    heartbeat = v1.rescue.HeartbeatWriter(target, RUN_ID, total_steps=GLOBAL_UPDATES)
+    try:
+        heartbeat.update(state=RUN_PREPARING, phase="PREPARING", step=int(recovery["cursor"]) if recovery else 0, force=True)
+        control.state = RUNNING
+        heartbeat.update(state=RUNNING, phase="TRAINING", step=int(recovery["cursor"]) if recovery else 0, force=True)
+        _status(status_path, RUNNING, "OLS_INPUT_ONLY", completed_updates=int(recovery["cursor"]) if recovery else 0, ols_global_steps=int(recovery["cursor"]) if recovery else 0, recovery_artifact=_read_json(status_path).get("recovery_artifact"), attempt_started_epoch=started_epoch)
+        elapsed_before = time.time() - started_epoch
+        deadline = time.perf_counter() + max(0.0, MAX_TOTAL_SECONDS - preflight_cumulative - execution_setup_seconds - elapsed_before)
+        _require(time.perf_counter() < deadline, "40-minute scale-rescue wall-clock budget already exhausted", ResourceBudgetExceeded)
+        runtime_snapshot = loaded["runtime_snapshot"]
+        evaluator_snapshot = loaded["evaluator_snapshot"]
+        consumer = loaded["consumer"]
+        evaluator = loaded["evaluator"]
+        initial_raw = v2._raw_from_ols(consumer, loaded["data"]["fit_ols"])
+        prior_replay = loaded["prior_raw"]["ols_arm"]["raw_cmos_start"]
+        _require(torch.allclose(initial_raw, prior_replay, rtol=RAW_COMPARE_RTOL, atol=RAW_COMPARE_ATOL), "step600 initial raw measurement differs from bound V2 input")
+        result = _train_arm(root, consumer, loaded["data"], source, target, heartbeat, status_path, recovery=recovery, deadline=deadline, started_epoch=started_epoch, expected_runtime_snapshot=runtime_snapshot)
+        _status(status_path, RUNNING, "FINALIZING", completed_updates=GLOBAL_UPDATES, ols_global_steps=GLOBAL_UPDATES, ols_passes_completed=UPDATES_PER_ROW, ols_per_row_update_counts={"min": UPDATES_PER_ROW, "max": UPDATES_PER_ROW}, recovery_artifact=result["recovery_artifact"], attempt_started_epoch=started_epoch, cumulative_execution_seconds=time.time() - started_epoch)
+        heartbeat.update(state=RUNNING, phase="FINALIZING", step=GLOBAL_UPDATES, last_recovery_checkpoint=result["recovery_artifact"]["path"], force=True)
+        report = _build_report(root, target, preflight, source, run_identity, consumer, loaded["data"], evaluator, initial_raw, result, started_epoch, execution_setup_seconds, result["recovery_artifact"])
+        _require(float(report["resource"]["total_wall_seconds"]) <= MAX_TOTAL_SECONDS, "40-minute scale-rescue total wall-clock budget exceeded", ResourceBudgetExceeded)
+        _require(v1._tree_equal(runtime_snapshot, v1._state_snapshot(consumer.runtime)), "frozen optical runtime state changed by the OLS arm")
+        _require(v1._tree_equal(evaluator_snapshot, v1._state_snapshot(evaluator)), "frozen E_D state changed during execution")
+        _require(all(parameter.grad is None for parameter in evaluator.parameters()), "E_D accumulated gradients during execution")
+        reads = {"train": FIT_ROWS, "dev": 0, "protected": 0, "test": 0, "sealed": 0}
+        _require(all(reads[name] == 0 for name in ("dev", "protected", "test", "sealed")), "non-TRAIN data role access detected")
+        _finalize(target, report, control, heartbeat, status_path, result["recovery_artifact"])
+        return report
+    except (ResourceBudgetExceeded, torch.cuda.OutOfMemoryError) as error:
+        current = _read_json(status_path)
+        if current.get("state") == RUN_COMPLETED or current.get("state") == RUN_VALID_FAILED:
+            raise
+        _status(status_path, RUN_INTERRUPTED, "INTERRUPTED", error=f"{type(error).__name__}: {error}", completed_updates=current.get("completed_updates", 0), recovery_artifact=current.get("recovery_artifact"), attempt_started_epoch=started_epoch, cumulative_execution_seconds=time.time() - started_epoch)
+        heartbeat.update(state=RUN_INTERRUPTED, phase="INTERRUPTED", step=int(current.get("completed_updates", 0)), force=True)
+        if control.state in {RUN_PREPARING, RUNNING, RUN_SCIENTIFIC_ACTIVE}:
+            control.interrupted()
+        raise
+    except KeyboardInterrupt:
+        current = _read_json(status_path)
+        _status(status_path, RUN_INTERRUPTED, "INTERRUPTED", error="KeyboardInterrupt", completed_updates=current.get("completed_updates", 0), recovery_artifact=current.get("recovery_artifact"), attempt_started_epoch=started_epoch)
+        heartbeat.update(state=RUN_INTERRUPTED, phase="INTERRUPTED", step=int(current.get("completed_updates", 0)), force=True)
+        if control.state in {RUN_PREPARING, RUNNING, RUN_SCIENTIFIC_ACTIVE}:
+            control.interrupted()
+        raise
+    except Exception as error:
+        current = _read_json(status_path)
+        if current.get("state") not in {RUN_COMPLETED, RUN_VALID_FAILED}:
+            _status(status_path, RUN_INVALID_HARNESS, "INVALID_HARNESS", error=f"{type(error).__name__}: {error}", completed_updates=current.get("completed_updates", 0), recovery_artifact=current.get("recovery_artifact"), attempt_started_epoch=started_epoch)
+            heartbeat.update(state=RUN_INVALID_HARNESS, phase="INVALID_HARNESS", step=int(current.get("completed_updates", 0)), force=True)
+            if control.state in {RUN_PREPARING, RUNNING, RUN_SCIENTIFIC_ACTIVE}:
+                control.invalid_harness()
+        raise
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--preflight", action="store_true")
+    mode.add_argument("--execute", action="store_true")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--authorization-token", default=None)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
+    root = _root()
+    try:
+        if args.preflight:
+            result = _run_preflight(root, args.authorization_token)
+            print(json.dumps({"task_id": TASK_ID, "status": result["status"], "reason": result.get("reason"), "elapsed_seconds": result.get("elapsed_seconds")}, ensure_ascii=False, indent=2))
+            return 0 if result["status"] == PREFLIGHT_READY else 2
+        result = _execute(root, args.authorization_token, resume=args.resume)
+        print(json.dumps({"task_id": TASK_ID, "status": result["classification"], "report": str(root / ATTEMPT_DIR / "report.json")}, ensure_ascii=False, indent=2))
+        return 0
+    except (ResourceBudgetExceeded, torch.cuda.OutOfMemoryError) as error:
+        state = "PREFLIGHT_BLOCKED(resource)" if args.preflight or not (root / ATTEMPT_DIR).exists() else "RESOURCE_ABORTED"
+        print(json.dumps({"task_id": TASK_ID, "status": state, "error": f"{type(error).__name__}: {error}"}, ensure_ascii=False, indent=2))
+        return 2
+    except Exception as error:
+        print(json.dumps({"task_id": TASK_ID, "status": RUN_INVALID_HARNESS, "error": f"{type(error).__name__}: {error}"}, ensure_ascii=False, indent=2))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

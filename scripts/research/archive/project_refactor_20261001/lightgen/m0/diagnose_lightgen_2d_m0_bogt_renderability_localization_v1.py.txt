@@ -1,0 +1,1803 @@
+"""Localize M0 semantic rendering with two bounded, TRAIN-only upper bounds."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import math
+import os
+import statistics
+import tempfile
+import time
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
+import torch
+import torch.nn.functional as F
+from PIL import Image, ImageDraw
+
+from ldm_project.v2.application.research.lightgen import lightgen_2d_chen_bogt_complex_ols_training as bogt
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PREFLIGHT_BLOCKED, PREFLIGHT_READY, RESOURCE_ENVELOPE, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INTERRUPTED, RUN_INVALID_HARNESS, RUN_PREPARING, RUN_VALID_FAILED, RUNNING, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_torch_save,
+    atomic_torch_save_new,
+    atomic_write_json,
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_canonical_image_rescue_v1 as rescue
+
+
+TASK_ID = "M0_BOGT_RENDERABILITY_LOCALIZATION_V1"
+AUTHORIZATION_TOKEN = "AUTHORIZED_M0_BOGT_RENDERABILITY_LOCALIZATION_V1"
+AUTHORIZATION_ID = f"{TASK_ID}:authorization:01"
+OUTER_GATE = "M0_BOGT_RENDERABILITY_LOCALIZATION_RESOLVED"
+SEMANTIC_AUTHORITY_ID = "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION"
+RUN_ID = "m0-bogt-renderability-localization-v1"
+TRAJECTORY_ID = "m0-bogt-renderability-localization-step600-fixed-train-pairs-v1"
+ATTEMPT_ID = f"{RUN_ID}:attempt_01"
+RUNS_ROOT = Path("outputs/20260926_m0_bogt_renderability_localization_v1/runs")
+ATTEMPT_DIR = RUNS_ROOT / "attempt_01"
+ROOT_CAUSE_REVIEW = RUNS_ROOT / "root_cause_review_01.json"
+ROOT_CAUSE_REVIEW_SCHEMA = "m0_bogt_renderability_localization_root_cause_review.v1"
+STEP900_CHECKPOINT_METADATA_FAILURE = "CHECK_STEP900_CHECKPOINT_METADATA"
+RECOVERY_SCHEMA = "m0_bogt_renderability_localization_recovery.v1"
+RECOVERY_SLOT_COUNT = 3
+START_STEP = 600
+STEP900_REPORT = Path("outputs/20260926_m0_bogt_canonical_image_rescue_v1/runs/attempt_02/report.json")
+STEP900_REPORT_SHA256 = "d3d6f7eeb6ff9e30ac4ca70c22da8fcd967916492ead8fb917ddd24cdbc672ba"
+STEP900_STATUS = Path("outputs/20260926_m0_bogt_canonical_image_rescue_v1/runs/attempt_02/status.json")
+STEP900_CHECKPOINT = Path("outputs/20260926_m0_bogt_canonical_image_rescue_v1/runs/attempt_02/scientific_step_000900.pt")
+STEP900_CHECKPOINT_SHA256 = "325bf0187300d1f1716e64081423757f0ec784fea4f2dd75664295e59bd7dfaf"
+E_D_SHA256 = rescue.E_D_SHA256
+PREFLIGHT_SCHEMA = "m0_bogt_renderability_localization_preflight.v1"
+REPORT_SCHEMA = "m0_bogt_renderability_localization_report.v1"
+HISTORICAL_PREFLIGHT_SHA256 = (
+    "e8bf79f047d21214894c8b02c2463bd2dd743e5a8a35e53799d2fb1f752e6898",
+    "ad65297c65e5cbb9f87239738d73985619c5f7e79d2bd27b9d3c0b07d7fa5867",
+)
+PAIR_COUNT_PER_CLASS = 20
+OBSERVATION_COUNT_PER_CLASS = 10
+PAIR_COUNT = 200
+OBSERVATION_COUNT = 100
+BATCH_SIZE = 10
+UPDATE_COUNT_PER_ARM = 300
+LEARNING_RATE = 1.0e-3
+ADAM_BETAS = (0.9, 0.999)
+ADAM_EPSILON = 1.0e-8
+WEIGHT_DECAY = 0.0
+MAX_TOTAL_SECONDS = 7200.0
+MAX_PREFLIGHT_SECONDS = 600.0
+MAX_DEVICE_MEMORY_FRACTION = 0.90
+PIXEL_REDUCTION_MIN = 0.50
+ED_MACRO_MIN = 0.50
+ED_CLASS_MIN = 0.10
+FIT_SEED = 926_026
+
+
+class LocalizationError(RuntimeError):
+    """Input authority, runtime, or diagnostic invariant failure."""
+
+    def __init__(self, message: str, *, failure_id: str | None = None) -> None:
+        super().__init__(message)
+        self.failure_id = failure_id
+
+
+class ResourceBudgetExceeded(LocalizationError):
+    """The preflight resource envelope cannot be met."""
+
+
+def _require(condition: bool, message: str, error: type[Exception] = LocalizationError) -> None:
+    if not condition:
+        raise error(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _tensor(value: object, name: str) -> torch.Tensor:
+    _require(isinstance(value, torch.Tensor), f"{name} must be a tensor")
+    return value
+
+
+def _finite(value: torch.Tensor, name: str) -> None:
+    _require(bool(torch.isfinite(value).all().item()), f"{name} is nonfinite")
+
+
+def _root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise LocalizationError(f"cannot read authority JSON: {path}") from error
+    _require(isinstance(value, dict), f"authority JSON is malformed: {path}")
+    return value
+
+
+def _balanced_selection(context: Any) -> tuple[torch.Tensor, torch.Tensor]:
+    """Choose fixed, interleaved TRAIN fit and observation rows by class."""
+    train_indices = context.train_indices.to(device="cpu", dtype=torch.long)
+    labels = context.labels.to(device="cpu", dtype=torch.long)
+    generator = torch.Generator(device="cpu").manual_seed(FIT_SEED)
+    chosen: list[torch.Tensor] = []
+    observed: list[torch.Tensor] = []
+    train_labels = labels.index_select(0, train_indices)
+    for digit in range(10):
+        class_positions = torch.nonzero(train_labels == digit, as_tuple=False).flatten()
+        _require(class_positions.numel() >= PAIR_COUNT_PER_CLASS + OBSERVATION_COUNT_PER_CLASS, f"TRAIN class {digit} is undersized")
+        order = class_positions[torch.randperm(class_positions.numel(), generator=generator)]
+        chosen.append(train_indices.index_select(0, order[:PAIR_COUNT_PER_CLASS]))
+        observed.append(train_indices.index_select(0, order[PAIR_COUNT_PER_CLASS : PAIR_COUNT_PER_CLASS + OBSERVATION_COUNT_PER_CLASS]))
+    fit = torch.stack(chosen, dim=1).reshape(-1)
+    holdout = torch.stack(observed, dim=1).reshape(-1)
+    _require(fit.unique().numel() == PAIR_COUNT and holdout.unique().numel() == OBSERVATION_COUNT, "fixed TRAIN selection contains duplicate rows")
+    _require(not bool(torch.isin(fit, holdout).any().item()), "fit and observation rows overlap")
+    _require(torch.bincount(labels.index_select(0, fit), minlength=10).tolist() == [PAIR_COUNT_PER_CLASS] * 10, "fit class balance changed")
+    _require(torch.bincount(labels.index_select(0, holdout), minlength=10).tolist() == [OBSERVATION_COUNT_PER_CLASS] * 10, "observation class balance changed")
+    return fit, holdout
+
+
+def _canonical_pixel_loss(output_view: torch.Tensor, target_view: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    _require(output_view.shape == target_view.shape and output_view.ndim == 4, "canonical image views are malformed")
+    _finite(output_view, "canonical output view")
+    _finite(target_view, "canonical target view")
+    squared = (output_view - target_view).square()
+    foreground_losses: list[torch.Tensor] = []
+    background_losses: list[torch.Tensor] = []
+    for image_error, image_target in zip(squared, target_view, strict=True):
+        foreground = image_target > 0.1
+        background = ~foreground
+        _require(bool(foreground.any().item()) and bool(background.any().item()), "canonical target must include foreground and background")
+        foreground_losses.append(image_error[foreground].mean())
+        background_losses.append(image_error[background].mean())
+    foreground_loss = torch.stack(foreground_losses).mean()
+    background_loss = torch.stack(background_losses).mean()
+    return 0.5 * (foreground_loss + background_loss), foreground_loss, background_loss
+
+
+def _evaluator_view(raw_cmos: torch.Tensor) -> torch.Tensor:
+    _require(raw_cmos.ndim == 4 and tuple(raw_cmos.shape[-2:]) == (200, 200), "raw CMOS geometry changed")
+    return F.adaptive_avg_pool2d(raw_cmos.clamp(0.0, 1.0), (28, 28))
+
+
+def _classification_metrics(labels: torch.Tensor, predictions: torch.Tensor) -> dict[str, Any]:
+    _require(labels.shape == predictions.shape and labels.ndim == 1, "classification vectors are malformed")
+    confusion = torch.bincount(labels.to(torch.long) * 10 + predictions.to(torch.long), minlength=100).reshape(10, 10)
+    counts = torch.bincount(labels.to(torch.long), minlength=10)
+    recalls = confusion.diag().to(torch.float64) / counts.clamp_min(1).to(torch.float64)
+    return {
+        "rows": int(labels.numel()),
+        "macro_recall": float(recalls.mean()),
+        "per_class_recall": [float(item) for item in recalls],
+        "confusion_matrix_actual_rows_predicted_columns": confusion.tolist(),
+        "class8_prediction_fraction": float((predictions == 8).to(torch.float64).mean()),
+    }
+
+
+def _arm_reaches_target(metrics: Mapping[str, Any]) -> bool:
+    pixel = _mapping(metrics.get("pixel"), "arm pixel metrics")
+    ed = _mapping(metrics.get("E_D"), "arm evaluator metrics")
+    reductions = _mapping(pixel.get("relative_reduction"), "pixel reductions")
+    recalls = ed.get("per_class_recall")
+    return (
+        float(reductions.get("foreground", -1.0)) >= PIXEL_REDUCTION_MIN
+        and float(reductions.get("background", -1.0)) >= PIXEL_REDUCTION_MIN
+        and float(ed.get("macro_recall", -1.0)) >= ED_MACRO_MIN
+        and isinstance(recalls, list)
+        and len(recalls) == 10
+        and min(float(item) for item in recalls) >= ED_CLASS_MIN
+    )
+
+
+def _classify_arms(generator_arm: Mapping[str, Any], ols_arm: Mapping[str, Any]) -> str:
+    generator_reaches = _arm_reaches_target(generator_arm)
+    ols_reaches = _arm_reaches_target(ols_arm)
+    if generator_reaches and ols_reaches:
+        return "BOTH_RENDERABILITY_UPPER_BOUNDS_REACHED"
+    if generator_reaches:
+        return "FIXED_OLS_TO_GENERATOR_MAPPING_REACHED"
+    if ols_reaches:
+        return "GENERATOR_REGION_REACHED_ONLY_BY_OLS_OPTIMIZATION"
+    return "NEITHER_BOUNDED_UPPER_BOUND_REACHED"
+
+
+def _resolve_valid_classification(
+    generator_arm: Mapping[str, Any],
+    ols_arm: Mapping[str, Any],
+    raw_records: Sequence[Mapping[str, Any]],
+    *,
+    evaluator: torch.nn.Module,
+    evaluator_state_before: Mapping[str, torch.Tensor],
+    runtime_identity_before: Any,
+    runtime_identity_after: Any,
+    data_reads: Mapping[str, Any],
+) -> str:
+    _require(generator_arm.get("updates") == UPDATE_COUNT_PER_ARM and ols_arm.get("updates") == UPDATE_COUNT_PER_ARM, "one or both arms did not complete their fixed update counts")
+    _require(generator_arm.get("encoder_frozen") is True and generator_arm.get("generator_changed") is True, "Generator arm freeze or update check failed")
+    _require(ols_arm.get("runtime_frozen") is True, "OLS arm changed the frozen runtime")
+    _require(_digest_state(_state_snapshot(evaluator)) == _digest_state(evaluator_state_before), "E_D state changed during frozen evaluation")
+    _require(all(parameter.grad is None and not parameter.requires_grad for parameter in evaluator.parameters()), "E_D is not frozen or retained a gradient")
+    _require(runtime_identity_before == runtime_identity_after, "optical runtime identity changed during diagnostic")
+    _require(
+        all(record.get("raw_cmos", {}).get("all_finite") is True and record.get("raw_cmos", {}).get("all_nonconstant") is True and record.get("raw_cmos", {}).get("all_nonzero") is True for record in raw_records),
+        "a required CMOS population is nonfinite, constant, or zero",
+    )
+    _require(all(int(data_reads.get(name, 0)) == 0 for name in ("protected", "test", "sealed")), "protected/test/sealed firewall changed")
+    return _classify_arms(generator_arm["end"], ols_arm["end"])
+
+
+def _tree_equal(left: Any, right: Any, *, atol: float = 1.0e-7) -> bool:
+    if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
+        if left.shape != right.shape or left.dtype != right.dtype:
+            return False
+        if left.is_floating_point() or left.is_complex():
+            return torch.allclose(left, right, rtol=0.0, atol=atol, equal_nan=False)
+        return torch.equal(left, right)
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return left.keys() == right.keys() and all(_tree_equal(left[key], right[key], atol=atol) for key in left)
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return len(left) == len(right) and all(_tree_equal(a, b, atol=atol) for a, b in zip(left, right, strict=True))
+    return left == right
+
+
+def _state_snapshot(module: torch.nn.Module) -> dict[str, torch.Tensor]:
+    return {name: value.detach().cpu().clone() for name, value in module.state_dict().items()}
+
+
+def _digest_state(state: Mapping[str, torch.Tensor]) -> str:
+    return canonical_sha256({name: tensor_sha256(value.detach().cpu()) for name, value in sorted(state.items())})
+
+
+def _load_authorities(root: Path) -> dict[str, Any]:
+    _require(root.resolve() == _root().resolve(), "diagnostic must use the registered repository root")
+    step600 = rescue._load_authorities(root)
+    _require(step600["checkpoint"].get("step") == START_STEP, "accepted step600 checkpoint identity changed")
+    step900_report_path = root / STEP900_REPORT
+    step900_status_path = root / STEP900_STATUS
+    step900_checkpoint_path = root / STEP900_CHECKPOINT
+    _require(step900_report_path.is_file() and file_sha256(step900_report_path) == STEP900_REPORT_SHA256, "step900 rescue report changed")
+    _require(step900_checkpoint_path.is_file() and file_sha256(step900_checkpoint_path) == STEP900_CHECKPOINT_SHA256, "step900 comparison checkpoint changed")
+    step900_report = _read_json(step900_report_path)
+    step900_status = _read_json(step900_status_path)
+    _validate_step900_authority(step900_report, step900_status)
+    step900_checkpoint = safe_torch_load(step900_checkpoint_path, expected_sha256=STEP900_CHECKPOINT_SHA256, map_location="cpu")
+    _validate_step900_checkpoint_payload(step900_checkpoint, step900_report)
+    ed_path = root / rescue.three.ED_CHECKPOINT
+    _require(ed_path.is_file() and file_sha256(ed_path) == E_D_SHA256, "independent E_D checkpoint identity changed")
+    return {
+        **step600,
+        "step900_report": step900_report,
+        "step900_checkpoint": dict(_mapping(step900_checkpoint, "step900 comparison checkpoint")),
+        "step900_status": step900_status,
+        "authority_hashes": {
+            **dict(step600["authority_hashes"]),
+            "step900_report": STEP900_REPORT_SHA256,
+            "step900_checkpoint": STEP900_CHECKPOINT_SHA256,
+            "E_D_checkpoint": E_D_SHA256,
+        },
+    }
+
+
+def _validate_step900_authority(report: Mapping[str, Any], status: Mapping[str, Any]) -> None:
+    training = report.get("training")
+    artifacts = report.get("artifacts")
+    _require(
+        report.get("task_id") == "M0_BOGT_CANONICAL_IMAGE_RESCUE_V1"
+        and report.get("result") == RUN_VALID_FAILED
+        and report.get("outer_gate") == "M0_BOGT_CANONICAL_IMAGE_RESCUE_RESOLVED"
+        and isinstance(training, Mapping)
+        and training.get("end_step") == 900
+        and status.get("state") == RUN_VALID_FAILED,
+        "step900 comparison authority is not the registered complete valid-failed report",
+    )
+    _require(isinstance(artifacts, Mapping), "step900 report artifact references are malformed")
+    checkpoint_ref = artifacts.get("step900_checkpoint", {})
+    _require(isinstance(checkpoint_ref, Mapping), "step900 checkpoint reference is malformed")
+    _require(checkpoint_ref.get("sha256") == STEP900_CHECKPOINT_SHA256, "step900 report does not bind its checkpoint")
+
+
+def _validate_step900_checkpoint_payload(checkpoint: Mapping[str, Any], report: Mapping[str, Any]) -> None:
+    sampler = checkpoint.get("sampler_state")
+    training = report.get("training")
+    starting_step = checkpoint.get("starting_step")
+    completed_step = checkpoint.get("completed_updates")
+    cursor = sampler.get("cursor") if isinstance(sampler, Mapping) else None
+    report_start = training.get("start_step") if isinstance(training, Mapping) else None
+    report_end = training.get("end_step") if isinstance(training, Mapping) else None
+    report_updates = training.get("updates") if isinstance(training, Mapping) else None
+    if not (
+        checkpoint.get("schema") == rescue.CHECKPOINT_SCHEMA
+        and starting_step == START_STEP
+        and completed_step == 900
+        and cursor == 900
+        and report_start == START_STEP
+        and report_end == 900
+        and report_updates == 300
+        and isinstance(starting_step, int)
+        and isinstance(completed_step, int)
+        and isinstance(report_updates, int)
+        and completed_step - starting_step == report_updates
+    ):
+        raise LocalizationError(
+            "step900 checkpoint global step, origin, cursor, or report update delta changed",
+            failure_id=STEP900_CHECKPOINT_METADATA_FAILURE,
+        )
+
+
+def _load_runtime(root: Path, authorities: Mapping[str, Any], device: torch.device, *, step: int = START_STEP) -> Any:
+    consumer = bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer(device=device, propagation_grid_size=bogt.PRODUCTION_PROPAGATION_GRID)
+    training_authority = _mapping(authorities["three_authorities"].get("training"), "accepted runtime authority")
+    bundle = _mapping(training_authority.get("bundle"), "accepted optical bundle")
+    ols = _mapping(bundle.get("ols"), "accepted W_OLS interface")
+    _require(consumer.runtime_identity() == ols.get("interface"), "current optical runtime differs from accepted interface")
+    checkpoint = authorities["checkpoint"] if step == START_STEP else authorities["step900_checkpoint"]
+    consumer.load_trainable_state_dict(dict(_mapping(checkpoint.get("trainable_parameter_state"), f"step{step} trainable state")))
+    references = rescue.m0.parent._load_references(
+        root / rescue.m0.FROZEN_REFERENCES,
+        expected_data_identity=authorities["checkpoint"]["data_identity"],
+    )
+    weights = rescue.m0.parent._load_weights(root / rescue.m0.FROZEN_WEIGHTS, expected_reference_identity=canonical_sha256(references.identity()))
+    _require(rescue.m0._tree_equal(authorities["checkpoint"].get("references"), references.to_payload()), "step600 BOGT references changed")
+    _require(rescue.m0._tree_equal(authorities["checkpoint"].get("weights"), weights.to_payload()), "step600 BOGT weights changed")
+    consumer.bind_references(references, for_scientific=True)
+    consumer.bind_weights(weights, for_scientific=True)
+    consumer.runtime.eval()
+    for parameter in consumer.runtime.parameters():
+        parameter.grad = None
+    return consumer
+
+
+def _load_ed(root: Path, device: torch.device) -> torch.nn.Module:
+    payload = safe_torch_load(root / rescue.three.ED_CHECKPOINT, expected_sha256=E_D_SHA256, map_location="cpu")
+    evaluator = rescue.three.independent_confirmation.PixelMLPConfirmationEvaluatorV1().to(device)
+    evaluator.load_state_dict(_mapping(payload.get("state_dict"), "E_D state"), strict=True)
+    evaluator.freeze()
+    evaluator.eval()
+    _require(all(not parameter.requires_grad and parameter.grad is None for parameter in evaluator.parameters()), "E_D is not frozen")
+    return evaluator
+
+
+def _fixed_inputs(consumer: Any, context: Any, fit_indices: torch.Tensor, observe_indices: torch.Tensor, device: torch.device) -> dict[str, torch.Tensor]:
+    fit_images = context.images.index_select(0, fit_indices).to(device)
+    observe_images = context.images.index_select(0, observe_indices).to(device)
+    context.ledger.record(bogt.TRAIN_ROLE, PAIR_COUNT + OBSERVATION_COUNT)
+    with torch.no_grad():
+        fit_encoded = consumer.runtime.forward_from_image(fit_images)
+        observe_encoded = consumer.runtime.forward_from_image(observe_images)
+    z_fit = fit_encoded.z_ols.coefficients.detach().clone()
+    z_observe = observe_encoded.z_ols.coefficients.detach().clone()
+    _require(z_fit.shape == (PAIR_COUNT, 100) and z_fit.dtype == torch.complex64, "fit OLS coefficients have wrong shape or dtype")
+    _require(z_observe.shape == (OBSERVATION_COUNT, 100) and z_observe.dtype == torch.complex64, "observation OLS coefficients have wrong shape or dtype")
+    _finite(z_fit.real, "fit OLS real coefficients")
+    _finite(z_fit.imag, "fit OLS imaginary coefficients")
+    return {
+        "fit_images": fit_images,
+        "fit_targets": F.adaptive_avg_pool2d(fit_images.clamp(0.0, 1.0), (28, 28)).detach(),
+        "fit_labels": context.labels.index_select(0, fit_indices).to(device=device, dtype=torch.long),
+        "fit_ols": z_fit,
+        "observe_images": observe_images,
+        "observe_targets": F.adaptive_avg_pool2d(observe_images.clamp(0.0, 1.0), (28, 28)).detach(),
+        "observe_labels": context.labels.index_select(0, observe_indices).to(device=device, dtype=torch.long),
+        "observe_ols": z_observe,
+        "fit_indices": fit_indices.clone(),
+        "observe_indices": observe_indices.clone(),
+    }
+
+
+def _raw_from_ols(consumer: Any, z: torch.Tensor) -> torch.Tensor:
+    pieces: list[torch.Tensor] = []
+    for start in range(0, len(z), BATCH_SIZE):
+        result = consumer.runtime.forward_from_ols(z[start : start + BATCH_SIZE])
+        raw = result.raw_camera.intensity
+        _require(raw.shape == (len(z[start : start + BATCH_SIZE]), 1, 200, 200), "raw CMOS output geometry changed")
+        _finite(raw, "raw CMOS output")
+        pieces.append(raw)
+    return torch.cat(pieces, dim=0)
+
+
+def _metrics_for_raw(raw: torch.Tensor, targets: torch.Tensor, labels: torch.Tensor, evaluator: torch.nn.Module) -> dict[str, Any]:
+    view = _evaluator_view(raw)
+    pixel, foreground, background = _canonical_pixel_loss(view, targets)
+    squared = (view - targets).square().flatten(1)
+    target_flat = targets.flatten(1)
+    foreground_mask = target_flat > 0.1
+    background_mask = ~foreground_mask
+    _require(bool(foreground_mask.any(dim=1).all().item()) and bool(background_mask.any(dim=1).all().item()), "per-sample canonical target has an empty region")
+    foreground_per_sample = (squared * foreground_mask).sum(dim=1) / foreground_mask.sum(dim=1)
+    background_per_sample = (squared * background_mask).sum(dim=1) / background_mask.sum(dim=1)
+    with torch.no_grad():
+        logits = evaluator(view)
+        predictions = logits.argmax(dim=1)
+    metrics = _classification_metrics(labels.detach().cpu(), predictions.detach().cpu())
+    return {
+        "pixel": {
+            "balanced_mse": float(pixel.detach().cpu()),
+            "foreground_mse": float(foreground.detach().cpu()),
+            "background_mse": float(background.detach().cpu()),
+        },
+        "E_D": metrics,
+        "per_sample": {
+            "foreground_mse": foreground_per_sample.detach().cpu().tolist(),
+            "background_mse": background_per_sample.detach().cpu().tolist(),
+            "balanced_mse": (0.5 * (foreground_per_sample + background_per_sample)).detach().cpu().tolist(),
+            "E_D_prediction": predictions.detach().cpu().tolist(),
+        },
+        "raw_cmos": _raw_summary(raw),
+    }
+
+
+def _raw_summary(raw: torch.Tensor) -> dict[str, Any]:
+    values = raw.detach().to(torch.float64)
+    flat = values.flatten(1)
+    _finite(raw, "raw CMOS summary")
+    return {
+        "shape": list(raw.shape),
+        "min": float(values.min().cpu()),
+        "max": float(values.max().cpu()),
+        "mean": float(values.mean().cpu()),
+        "std": float(values.std(unbiased=False).cpu()),
+        "per_image_std_min": float(flat.std(dim=1, unbiased=False).min().cpu()),
+        "per_image_std_max": float(flat.std(dim=1, unbiased=False).max().cpu()),
+        "all_finite": True,
+        "all_nonconstant": bool((flat.std(dim=1, unbiased=False) > 0).all().item()),
+        "all_nonzero": bool((flat.abs().amax(dim=1) > 0).all().item()),
+    }
+
+
+def _loss_metrics(raw: torch.Tensor, targets: torch.Tensor, labels: torch.Tensor, evaluator: torch.nn.Module) -> dict[str, Any]:
+    return _metrics_for_raw(raw, targets, labels, evaluator)
+
+
+def _gradient_alignment(consumer: Any, evaluator: torch.nn.Module, z: torch.Tensor, targets: torch.Tensor, labels: torch.Tensor) -> dict[str, Any]:
+    generator = dict(consumer.runtime.named_parameters())["generator.phase"]
+    consumer.runtime.zero_grad(set_to_none=True)
+    raw = _raw_from_ols(consumer, z[:BATCH_SIZE])
+    view = _evaluator_view(raw)
+    canonical, _, _ = _canonical_pixel_loss(view, targets[:BATCH_SIZE])
+    logits = evaluator(view)
+    requested = logits.gather(1, labels[:BATCH_SIZE, None]).squeeze(1)
+    masked = logits.clone()
+    masked.scatter_(1, labels[:BATCH_SIZE, None], torch.finfo(logits.dtype).min)
+    margin = (requested - masked.max(dim=1).values).mean()
+    pixel_grad = torch.autograd.grad(canonical, generator, retain_graph=True)[0]
+    margin_grad = torch.autograd.grad(margin, generator)[0]
+    _finite(pixel_grad, "canonical image gradient")
+    _finite(margin_grad, "E_D margin gradient")
+    pixel_norm = pixel_grad.to(torch.float64).norm()
+    margin_norm = margin_grad.to(torch.float64).norm()
+    _require(float(pixel_norm) > 0.0 and float(margin_norm) > 0.0, "gradient alignment has a zero component")
+    # Both vectors point toward improvement: descent for pixel loss and ascent for E_D margin.
+    cosine = torch.dot(-pixel_grad.to(torch.float64).flatten(), margin_grad.to(torch.float64).flatten()) / (pixel_norm * margin_norm)
+    consumer.runtime.zero_grad(set_to_none=True)
+    return {
+        "rows": BATCH_SIZE,
+        "canonical_gradient_norm": float(pixel_norm.cpu()),
+        "requested_class_margin_gradient_norm": float(margin_norm.cpu()),
+        "cosine_between_canonical_descent_and_requested_margin_ascent": float(cosine.cpu()),
+        "interpretation_boundary": "local direction comparison only; E_D does not enter either optimizer",
+    }
+
+
+def _finite_difference_component(
+    parameter: torch.Tensor,
+    index: int,
+    component: str,
+    analytic: float,
+    epsilon_candidates: Sequence[float],
+    objective: Any,
+    *,
+    name: str,
+) -> dict[str, Any]:
+    flat = parameter.reshape(-1)
+    original = flat[index].detach().clone()
+    attempts: list[dict[str, float]] = []
+    chosen: dict[str, float] | None = None
+    for epsilon in epsilon_candidates:
+        delta = complex(0.0, epsilon) if component == "imag" else epsilon
+        try:
+            with torch.no_grad():
+                flat[index].copy_(original + delta)
+            plus = float(objective().detach().cpu())
+            with torch.no_grad():
+                flat[index].copy_(original - delta)
+            minus = float(objective().detach().cpu())
+        finally:
+            with torch.no_grad():
+                flat[index].copy_(original)
+        numerical = (plus - minus) / (2.0 * epsilon)
+        relative_error = abs(numerical - analytic) / max(abs(analytic), 1.0e-8)
+        attempts.append({"epsilon": float(epsilon), "numerical_derivative": numerical, "relative_error": relative_error})
+        if math.isfinite(numerical) and analytic * numerical > 0.0 and (relative_error <= 0.20 or abs(numerical - analytic) <= 1.0e-5):
+            chosen = attempts[-1]
+            break
+    _require(chosen is not None, f"{name} finite-difference derivative disagrees with autograd")
+    return {
+        "component": component,
+        "flat_index": int(index),
+        "analytic_derivative": float(analytic),
+        "finite_difference": chosen,
+        "attempts": attempts,
+        "relative_tolerance": 0.20,
+        "absolute_tolerance": 1.0e-5,
+    }
+
+
+def _finite_difference_checks(
+    consumer: Any,
+    z: torch.Tensor,
+    targets: torch.Tensor,
+    device: torch.device,
+) -> dict[str, Any]:
+    params = dict(consumer.runtime.named_parameters())
+    encoder, generator = params["encoder.phase"], params["generator.phase"]
+    encoder.requires_grad_(False)
+    generator.requires_grad_(True)
+    generator.grad = None
+    z_phase = z.detach().clone()
+
+    def generator_objective() -> torch.Tensor:
+        raw = _raw_from_ols(consumer, z_phase)
+        return _canonical_pixel_loss(_evaluator_view(raw), targets)[0]
+
+    phase_loss = generator_objective()
+    phase_gradient = torch.autograd.grad(phase_loss, generator)[0]
+    _finite(phase_gradient, "Generator finite-difference gradient")
+    phase_index = int(phase_gradient.detach().abs().reshape(-1).argmax().item())
+    phase_derivative = float(phase_gradient.detach().reshape(-1)[phase_index].cpu())
+    _require(abs(phase_derivative) > 1.0e-8, "Generator finite-difference coordinate has zero gradient")
+    generator_check = _finite_difference_component(
+        generator,
+        phase_index,
+        "real",
+        phase_derivative,
+        (1.0e-2, 5.0e-3, 2.5e-3),
+        generator_objective,
+        name="Generator",
+    )
+    generator.grad = None
+
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    z_parameter = torch.nn.Parameter(z.detach().clone())
+
+    def ols_objective() -> torch.Tensor:
+        raw = _raw_from_ols(consumer, z_parameter)
+        return _canonical_pixel_loss(_evaluator_view(raw), targets)[0]
+
+    ols_loss = ols_objective()
+    ols_gradient = torch.autograd.grad(ols_loss, z_parameter)[0]
+    _finite(ols_gradient.real, "OLS real finite-difference gradient")
+    _finite(ols_gradient.imag, "OLS imaginary finite-difference gradient")
+    coefficient_scale = max(float(torch.quantile(z_parameter.detach().abs().to(torch.float32), 0.5).cpu()), 1.0e-2)
+    ols_checks: dict[str, Any] = {}
+    for component, values in (("real", ols_gradient.real), ("imag", ols_gradient.imag)):
+        index = int(values.detach().abs().reshape(-1).argmax().item())
+        derivative = float(values.detach().reshape(-1)[index].cpu())
+        _require(abs(derivative) > 1.0e-8, f"OLS {component} finite-difference coordinate has zero gradient")
+        ols_checks[component] = _finite_difference_component(
+            z_parameter,
+            index,
+            component,
+            derivative,
+            tuple(coefficient_scale * ratio for ratio in (1.0e-1, 5.0e-2, 2.5e-2)),
+            ols_objective,
+            name=f"OLS {component}",
+        )
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "finite-difference check left optical parameter gradients")
+    consumer.load_trainable_state_dict({name: value.detach().cpu() for name, value in consumer.runtime.state_dict().items() if name in {"encoder.phase", "generator.phase"}})
+    return {
+        "generator_phase": generator_check,
+        "complex_ols": ols_checks,
+        "E_D_used_for_gradient": False,
+        "optimizer_updates": 0,
+    }
+
+
+def _adam(parameters: Sequence[torch.nn.Parameter]) -> torch.optim.Adam:
+    return torch.optim.Adam(
+        list(parameters),
+        lr=LEARNING_RATE,
+        betas=ADAM_BETAS,
+        eps=ADAM_EPSILON,
+        weight_decay=WEIGHT_DECAY,
+        amsgrad=False,
+    )
+
+
+def _train_generator_step(consumer: Any, optimizer: torch.optim.Adam, z: torch.Tensor, targets: torch.Tensor, indices: torch.Tensor) -> dict[str, float]:
+    optimizer.zero_grad(set_to_none=True)
+    result = consumer.runtime.forward_from_ols(z.index_select(0, indices))
+    raw = result.raw_camera.intensity
+    view = _evaluator_view(raw)
+    loss, foreground, background = _canonical_pixel_loss(view, targets.index_select(0, indices))
+    loss.backward()
+    generator = dict(consumer.runtime.named_parameters())["generator.phase"]
+    _require(generator.grad is not None and bool(torch.isfinite(generator.grad).all().item()) and float(generator.grad.norm().item()) > 0.0, "generator.phase gradient is missing, nonfinite, or zero")
+    _require(dict(consumer.runtime.named_parameters())["encoder.phase"].grad is None, "encoder.phase received a Generator-arm gradient")
+    optimizer.step()
+    _finite(generator, "updated generator.phase")
+    return {"balanced_mse": float(loss.detach().cpu()), "foreground_mse": float(foreground.detach().cpu()), "background_mse": float(background.detach().cpu())}
+
+
+def _train_ols_step(consumer: Any, optimizer: torch.optim.Adam, z: torch.nn.Parameter, targets: torch.Tensor, start: int, stop: int) -> dict[str, float]:
+    optimizer.zero_grad(set_to_none=True)
+    result = consumer.runtime.forward_from_ols(z)
+    raw = result.raw_camera.intensity
+    view = _evaluator_view(raw)
+    loss, foreground, background = _canonical_pixel_loss(view, targets[start:stop])
+    loss.backward()
+    _require(z.grad is not None and bool(torch.isfinite(z.grad.real).all().item()) and bool(torch.isfinite(z.grad.imag).all().item()) and float(z.grad.abs().norm().item()) > 0.0, "complex OLS gradient is missing, nonfinite, or zero")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "OLS-input arm produced a runtime parameter gradient")
+    optimizer.step()
+    _finite(z.real, "optimized OLS real coefficients")
+    _finite(z.imag, "optimized OLS imaginary coefficients")
+    return {"balanced_mse": float(loss.detach().cpu()), "foreground_mse": float(foreground.detach().cpu()), "background_mse": float(background.detach().cpu())}
+
+
+def _device_snapshot(device: torch.device) -> dict[str, int]:
+    free, total = torch.cuda.mem_get_info(device)
+    used = total - free
+    return {"used_bytes": int(used), "free_bytes": int(free), "total_bytes": int(total)}
+
+
+def _source_paths(root: Path) -> tuple[Path, ...]:
+    return (
+        Path(__file__).resolve(),
+        root / ROOT_CAUSE_REVIEW,
+        Path(rescue.__file__).resolve(),
+        Path(rescue.m0.__file__).resolve(),
+        Path(rescue.three.__file__).resolve(),
+        Path(rescue.robust.__file__).resolve(),
+        root / "scripts/research/lightgen/execute_lightgen_2d_establish_third_confirmation_evaluator_v1.py",
+        root / "scripts/research/lightgen/execute_lightgen_2d_establish_sic_independent_confirmation_evaluator_v1.py",
+        root / "scripts/research/lightgen/execute_lightgen_2d_semantically_conditioned_ols_sampler_v1.py",
+        root / "scripts/research/lightgen/execute_lightgen_2d_chen_bogt_complex_ols_training_v1.py",
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py",
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+        root / "src/ldm_project/v2/application/research/shared/research_run_control.py",
+        root / "src/ldm_project/v2/student/evaluator.py",
+        root / "src/ldm_project/v2/evidence/io.py",
+    )
+
+
+def _legacy_preflight_failure_id(
+    report: Mapping[str, Any],
+    *,
+    actual_sha256: str,
+    expected_sha256: str,
+) -> str | None:
+    if actual_sha256 != expected_sha256:
+        return None
+    if (
+        report.get("schema") == PREFLIGHT_SCHEMA
+        and report.get("task_id") == TASK_ID
+        and report.get("outer_gate") == OUTER_GATE
+        and report.get("scientific_attempt_opened") is False
+        and report.get("status") == RUN_INVALID_HARNESS
+    ):
+        return STEP900_CHECKPOINT_METADATA_FAILURE
+    return None
+
+
+def _root_cause_review_payload(root: Path) -> dict[str, Any]:
+    preflight_paths = [root / RUNS_ROOT / "preflight_01.json", root / RUNS_ROOT / "preflight_02.json"]
+    preflights = [_read_json(path) for path in preflight_paths]
+    for index, (path, report) in enumerate(zip(preflight_paths, preflights, strict=True)):
+        _require(
+            _legacy_preflight_failure_id(
+                report,
+                actual_sha256=file_sha256(path),
+                expected_sha256=HISTORICAL_PREFLIGHT_SHA256[index],
+            ) == STEP900_CHECKPOINT_METADATA_FAILURE,
+            "retained preflight does not match the reviewed checkpoint-metadata failure",
+        )
+    rescue_root = root / STEP900_REPORT
+    status_path = root / STEP900_STATUS
+    checkpoint_path = root / STEP900_CHECKPOINT
+    report = _read_json(rescue_root)
+    status = _read_json(status_path)
+    checkpoint = safe_torch_load(checkpoint_path, expected_sha256=STEP900_CHECKPOINT_SHA256, map_location="cpu")
+    _validate_step900_authority(report, status)
+    _validate_step900_checkpoint_payload(checkpoint, report)
+    sampler = _mapping(checkpoint.get("sampler_state"), "step900 sampler state")
+    return {
+        "schema": ROOT_CAUSE_REVIEW_SCHEMA,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "review_id": "M0_RENDERABILITY_STEP900_GLOBAL_STEP_VALIDATION_REVIEW_01",
+        "failure_id": STEP900_CHECKPOINT_METADATA_FAILURE,
+        "root_cause": "the validator compared the report's incremental 300 updates with the checkpoint's cumulative completed_updates field",
+        "corrected_invariant": {
+            "starting_step": int(checkpoint["starting_step"]),
+            "completed_updates_global_step": int(checkpoint["completed_updates"]),
+            "sampler_cursor": int(sampler["cursor"]),
+            "report_start_step": int(report["training"]["start_step"]),
+            "report_end_step": int(report["training"]["end_step"]),
+            "report_incremental_updates": int(report["training"]["updates"]),
+            "global_step_equals_cursor": checkpoint["completed_updates"] == sampler["cursor"],
+            "global_step_delta_equals_report_updates": checkpoint["completed_updates"] - checkpoint["starting_step"] == report["training"]["updates"],
+        },
+        "evidence": {
+            "preflight_01": {"path": preflight_paths[0].relative_to(root).as_posix(), "sha256": file_sha256(preflight_paths[0]), "failure_id": STEP900_CHECKPOINT_METADATA_FAILURE},
+            "preflight_02": {"path": preflight_paths[1].relative_to(root).as_posix(), "sha256": file_sha256(preflight_paths[1]), "failure_id": STEP900_CHECKPOINT_METADATA_FAILURE},
+            "step900_report": {"path": STEP900_REPORT.as_posix(), "sha256": file_sha256(rescue_root)},
+            "step900_status": {"path": STEP900_STATUS.as_posix(), "sha256": file_sha256(status_path)},
+            "step900_checkpoint": {"path": STEP900_CHECKPOINT.as_posix(), "sha256": file_sha256(checkpoint_path)},
+        },
+        "continuation": {
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": ATTEMPT_ID,
+            "preflight_sequence": 3,
+            "scientific_scope_changed": False,
+        },
+    }
+
+
+def _write_root_cause_review(root: Path) -> dict[str, Any]:
+    path = root / ROOT_CAUSE_REVIEW
+    _require(not path.exists(), "root-cause review is write-once")
+    _require(not (root / ATTEMPT_DIR).exists(), "root-cause review requires the scientific attempt to remain unopened")
+    payload = _root_cause_review_payload(root)
+    atomic_write_new_json(path, payload, artifact_kind="M0 renderability localization root-cause review")
+    return payload
+
+
+def _verify_root_cause_review(root: Path) -> dict[str, Any]:
+    path = root / ROOT_CAUSE_REVIEW
+    payload = _read_json(path)
+    expected = _root_cause_review_payload(root)
+    _require(payload == expected, "root-cause review no longer matches retained failures or authorities")
+    return payload
+
+
+def _run_config(root: Path, context: Any, authorities: Mapping[str, Any]) -> dict[str, Any]:
+    review = _verify_root_cause_review(root)
+    return {
+        "root_cause_review": {
+            "path": ROOT_CAUSE_REVIEW.as_posix(),
+            "sha256": file_sha256(root / ROOT_CAUSE_REVIEW),
+            "failure_id": review["failure_id"],
+        },
+        "starting_checkpoint": {"path": rescue.START_CHECKPOINT.as_posix(), "sha256": rescue.START_CHECKPOINT_SHA256, "step": START_STEP},
+        "step900_comparison": {"report": STEP900_REPORT.as_posix(), "report_sha256": STEP900_REPORT_SHA256, "checkpoint": STEP900_CHECKPOINT.as_posix(), "checkpoint_sha256": STEP900_CHECKPOINT_SHA256},
+        "E_D_checkpoint_sha256": E_D_SHA256,
+        "fit_rows": PAIR_COUNT,
+        "observation_rows": OBSERVATION_COUNT,
+        "fit_selection": {"rows_per_class": PAIR_COUNT_PER_CLASS, "observation_rows_per_class": OBSERVATION_COUNT_PER_CLASS, "seed": FIT_SEED, "interleaved_class_batches": True},
+        "arms": {
+            "GENERATOR_ONLY": {"updates": UPDATE_COUNT_PER_ARM, "batch_size": BATCH_SIZE, "optimizer": "fresh Adam over generator.phase only", "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS), "loss": "balanced foreground/background MSE on clamp(raw CMOS,0,1) adaptive pooled to 28x28"},
+            "OLS_INPUT_ONLY": {"updates": UPDATE_COUNT_PER_ARM, "batch_size": BATCH_SIZE, "per_sample_complex_coefficients": True, "optimizer": "independent fresh Adam per fixed 10-row chunk", "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS), "loss": "same balanced foreground/background MSE"},
+        },
+        "gate_thresholds": {"foreground_and_background_relative_mse_reduction_min": PIXEL_REDUCTION_MIN, "E_D_macro_recall_min": ED_MACRO_MIN, "E_D_per_class_recall_min": ED_CLASS_MIN},
+        "frozen": ["encoder.phase during Generator arm", "generator.phase and all runtime parameters during OLS arm", "W_OLS", "OLS transport", "optical geometry", "E_D"],
+        "data_identity": context.data_identity,
+        "protected_test_sealed_reads": 0,
+        "recovery": {"updates_between_checkpoints": 25, "rotating_slots": RECOVERY_SLOT_COUNT, "resume_same_attempt_only": True},
+        "budget": {"total_seconds": MAX_TOTAL_SECONDS, "preflight_seconds": MAX_PREFLIGHT_SECONDS, "device_memory_fraction": MAX_DEVICE_MEMORY_FRACTION},
+        "claim_boundary": "fixed TRAIN-pair memorization and OLS coefficient reachability only; not generated-sample acceptance or architecture-capacity proof",
+    }
+
+
+def _source_manifest(root: Path, config: Mapping[str, Any]) -> dict[str, Any]:
+    return capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        relevant_paths=_source_paths(root),
+        config_identity=dict(config),
+    ).to_dict()
+
+
+def _identity(source: Mapping[str, Any], config: Mapping[str, Any]) -> ResearchRunIdentity:
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        trajectory_id=TRAJECTORY_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role=bogt.TRAIN_ROLE,
+        config_identity=dict(config),
+        model_identity="LIGHTGEN_2D_M0_BOGT_STEP600_RENDERABILITY_DIAGNOSTIC",
+        optimizer_identity={"generator_arm": "Adam(generator.phase)", "ols_arm": "Adam(complex OLS coefficients per 10-row chunk)"},
+        sampler_identity={"fit_seed": FIT_SEED, "class_interleaved": True, "rows": PAIR_COUNT, "observation_rows": OBSERVATION_COUNT},
+        execution_source_semantics_id=str(source["execution_source_semantics_id"]),
+        source_manifest_id=str(source["source_manifest_id"]),
+        scientific_attempt_id=ATTEMPT_ID,
+    )
+
+
+def _preflight(root: Path, *, sequence: int, token: str) -> dict[str, Any]:
+    _require(token == AUTHORIZATION_TOKEN, "authorization token mismatch")
+    _require(sequence in (1, 2, 3), "preflight sequence is unsupported")
+    preflight_path = root / RUNS_ROOT / f"preflight_{sequence:02d}.json"
+    _require(not preflight_path.exists(), f"preflight_{sequence:02d} is write-once")
+    if sequence == 2:
+        first_path = root / RUNS_ROOT / "preflight_01.json"
+        _require(first_path.is_file(), "preflight_02 requires the retained preflight_01 failure")
+        first = _read_json(first_path)
+        _require(first.get("status") != PREFLIGHT_READY, "a READY preflight is write-once and cannot be replaced")
+    started = time.perf_counter()
+    report: dict[str, Any] = {"schema": PREFLIGHT_SCHEMA, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "scientific_attempt_opened": False}
+    try:
+        if sequence == 3:
+            _require(not (root / ATTEMPT_DIR).exists(), "reviewed preflight requires the scientific attempt to remain unopened")
+            _verify_root_cause_review(root)
+            _require(
+                _legacy_preflight_failure_id(
+                    _read_json(root / RUNS_ROOT / "preflight_01.json"),
+                    actual_sha256=file_sha256(root / RUNS_ROOT / "preflight_01.json"),
+                    expected_sha256=HISTORICAL_PREFLIGHT_SHA256[0],
+                )
+                == STEP900_CHECKPOINT_METADATA_FAILURE
+                and _legacy_preflight_failure_id(
+                    _read_json(root / RUNS_ROOT / "preflight_02.json"),
+                    actual_sha256=file_sha256(root / RUNS_ROOT / "preflight_02.json"),
+                    expected_sha256=HISTORICAL_PREFLIGHT_SHA256[1],
+                )
+                == STEP900_CHECKPOINT_METADATA_FAILURE,
+                "reviewed preflight requires both retained checkpoint-metadata failures",
+            )
+        _require(torch.cuda.is_available(), "strict renderability preflight requires CUDA")
+        authorities = _load_authorities(root)
+        context = rescue._build_context(authorities, root)
+        fit_indices, observe_indices = _balanced_selection(context)
+        device = torch.device("cuda", torch.cuda.current_device())
+        consumer = _load_runtime(root, authorities, device)
+        ed = _load_ed(root, device)
+        config = _run_config(root, context, authorities)
+        source = _source_manifest(root, config)
+        identity = _identity(source, config)
+        control = ResearchRunControl(identity, AUTHORIZATION_ID)
+        fit_labels = context.labels.index_select(0, fit_indices).to(device=device, dtype=torch.long)
+        fit_images = context.images.index_select(0, fit_indices).to(device)
+        context.ledger.record(bogt.TRAIN_ROLE, PAIR_COUNT + OBSERVATION_COUNT)
+
+        runtime_state = _state_snapshot(consumer.runtime)
+        evaluator_state = _state_snapshot(ed)
+        params = dict(consumer.runtime.named_parameters())
+        encoder, generator = params["encoder.phase"], params["generator.phase"]
+        _require(tuple(consumer.runtime.named_parameters())[0][0] == "encoder.phase" and set(params) == {"encoder.phase", "generator.phase"}, "runtime parameter surface changed")
+        encoder.requires_grad_(False)
+        generator.requires_grad_(True)
+        with torch.no_grad():
+            real_logits = ed(F.adaptive_avg_pool2d(fit_images[:BATCH_SIZE].clamp(0.0, 1.0), (28, 28)))
+        _require(real_logits.shape == (BATCH_SIZE, 10), "E_D real-image check has wrong shape")
+        _finite(real_logits, "E_D real-image logits")
+        real_smoke_predictions = real_logits.argmax(dim=1)
+        _require(torch.equal(torch.bincount(fit_labels[:BATCH_SIZE], minlength=10), torch.ones(10, dtype=torch.long, device=device)), "real-image preflight rows are not one per class")
+        _require(float((real_smoke_predictions == fit_labels[:BATCH_SIZE]).to(torch.float32).mean().item()) >= 0.90, "E_D real-image smoke does not qualify the selected TRAIN rows")
+        with torch.no_grad():
+            z = consumer.runtime.forward_from_image(fit_images[:BATCH_SIZE]).z_ols.coefficients.detach()
+        targets = F.adaptive_avg_pool2d(fit_images[:BATCH_SIZE].clamp(0.0, 1.0), (28, 28))
+        alignment = _gradient_alignment(consumer, ed, z, targets, fit_labels[:BATCH_SIZE])
+        _require(alignment["cosine_between_canonical_descent_and_requested_margin_ascent"] <= 1.0 + 1.0e-6, "gradient alignment cosine is invalid")
+        finite_difference = _finite_difference_checks(consumer, z, targets, device)
+
+        update_seconds: list[float] = []
+        peak = _device_snapshot(device)
+        # Generator arm: exact 3-step optimizer path, including an explicit disabled-loss negative control.
+        with torch.no_grad():
+            z_small = consumer.runtime.forward_from_image(fit_images[:3 * BATCH_SIZE]).z_ols.coefficients.detach()
+        targets_small = F.adaptive_avg_pool2d(fit_images[:3 * BATCH_SIZE].clamp(0.0, 1.0), (28, 28))
+        params = dict(consumer.runtime.named_parameters())
+        params["encoder.phase"].requires_grad_(False)
+        params["generator.phase"].requires_grad_(True)
+        start_generator = params["generator.phase"].detach().clone()
+        generator_optimizer = _adam([params["generator.phase"]])
+        for step in range(3):
+            start = time.perf_counter()
+            indices = torch.arange(step * BATCH_SIZE, (step + 1) * BATCH_SIZE, device=device)
+            _train_generator_step(consumer, generator_optimizer, z_small, targets_small, indices)
+            torch.cuda.synchronize(device)
+            update_seconds.append(time.perf_counter() - start)
+            peak = max((peak, _device_snapshot(device)), key=lambda item: item["used_bytes"])
+        updated_generator = params["generator.phase"].detach().clone()
+        _require(not torch.equal(start_generator, updated_generator), "Generator preflight did not update generator.phase")
+        _require(torch.equal(params["encoder.phase"].detach(), authorities["checkpoint"]["trainable_parameter_state"]["encoder.phase"].to(device)), "Generator arm changed encoder.phase")
+        params["generator.phase"].data.copy_(start_generator)
+        disabled_before = params["generator.phase"].detach().clone()
+        disabled_loss = params["generator.phase"].sum() * 0.0
+        disabled_optimizer = _adam([params["generator.phase"]])
+        disabled_optimizer.zero_grad(set_to_none=True)
+        disabled_loss.backward()
+        disabled_optimizer.step()
+        _require(torch.equal(disabled_before, params["generator.phase"].detach()), "zero-loss negative control changed generator.phase")
+
+        # OLS arm: same exact complex-input update path and a real update to an isolated code chunk.
+        for parameter in consumer.runtime.parameters():
+            parameter.requires_grad_(False)
+            parameter.grad = None
+        with torch.no_grad():
+            z_chunk = consumer.runtime.forward_from_image(fit_images[:BATCH_SIZE]).z_ols.coefficients.detach().clone()
+        z_parameter = torch.nn.Parameter(z_chunk)
+        z_optimizer = _adam([z_parameter])
+        target_chunk = F.adaptive_avg_pool2d(fit_images[:BATCH_SIZE].clamp(0.0, 1.0), (28, 28))
+        z_before = z_parameter.detach().clone()
+        for _ in range(3):
+            start = time.perf_counter()
+            _train_ols_step(consumer, z_optimizer, z_parameter, target_chunk, 0, BATCH_SIZE)
+            torch.cuda.synchronize(device)
+            update_seconds.append(time.perf_counter() - start)
+            peak = max((peak, _device_snapshot(device)), key=lambda item: item["used_bytes"])
+        _require(not torch.equal(z_before, z_parameter.detach()), "OLS-input preflight did not update complex coefficients")
+        _require(all(torch.equal(value, runtime_state[name].to(device)) for name, value in consumer.runtime.state_dict().items()), "OLS-input arm changed frozen runtime state")
+        _require(all(torch.equal(value, evaluator_state[name].to(device)) for name, value in ed.state_dict().items()), "preflight changed frozen E_D")
+        _require(all(parameter.grad is None for parameter in ed.parameters()), "E_D retained a gradient")
+
+        # Recovery equivalence for each optimizer kind, stored only in a temporary directory.
+        params["encoder.phase"].requires_grad_(False)
+        params["generator.phase"].requires_grad_(True)
+        params["generator.phase"].data.copy_(start_generator)
+        with torch.no_grad():
+            z_three = consumer.runtime.forward_from_image(fit_images[:3 * BATCH_SIZE]).z_ols.coefficients.detach()
+        target_three = F.adaptive_avg_pool2d(fit_images[:3 * BATCH_SIZE].clamp(0.0, 1.0), (28, 28))
+        start_rng = bogt._rng_state_payload()
+        uninterrupted_opt = _adam([params["generator.phase"]])
+        uninterrupted_trace = []
+        for step in range(3):
+            idx = torch.arange(step * BATCH_SIZE, (step + 1) * BATCH_SIZE, device=device)
+            uninterrupted_trace.append(_train_generator_step(consumer, uninterrupted_opt, z_three, target_three, idx))
+        uninterrupted_parameter = params["generator.phase"].detach().clone()
+        uninterrupted_state = copy.deepcopy(uninterrupted_opt.state_dict())
+        uninterrupted_rng = bogt._rng_state_payload()
+        params["generator.phase"].data.copy_(start_generator)
+        bogt.restore_rng_state(start_rng)
+        resumed_opt = _adam([params["generator.phase"]])
+        _train_generator_step(consumer, resumed_opt, z_three, target_three, torch.arange(0, BATCH_SIZE, device=device))
+        with tempfile.TemporaryDirectory(prefix="m0-render-recovery-") as temporary:
+            recovery_dir = Path(temporary) / "generator"
+            _save_recovery_checkpoint(
+                recovery_dir,
+                {
+                    "phase": "GENERATOR_ONLY",
+                    "cursor": 1,
+                    "trainable_parameter_state": consumer.trainable_state_dict(),
+                    "optimizer_state": resumed_opt.state_dict(),
+                    "rng_state": bogt._rng_state_payload(),
+                },
+                source_manifest_id=source["source_manifest_id"],
+            )
+            recovery = _load_recovery_checkpoint(recovery_dir, source_manifest_id=source["source_manifest_id"])
+        consumer.load_trainable_state_dict(dict(recovery["trainable_parameter_state"]))
+        resumed_opt.load_state_dict(recovery["optimizer_state"])
+        bogt.restore_rng_state(recovery["rng_state"])
+        for step in (1, 2):
+            idx = torch.arange(step * BATCH_SIZE, (step + 1) * BATCH_SIZE, device=device)
+            _train_generator_step(consumer, resumed_opt, z_three, target_three, idx)
+        _require(torch.equal(uninterrupted_parameter, params["generator.phase"].detach()), "Generator arm recovery changed final parameters")
+        _require(_tree_equal(uninterrupted_state, resumed_opt.state_dict()), "Generator arm recovery changed optimizer state")
+        _require(_tree_equal(uninterrupted_rng, bogt._rng_state_payload()), "Generator arm recovery changed RNG state")
+        recovery_generator_passed = True
+
+        # Independent coefficient optimizer recovery on one fixed 10-row chunk.
+        for name, parameter in params.items():
+            parameter.requires_grad_(False)
+        with torch.no_grad():
+            initial_z = consumer.runtime.forward_from_image(fit_images[:BATCH_SIZE]).z_ols.coefficients.detach()
+        target_z = F.adaptive_avg_pool2d(fit_images[:BATCH_SIZE].clamp(0.0, 1.0), (28, 28))
+        z_a = torch.nn.Parameter(initial_z.clone())
+        opt_a = _adam([z_a])
+        for _ in range(3):
+            _train_ols_step(consumer, opt_a, z_a, target_z, 0, BATCH_SIZE)
+        z_final = z_a.detach().clone()
+        opt_final = copy.deepcopy(opt_a.state_dict())
+        ols_uninterrupted_rng = bogt._rng_state_payload()
+        z_a.data.copy_(initial_z)
+        opt_b = _adam([z_a])
+        _train_ols_step(consumer, opt_b, z_a, target_z, 0, BATCH_SIZE)
+        with tempfile.TemporaryDirectory(prefix="m0-render-z-recovery-") as temporary:
+            recovery_dir = Path(temporary) / "ols"
+            _save_recovery_checkpoint(
+                recovery_dir,
+                {
+                    "phase": "OLS_INPUT_ONLY",
+                    "cursor": 1,
+                    "complex_ols": z_a.detach(),
+                    "optimizer_state": opt_b.state_dict(),
+                    "rng_state": bogt._rng_state_payload(),
+                },
+                source_manifest_id=source["source_manifest_id"],
+            )
+            recovery = _load_recovery_checkpoint(recovery_dir, source_manifest_id=source["source_manifest_id"])
+        z_a.data.copy_(recovery["complex_ols"].to(device))
+        opt_b.load_state_dict(recovery["optimizer_state"])
+        bogt.restore_rng_state(recovery["rng_state"])
+        for _ in range(2):
+            _train_ols_step(consumer, opt_b, z_a, target_z, 0, BATCH_SIZE)
+        _require(torch.equal(z_final, z_a.detach()), "OLS-input recovery changed final coefficients")
+        _require(_tree_equal(opt_final, opt_b.state_dict()), "OLS-input recovery changed optimizer state")
+        _require(_tree_equal(ols_uninterrupted_rng, bogt._rng_state_payload()), "OLS-input recovery changed RNG state")
+        recovery_ols_passed = True
+
+        for name, parameter in params.items():
+            parameter.requires_grad_(True)
+            parameter.grad = None
+        consumer.load_trainable_state_dict(dict(authorities["checkpoint"]["trainable_parameter_state"]))
+        _require(_digest_state(_state_snapshot(consumer.runtime)) == _digest_state(runtime_state), "preflight did not restore step600 runtime")
+        _require(_digest_state(_state_snapshot(ed)) == _digest_state(evaluator_state), "preflight did not restore E_D")
+
+        elapsed = time.perf_counter() - started
+        prior_preflight_seconds = sum(
+            float(_read_json(root / RUNS_ROOT / f"preflight_{prior:02d}.json").get("elapsed_seconds", 0.0))
+            for prior in range(1, sequence)
+        )
+        cumulative_preflight_seconds = prior_preflight_seconds + elapsed
+        _require(cumulative_preflight_seconds <= MAX_PREFLIGHT_SECONDS, f"cumulative preflight exceeded 10-minute cap: {cumulative_preflight_seconds:.1f}s", ResourceBudgetExceeded)
+        # Include the retained failed preflights in the original 2-hour budget.
+        median_update = statistics.median(update_seconds)
+        estimated_updates = 2 * UPDATE_COUNT_PER_ARM * median_update
+        estimated_final_forwards = 8 * math.ceil(PAIR_COUNT / BATCH_SIZE) * median_update
+        estimated_total = cumulative_preflight_seconds + (estimated_updates + estimated_final_forwards + 300.0) * 1.25
+        resource = max((peak, _device_snapshot(device)), key=lambda item: item["used_bytes"])
+        _require(resource["used_bytes"] <= int(resource["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "preflight device memory exceeded 90 percent", ResourceBudgetExceeded)
+        _require(estimated_total <= MAX_TOTAL_SECONDS, f"estimated execution exceeds 2-hour budget: {estimated_total:.1f}s", ResourceBudgetExceeded)
+        disk = __import__("shutil").disk_usage(root / "outputs")
+        estimated_output_bytes = 320 * 1024 * 1024
+        _require(disk.free >= estimated_output_bytes, "output disk headroom is below estimate", ResourceBudgetExceeded)
+        checks = {
+            CORRECTNESS_INVARIANTS: {
+                "status": PREFLIGHT_READY,
+                "step600_checkpoint_and_M0_report_bound": True,
+                "step900_valid_failed_report_checkpoint_bound_as_read_only": True,
+                "TRAIN_pair_selection_balanced_disjoint_from_observation": True,
+                "E_D_frozen_and_real_image_check_complete": True,
+                "canonical_and_E_D_margin_gradient_finite": alignment,
+                "generator_and_complex_OLS_finite_difference_match": finite_difference,
+                "generator_only_three_step_update_and_encoder_frozen": True,
+                "OLS_only_three_step_update_and_runtime_frozen": True,
+                "disabled_loss_negative_control_has_zero_update": True,
+                "both_optimizer_recovery_traces_match": recovery_generator_passed and recovery_ols_passed,
+                "protected_test_sealed_reads": 0,
+            },
+            RESOURCE_ENVELOPE: {
+                "status": PREFLIGHT_READY,
+                "estimated_total_seconds": estimated_total,
+                "execution_limit_seconds": MAX_TOTAL_SECONDS,
+                "preflight_limit_seconds": MAX_PREFLIGHT_SECONDS,
+                "cumulative_preflight_seconds": cumulative_preflight_seconds,
+                "device_memory": resource,
+                "device_fraction_limit": MAX_DEVICE_MEMORY_FRACTION,
+                "free_output_disk_bytes": int(disk.free),
+                "estimated_output_bytes": estimated_output_bytes,
+                "update_seconds": update_seconds,
+            },
+            IMPLEMENTATION_SELECTION: {
+                "status": PREFLIGHT_READY,
+                "engine": "production_cuda_2048",
+                "generator_updates": UPDATE_COUNT_PER_ARM,
+                "ols_coefficient_updates": UPDATE_COUNT_PER_ARM,
+                "microbatch_size": BATCH_SIZE,
+                "source_manifest_bound": True,
+            },
+        }
+        receipt = PreflightReceipt(
+            source_semantics_id=source["execution_source_semantics_id"],
+            authorization_id=AUTHORIZATION_ID,
+            checks=checks,
+            selected_engine="production_cuda_2048",
+            resource=checks[RESOURCE_ENVELOPE],
+            status=PREFLIGHT_READY,
+            created_at=time.time(),
+        )
+        control.mark_preflight_ready(receipt)
+        report.update({
+            "status": PREFLIGHT_READY,
+            "classification": PREFLIGHT_READY,
+            "source_manifest": source,
+            "run_identity": identity.to_dict(),
+            "receipt": receipt.to_dict(),
+            "run_config": config,
+            "input_authorities": authorities["authority_hashes"],
+            "checks": checks,
+            "elapsed_seconds": elapsed,
+            "cumulative_preflight_seconds": cumulative_preflight_seconds,
+        })
+    except ResourceBudgetExceeded as error:
+        reason = str(error)
+        if sequence == 2:
+            first = _read_json(root / RUNS_ROOT / "preflight_01.json")
+            if first.get("reason") == reason:
+                reason = f"ROOT_CAUSE_REVIEW_REQUIRED: repeated preflight resource block: {reason}"
+        report.update({"status": PREFLIGHT_BLOCKED, "classification": "PREFLIGHT_BLOCKED_RESOURCE", "reason": reason, "elapsed_seconds": time.perf_counter() - started})
+    except Exception as error:
+        reason = f"{type(error).__name__}: {error}"
+        report.update({"status": RUN_INVALID_HARNESS, "classification": RUN_INVALID_HARNESS, "reason": reason, "failure_id": getattr(error, "failure_id", None), "elapsed_seconds": time.perf_counter() - started})
+    preflight_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_new_json(preflight_path, report, artifact_kind="M0 renderability localization source-bound preflight")
+    return report
+
+
+def _verify_preflight(root: Path, authorities: Mapping[str, Any], context: Any, sequence: int) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], ResearchRunIdentity, PreflightReceipt]:
+    path = root / RUNS_ROOT / f"preflight_{sequence:02d}.json"
+    report = _read_json(path)
+    _require(report.get("status") == PREFLIGHT_READY and report.get("scientific_attempt_opened") is False, "source-bound READY preflight is missing")
+    config = _run_config(root, context, authorities)
+    source = _source_manifest(root, config)
+    _require(report.get("source_manifest") == source, "preflight source manifest changed")
+    identity = _identity(source, config)
+    saved_identity = _mapping(report.get("run_identity"), "preflight run identity")
+    _require(saved_identity == identity.to_dict(), "preflight run identity changed")
+    receipt = PreflightReceipt.from_mapping(_mapping(report.get("receipt"), "preflight receipt"))
+    _require(receipt.status == PREFLIGHT_READY and receipt.source_semantics_id == source["execution_source_semantics_id"], "READY receipt is stale")
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    return report, config, source, identity, receipt
+
+
+def _arm_metrics(consumer: Any, evaluator: torch.nn.Module, z: torch.Tensor, targets: torch.Tensor, labels: torch.Tensor) -> tuple[dict[str, Any], torch.Tensor]:
+    raw = _raw_from_ols(consumer, z)
+    result = _metrics_for_raw(raw, targets, labels, evaluator)
+    return result, raw
+
+
+def _measure_generator_arm(
+    consumer: Any,
+    data: Mapping[str, torch.Tensor],
+    evaluator: torch.nn.Module,
+    start_state: Mapping[str, torch.Tensor],
+    final_phase: torch.Tensor,
+    trace: Sequence[Mapping[str, float]],
+) -> dict[str, Any]:
+    consumer.load_trainable_state_dict(dict(start_state))
+    params = dict(consumer.runtime.named_parameters())
+    encoder, generator = params["encoder.phase"], params["generator.phase"]
+    encoder.requires_grad_(False)
+    generator.requires_grad_(True)
+    frozen_encoder = encoder.detach().clone()
+    start_params = generator.detach().clone()
+    with torch.no_grad():
+        before_raw = _raw_from_ols(consumer, data["fit_ols"])
+    before = _metrics_for_raw(before_raw, data["fit_targets"], data["fit_labels"], evaluator)
+    with torch.no_grad():
+        generator.copy_(final_phase.to(generator))
+        after_raw = _raw_from_ols(consumer, data["fit_ols"])
+        observe_raw = _raw_from_ols(consumer, data["observe_ols"])
+    after = _metrics_for_raw(after_raw, data["fit_targets"], data["fit_labels"], evaluator)
+    observed = _metrics_for_raw(observe_raw, data["observe_targets"], data["observe_labels"], evaluator)
+    before_fg = float(before["pixel"]["foreground_mse"])
+    before_bg = float(before["pixel"]["background_mse"])
+    _require(before_fg > 0.0 and before_bg > 0.0, "Generator arm baseline pixel error must be positive")
+    after["pixel"]["relative_reduction"] = {
+        "foreground": 1.0 - float(after["pixel"]["foreground_mse"]) / before_fg,
+        "background": 1.0 - float(after["pixel"]["background_mse"]) / before_bg,
+    }
+    after["reaches_target"] = _arm_reaches_target(after)
+    return {
+        "start": before,
+        "end": after,
+        "observation_end": observed,
+        "training_trace": {"first": dict(trace[0]), "median": {key: statistics.median(row[key] for row in trace) for key in trace[0]}, "last": dict(trace[-1])},
+        "training_steps": [dict(row) for row in trace],
+        "updates": len(trace),
+        "optimizer": {"name": "Adam", "parameter_names": ["generator.phase"], "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS), "restored_from_step600": False},
+        "fixed_ols_input_displacement": {"per_row_relative_l2": [0.0] * int(len(data["fit_ols"])), "input_bank_unchanged": True},
+        "encoder_frozen": torch.equal(frozen_encoder, encoder.detach()),
+        "generator_changed": not torch.equal(start_params, generator.detach()),
+        "generator_phase_state": generator.detach().cpu().clone(),
+        "result_boundary": "fixed TRAIN input-target memorization; observation rows are separate TRAIN only",
+        "raw_cmos": {"start": before_raw.detach().cpu(), "end": after_raw.detach().cpu(), "observation_end": observe_raw.detach().cpu()},
+    }
+
+
+def _train_generator_arm(
+    consumer: Any,
+    data: Mapping[str, torch.Tensor],
+    evaluator: torch.nn.Module,
+    device: torch.device,
+    heartbeat: Any,
+    start_state: Mapping[str, torch.Tensor],
+    *,
+    deadline: float,
+    recovery_payload: Mapping[str, Any] | None,
+    save_recovery: Any,
+) -> dict[str, Any]:
+    data_binding = _recovery_data_binding(data)
+    if recovery_payload is None:
+        consumer.load_trainable_state_dict(dict(start_state))
+        params = dict(consumer.runtime.named_parameters())
+        optimizer = _adam([params["generator.phase"]])
+        trace: list[dict[str, float]] = []
+        cursor = 0
+    else:
+        _require(recovery_payload.get("phase") == "GENERATOR_ONLY" and recovery_payload.get("data_binding") == data_binding, "Generator recovery identity or fixed TRAIN inputs changed")
+        cursor = int(recovery_payload.get("cursor", -1))
+        _require(0 <= cursor <= UPDATE_COUNT_PER_ARM, "Generator recovery cursor is invalid")
+        consumer.load_trainable_state_dict(dict(_mapping(recovery_payload.get("trainable_parameter_state"), "Generator recovery parameters")))
+        params = dict(consumer.runtime.named_parameters())
+        optimizer = _adam([params["generator.phase"]])
+        optimizer.load_state_dict(_mapping(recovery_payload.get("optimizer_state"), "Generator recovery optimizer"))
+        trace = [dict(row) for row in recovery_payload.get("trace", [])]
+        _require(len(trace) == cursor, "Generator recovery trace and cursor disagree")
+        bogt.restore_rng_state(_mapping(recovery_payload.get("rng_state"), "Generator recovery RNG"))
+    encoder, generator = params["encoder.phase"], params["generator.phase"]
+    encoder.requires_grad_(False)
+    generator.requires_grad_(True)
+    encoder.grad = None
+    generator.grad = None
+    frozen_encoder = torch.as_tensor(start_state["encoder.phase"], device=device).detach().clone()
+    start_params = torch.as_tensor(start_state["generator.phase"], device=device).detach().clone()
+    z = data["fit_ols"]
+    targets = data["fit_targets"]
+    if recovery_payload is None:
+        save_recovery({
+            "phase": "GENERATOR_ONLY", "cursor": 0,
+            "trainable_parameter_state": consumer.trainable_state_dict(),
+            "optimizer_state": optimizer.state_dict(), "trace": trace,
+            "data_binding": data_binding, "rng_state": bogt._rng_state_payload(),
+        })
+    for step in range(cursor, UPDATE_COUNT_PER_ARM):
+        _require(time.perf_counter() < deadline, "two-hour total execution budget reached", ResourceBudgetExceeded)
+        chunk = step % (PAIR_COUNT // BATCH_SIZE)
+        indices = torch.arange(chunk * BATCH_SIZE, (chunk + 1) * BATCH_SIZE, device=device)
+        trace.append(_train_generator_step(consumer, optimizer, z, targets, indices))
+        if (step + 1) % 10 == 0:
+            heartbeat.update(state=RUNNING, phase="GENERATOR_ONLY", step=step + 1, force=False)
+            memory = _device_snapshot(device)
+            _require(memory["used_bytes"] <= int(memory["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device usage exceeded 90 percent during Generator arm", ResourceBudgetExceeded)
+        if (step + 1) % 25 == 0 or step + 1 == UPDATE_COUNT_PER_ARM:
+            torch.cuda.synchronize(device)
+            _require(torch.equal(frozen_encoder, encoder.detach()), "Generator arm changed frozen encoder")
+            save_recovery({
+                "phase": "GENERATOR_ONLY", "cursor": step + 1,
+                "trainable_parameter_state": consumer.trainable_state_dict(),
+                "optimizer_state": optimizer.state_dict(), "trace": trace,
+                "data_binding": data_binding, "rng_state": bogt._rng_state_payload(),
+            })
+    _require(len(trace) == UPDATE_COUNT_PER_ARM and not torch.equal(start_params, generator.detach()), "Generator arm update count or parameter change is invalid")
+    result = _measure_generator_arm(consumer, data, evaluator, start_state, generator.detach(), trace)
+    _require(result["encoder_frozen"] and result["generator_changed"], "Generator arm parameter isolation failed")
+    return result
+
+
+def _train_ols_arm(
+    consumer: Any,
+    data: Mapping[str, torch.Tensor],
+    evaluator: torch.nn.Module,
+    device: torch.device,
+    heartbeat: Any,
+    start_state: Mapping[str, torch.Tensor],
+    *,
+    deadline: float,
+    recovery_payload: Mapping[str, Any],
+    save_recovery: Any,
+) -> dict[str, Any]:
+    data_binding = _recovery_data_binding(data)
+    _require(recovery_payload.get("phase") == "OLS_INPUT_ONLY" and recovery_payload.get("data_binding") == data_binding, "OLS recovery identity or fixed TRAIN inputs changed")
+    _require(_tree_equal(recovery_payload.get("trainable_parameter_state"), start_state), "OLS recovery changed frozen step600 runtime parameters")
+    consumer.load_trainable_state_dict(dict(start_state))
+    params = dict(consumer.runtime.named_parameters())
+    generator = params["generator.phase"]
+    for parameter in params.values():
+        parameter.requires_grad_(False)
+        parameter.grad = None
+    generator_before = generator.detach().clone()
+    initial_z = data["fit_ols"].detach().clone()
+    targets = data["fit_targets"]
+    labels = data["fit_labels"]
+    with torch.no_grad():
+        before_raw = _raw_from_ols(consumer, initial_z)
+    before = _metrics_for_raw(before_raw, targets, labels, evaluator)
+    z_chunks = [torch.nn.Parameter(initial_z[start : start + BATCH_SIZE].clone()) for start in range(0, PAIR_COUNT, BATCH_SIZE)]
+    optimizers = [_adam([parameter]) for parameter in z_chunks]
+    cursor = int(recovery_payload.get("cursor", -1))
+    _require(0 <= cursor <= UPDATE_COUNT_PER_ARM, "OLS recovery cursor is invalid")
+    if cursor:
+        chunks = recovery_payload.get("complex_ols_chunks")
+        states = recovery_payload.get("optimizer_states")
+        _require(isinstance(chunks, list) and len(chunks) == len(z_chunks) and isinstance(states, list) and len(states) == len(optimizers), "OLS recovery optimizer bank is malformed")
+        for parameter, saved in zip(z_chunks, chunks, strict=True):
+            _require(isinstance(saved, torch.Tensor) and saved.shape == parameter.shape and saved.dtype == parameter.dtype, "OLS recovery coefficient chunk changed")
+            parameter.data.copy_(saved.to(device))
+        for optimizer, saved in zip(optimizers, states, strict=True):
+            optimizer.load_state_dict(_mapping(saved, "OLS recovery optimizer state"))
+    trace = [dict(row) for row in recovery_payload.get("trace", [])]
+    _require(len(trace) == cursor, "OLS recovery trace and cursor disagree")
+    generator_final_phase = _tensor(recovery_payload.get("generator_final_phase"), "completed Generator phase")
+    generator_trace = recovery_payload.get("generator_training_trace")
+    _require(isinstance(generator_trace, list) and len(generator_trace) == UPDATE_COUNT_PER_ARM, "completed Generator trace is missing from OLS recovery")
+    bogt.restore_rng_state(_mapping(recovery_payload.get("rng_state"), "OLS recovery RNG"))
+    for step in range(cursor, UPDATE_COUNT_PER_ARM):
+        _require(time.perf_counter() < deadline, "two-hour total execution budget reached", ResourceBudgetExceeded)
+        chunk = step % len(z_chunks)
+        start = chunk * BATCH_SIZE
+        trace.append(_train_ols_step(consumer, optimizers[chunk], z_chunks[chunk], targets, start, start + BATCH_SIZE))
+        if (step + 1) % 10 == 0:
+            heartbeat.update(state=RUNNING, phase="OLS_INPUT_ONLY", step=step + 1, force=False)
+            memory = _device_snapshot(device)
+            _require(memory["used_bytes"] <= int(memory["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device usage exceeded 90 percent during OLS-input arm", ResourceBudgetExceeded)
+        if (step + 1) % 25 == 0 or step + 1 == UPDATE_COUNT_PER_ARM:
+            torch.cuda.synchronize(device)
+            save_recovery({
+                "phase": "OLS_INPUT_ONLY", "cursor": step + 1,
+                "trainable_parameter_state": consumer.trainable_state_dict(),
+                "complex_ols_chunks": [parameter.detach() for parameter in z_chunks],
+                "optimizer_states": [optimizer.state_dict() for optimizer in optimizers],
+                "trace": trace, "generator_final_phase": generator_final_phase,
+                "generator_training_trace": generator_trace, "data_binding": data_binding,
+                "rng_state": bogt._rng_state_payload(),
+            })
+    optimized_z = torch.cat([value.detach() for value in z_chunks], dim=0)
+    _finite(optimized_z.real, "optimized OLS bank real coefficients")
+    _finite(optimized_z.imag, "optimized OLS bank imaginary coefficients")
+    with torch.no_grad():
+        after_raw = _raw_from_ols(consumer, optimized_z)
+    after = _metrics_for_raw(after_raw, targets, labels, evaluator)
+    before_fg = float(before["pixel"]["foreground_mse"])
+    before_bg = float(before["pixel"]["background_mse"])
+    _require(before_fg > 0.0 and before_bg > 0.0, "OLS arm baseline pixel error must be positive")
+    after["pixel"]["relative_reduction"] = {
+        "foreground": 1.0 - float(after["pixel"]["foreground_mse"]) / before_fg,
+        "background": 1.0 - float(after["pixel"]["background_mse"]) / before_bg,
+    }
+    after["reaches_target"] = _arm_reaches_target(after)
+    displacement = (optimized_z - initial_z).abs().to(torch.float64)
+    per_row_ratio = displacement.norm(dim=1) / initial_z.abs().to(torch.float64).norm(dim=1).clamp_min(1.0e-12)
+    return {
+        "start": before,
+        "end": after,
+        "training_trace": {"first": dict(trace[0]), "median": {key: statistics.median(row[key] for row in trace) for key in trace[0]}, "last": dict(trace[-1])},
+        "updates": len(trace),
+        "optimizer": {"name": "Adam", "parameter_names": ["complex OLS coefficients, disjoint 10-row chunks"], "learning_rate": LEARNING_RATE, "betas": list(ADAM_BETAS)},
+        "generator_frozen": torch.equal(generator_before, generator.detach()),
+        "runtime_frozen": all(torch.equal(parameter.detach(), torch.as_tensor(start_state[name], device=device)) for name, parameter in params.items()),
+        "generator_final_phase": generator_final_phase.detach().cpu(),
+        "generator_training_trace": generator_trace,
+        "optimized_ols_displacement": {
+            "mean_absolute_coefficient_change": float(displacement.mean().cpu()),
+            "mean_relative_l2_per_row": float(per_row_ratio.mean().cpu()),
+            "q95_relative_l2_per_row": float(torch.quantile(per_row_ratio, 0.95).cpu()),
+            "per_row_relative_l2": per_row_ratio.detach().cpu().tolist(),
+            "distance_to_original_bank": "per-row relative complex L2 norm, no projection or clipping",
+        },
+        "result_boundary": "per-example complex OLS inversion under frozen Generator; not a sampler",
+        "optimized_ols": optimized_z.detach().cpu(),
+        "raw_cmos": {"start": before_raw.detach().cpu(), "end": after_raw.detach().cpu()},
+    }
+
+
+def _save_contact_sheet(path: Path, view: torch.Tensor, labels: torch.Tensor, *, scale: float, title: str) -> None:
+    pooled = view.detach().cpu().squeeze(1)
+    _require(pooled.shape == (len(labels), 28, 28), "contact-sheet view has wrong shape")
+    _require(math.isfinite(scale) and scale > 0.0, "contact-sheet scale is invalid")
+    columns = 10
+    cell = 36
+    rows = math.ceil(len(labels) / columns)
+    image = Image.new("RGB", (columns * cell, rows * cell + 28), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((4, 4), title, fill="black")
+    for index, (view, label) in enumerate(zip(pooled, labels.tolist(), strict=True)):
+        row, column = divmod(index, columns)
+        normalized = (view.clamp(0.0, scale) / scale * 255.0).round().to(torch.uint8).numpy()
+        tile = Image.fromarray(normalized, mode="L").resize((28, 28), Image.Resampling.NEAREST).convert("RGB")
+        image.paste(tile, (column * cell + 4, 24 + row * cell))
+        draw.text((column * cell + 2, 24 + row * cell), str(label), fill="red")
+    image.save(path)
+
+
+def _write_status(path: Path, state: str, phase: str, **extra: Any) -> None:
+    previous = _read_json(path) if path.is_file() else {}
+    atomic_write_json(path, {**previous, "schema": "m0_bogt_renderability_localization_status.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "state": state, "phase": phase, "updated_at": time.time(), **extra})
+
+
+def _recovery_data_binding(data: Mapping[str, torch.Tensor]) -> dict[str, str]:
+    names = ("fit_indices", "fit_labels", "fit_targets", "fit_ols", "observe_indices", "observe_labels", "observe_targets", "observe_ols")
+    return {name: tensor_sha256(data[name].detach().cpu()) for name in names}
+
+
+def _save_recovery_checkpoint(directory: Path, payload: Mapping[str, Any], *, source_manifest_id: str) -> dict[str, Any]:
+    directory.mkdir(parents=True, exist_ok=True)
+    pointer_path = directory / "recovery_latest.json"
+    previous = _read_json(pointer_path) if pointer_path.is_file() else {}
+    previous_slot = previous.get("slot")
+    slot = 0 if previous_slot is None else (int(previous_slot) + 1) % RECOVERY_SLOT_COUNT
+    artifact_path = directory / f"recovery_slot_{slot}.pt"
+    envelope = {
+        "schema": RECOVERY_SCHEMA,
+        "task_id": TASK_ID,
+        "attempt_id": ATTEMPT_ID,
+        "source_manifest_id": source_manifest_id,
+        "payload": dict(payload),
+    }
+    atomic_torch_save(artifact_path, rescue._cpu_tree(envelope))
+    pointer = {
+        "schema": RECOVERY_SCHEMA,
+        "task_id": TASK_ID,
+        "attempt_id": ATTEMPT_ID,
+        "source_manifest_id": source_manifest_id,
+        "slot": slot,
+        "path": artifact_path.name,
+        "sha256": file_sha256(artifact_path),
+        "phase": payload.get("phase"),
+        "cursor": payload.get("cursor"),
+    }
+    atomic_write_json(pointer_path, pointer)
+    return pointer
+
+
+def _load_recovery_checkpoint(directory: Path, *, source_manifest_id: str) -> dict[str, Any]:
+    pointer = _read_json(directory / "recovery_latest.json")
+    _require(
+        pointer.get("schema") == RECOVERY_SCHEMA
+        and pointer.get("task_id") == TASK_ID
+        and pointer.get("attempt_id") == ATTEMPT_ID
+        and pointer.get("source_manifest_id") == source_manifest_id
+        and pointer.get("path") in {f"recovery_slot_{slot}.pt" for slot in range(RECOVERY_SLOT_COUNT)},
+        "recovery pointer is not bound to this task, attempt, or source",
+    )
+    artifact_path = directory / str(pointer["path"])
+    envelope = safe_torch_load(artifact_path, expected_sha256=str(pointer["sha256"]), map_location="cpu")
+    _require(
+        isinstance(envelope, Mapping)
+        and envelope.get("schema") == RECOVERY_SCHEMA
+        and envelope.get("task_id") == TASK_ID
+        and envelope.get("attempt_id") == ATTEMPT_ID
+        and envelope.get("source_manifest_id") == source_manifest_id,
+        "recovery artifact identity changed",
+    )
+    payload = _mapping(envelope.get("payload"), "recovery payload")
+    _require(payload.get("phase") == pointer.get("phase") and payload.get("cursor") == pointer.get("cursor"), "recovery pointer and payload disagree")
+    return dict(payload)
+
+
+def _execute(root: Path, *, sequence: int, token: str, resume: bool = False) -> dict[str, Any]:
+    _require(token == AUTHORIZATION_TOKEN, "authorization token mismatch")
+    _require(torch.cuda.is_available(), "scientific execution requires CUDA")
+    authorities = _load_authorities(root)
+    context = rescue._build_context(authorities, root)
+    fit_indices, observe_indices = _balanced_selection(context)
+    preflight, config, source, identity, receipt = _verify_preflight(root, authorities, context, sequence)
+    target = root / ATTEMPT_DIR
+    execution_manifest_path = target / "execution_manifest.json"
+    if resume:
+        _require(target.is_dir(), "resume requires the existing attempt_01 directory")
+        saved_status = _read_json(target / "status.json")
+        _require(saved_status.get("state") == RUN_INTERRUPTED, "only an explicitly interrupted attempt may resume")
+        saved_source = _read_json(target / "source_manifest.json")
+        saved_manifest = _read_json(execution_manifest_path)
+        _require(saved_source == source, "resume source manifest changed")
+        _require(
+            saved_manifest.get("run_identity") == identity.to_dict()
+            and saved_manifest.get("source_manifest") == source
+            and saved_manifest.get("preflight_receipt") == receipt.to_dict()
+            and saved_manifest.get("run_config") == config
+            and saved_manifest.get("input_authorities") == authorities["authority_hashes"],
+            "resume execution manifest changed",
+        )
+        attempt_started_epoch = float(saved_manifest.get("execution_started_epoch", 0.0))
+        _require(attempt_started_epoch > 0.0, "resume attempt start time is missing")
+    else:
+        _require(not target.exists(), "attempt_01 is write-once and already exists")
+        saved_status = {}
+        attempt_started_epoch = time.time()
+    device = torch.device("cuda", torch.cuda.current_device())
+    consumer = _load_runtime(root, authorities, device)
+    evaluator = _load_ed(root, device)
+    resource = _device_snapshot(device)
+    _require(resource["used_bytes"] <= int(resource["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device usage exceeds 90 percent before attempt", ResourceBudgetExceeded)
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    if resume:
+        control.interrupted()
+        run_identity = control.resume_scientific_attempt(target, ATTEMPT_ID, receipt)
+    else:
+        run_identity = control.open_scientific_attempt(target, ATTEMPT_ID, receipt)
+    started = time.perf_counter()
+    cumulative_preflight_seconds = float(preflight.get("cumulative_preflight_seconds", 0.0))
+    attempt_elapsed_before = max(0.0, time.time() - attempt_started_epoch)
+    deadline = started + max(0.0, MAX_TOTAL_SECONDS - cumulative_preflight_seconds - attempt_elapsed_before)
+    if not resume:
+        atomic_write_new_json(target / "source_manifest.json", source, artifact_kind="M0 renderability localization source manifest")
+        atomic_write_new_json(execution_manifest_path, {
+            "schema": "m0_bogt_renderability_localization_execution_manifest.v1",
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "authorization_id": AUTHORIZATION_ID,
+            "run_identity": run_identity.to_dict(),
+            "source_manifest": source,
+            "preflight_receipt": receipt.to_dict(),
+            "run_config": config,
+            "input_authorities": authorities["authority_hashes"],
+            "execution_started_epoch": attempt_started_epoch,
+            "claim_boundary": "two fixed TRAIN-pair reachability upper bounds; no generation acceptance or architecture impossibility claim",
+        }, artifact_kind="M0 renderability localization execution manifest")
+        _write_status(target / "status.json", RUN_PREPARING, "LOADING_FIXED_TRAIN_PAIRS", completed_updates=0, cumulative_execution_seconds=0.0)
+    else:
+        _write_status(
+            target / "status.json",
+            RUN_PREPARING,
+            "RESUMING_FIXED_TRAIN_PAIRS",
+            resume_count=int(saved_status.get("resume_count", 0)) + 1,
+            previous_interruption=saved_status.get("error"),
+            error=None,
+        )
+    heartbeat = rescue.HeartbeatWriter(target, RUN_ID, total_steps=2 * UPDATE_COUNT_PER_ARM)
+    heartbeat.update(state=RUN_PREPARING, phase="RESUMING_FIXED_TRAIN_PAIRS" if resume else "LOADING_FIXED_TRAIN_PAIRS", step=0, force=True)
+    try:
+        data = _fixed_inputs(consumer, context, fit_indices, observe_indices, device)
+        data_binding = _recovery_data_binding(data)
+        recovery_directory = target / "recovery"
+        recovery_payload = _load_recovery_checkpoint(recovery_directory, source_manifest_id=source["source_manifest_id"]) if resume else None
+        if recovery_payload is not None:
+            _require(recovery_payload.get("data_binding") == data_binding, "recovery fixed TRAIN sample bank changed")
+        recovery_manifest: dict[str, Any] = {}
+
+        def save_recovery(payload: Mapping[str, Any]) -> None:
+            nonlocal recovery_manifest
+            recovery_manifest = _save_recovery_checkpoint(recovery_directory, payload, source_manifest_id=source["source_manifest_id"])
+            phase = str(payload["phase"])
+            cursor = int(payload["cursor"])
+            completed = cursor if phase == "GENERATOR_ONLY" else UPDATE_COUNT_PER_ARM + cursor
+            cumulative_wall = time.time() - attempt_started_epoch
+            _write_status(
+                target / "status.json",
+                RUNNING,
+                phase,
+                completed_updates=completed,
+                recovery_artifact=recovery_manifest["path"],
+                recovery_sha256=recovery_manifest["sha256"],
+                recovery_cursor=cursor,
+                cumulative_execution_seconds=cumulative_wall,
+            )
+
+        # Confirm the independent evaluator on real TRAIN images before using it for CMOS.
+        evaluator_state = _state_snapshot(evaluator)
+        runtime_identity = consumer.runtime_identity()
+        real_images = torch.cat((data["fit_images"], data["observe_images"]), dim=0)
+        real_labels = torch.cat((data["fit_labels"], data["observe_labels"]), dim=0)
+        with torch.no_grad():
+            real_predictions = evaluator(F.adaptive_avg_pool2d(real_images.clamp(0.0, 1.0), (28, 28))).argmax(dim=1)
+        real_metrics = _classification_metrics(real_labels.cpu(), real_predictions.cpu())
+        _require(real_metrics["macro_recall"] >= 0.95 and min(real_metrics["per_class_recall"]) >= 0.90, "E_D real TRAIN check failed; CMOS comparison is not qualified")
+
+        # Same fixed OLS bank on step600 and the read-only step900 comparison state.
+        with torch.no_grad():
+            step600_raw = _raw_from_ols(consumer, data["fit_ols"])
+        step600_metrics = _metrics_for_raw(step600_raw, data["fit_targets"], data["fit_labels"], evaluator)
+        comparison = _load_runtime(root, authorities, device, step=900)
+        with torch.no_grad():
+            step900_raw = _raw_from_ols(comparison, data["fit_ols"])
+        step900_metrics = _metrics_for_raw(step900_raw, data["fit_targets"], data["fit_labels"], evaluator)
+        del comparison
+
+        alignment = _gradient_alignment(consumer, evaluator, data["fit_ols"], data["fit_targets"], data["fit_labels"])
+        _require(runtime_identity == consumer.runtime_identity(), "read-only comparison changed optical runtime identity")
+        starting_phase = str(recovery_payload.get("phase")) if recovery_payload is not None else "GENERATOR_ONLY"
+        starting_step = UPDATE_COUNT_PER_ARM if starting_phase == "OLS_INPUT_ONLY" else int(recovery_payload.get("cursor", 0)) if recovery_payload else 0
+        heartbeat.update(state=RUNNING, phase=starting_phase, step=starting_step, force=True)
+        _write_status(target / "status.json", RUNNING, starting_phase, completed_updates=starting_step if starting_phase == "GENERATOR_ONLY" else UPDATE_COUNT_PER_ARM + starting_step)
+        torch.cuda.reset_peak_memory_stats(device)
+        start_state = authorities["checkpoint"]["trainable_parameter_state"]
+        if recovery_payload is not None and starting_phase == "OLS_INPUT_ONLY":
+            generator_trace = recovery_payload["generator_training_trace"]
+            generator_result = _measure_generator_arm(
+                consumer,
+                data,
+                evaluator,
+                start_state,
+                _tensor(recovery_payload.get("generator_final_phase"), "completed Generator phase"),
+                generator_trace,
+            )
+            ols_payload = recovery_payload
+            context.ledger.record(bogt.TRAIN_ROLE, UPDATE_COUNT_PER_ARM * BATCH_SIZE)
+        else:
+            generator_result = _train_generator_arm(
+                consumer,
+                data,
+                evaluator,
+                device,
+                heartbeat,
+                start_state,
+                deadline=deadline,
+                recovery_payload=recovery_payload,
+                save_recovery=save_recovery,
+            )
+            context.ledger.record(bogt.TRAIN_ROLE, UPDATE_COUNT_PER_ARM * BATCH_SIZE)
+            ols_payload = {
+                "phase": "OLS_INPUT_ONLY",
+                "cursor": 0,
+                "trainable_parameter_state": start_state,
+                "generator_final_phase": generator_result["generator_phase_state"],
+                "generator_training_trace": generator_result["training_steps"],
+                "data_binding": data_binding,
+                "rng_state": bogt._rng_state_payload(),
+            }
+            save_recovery(ols_payload)
+        heartbeat.update(state=RUNNING, phase="OLS_INPUT_ONLY", step=int(ols_payload.get("cursor", 0)), force=True)
+        _write_status(target / "status.json", RUNNING, "OLS_INPUT_ONLY", completed_updates=UPDATE_COUNT_PER_ARM + int(ols_payload.get("cursor", 0)))
+        ols_result = _train_ols_arm(
+            consumer,
+            data,
+            evaluator,
+            device,
+            heartbeat,
+            start_state,
+            deadline=deadline,
+            recovery_payload=ols_payload,
+            save_recovery=save_recovery,
+        )
+        context.ledger.record(bogt.TRAIN_ROLE, UPDATE_COUNT_PER_ARM * BATCH_SIZE)
+
+        valid_raw_records = (
+            step600_metrics,
+            step900_metrics,
+            generator_result["start"],
+            generator_result["end"],
+            generator_result["observation_end"],
+            ols_result["start"],
+            ols_result["end"],
+        )
+        data_reads = context.ledger.to_dict()
+        gate_classification = _resolve_valid_classification(
+            generator_result,
+            ols_result,
+            valid_raw_records,
+            evaluator=evaluator,
+            evaluator_state_before=evaluator_state,
+            runtime_identity_before=runtime_identity,
+            runtime_identity_after=consumer.runtime_identity(),
+            data_reads=data_reads,
+        )
+        generator_result.pop("generator_phase_state")
+        generator_result.pop("training_steps")
+        ols_result.pop("generator_final_phase")
+        ols_result.pop("generator_training_trace")
+        artifact_payload = {
+            "schema": "m0_bogt_renderability_localization_measurements.v1",
+            "fit_indices": data["fit_indices"],
+            "fit_labels": data["fit_labels"].detach().cpu(),
+            "fit_targets_28x28": data["fit_targets"].detach().cpu(),
+            "fit_ols_step600": data["fit_ols"].detach().cpu(),
+            "observation_indices": data["observe_indices"],
+            "observation_labels": data["observe_labels"].detach().cpu(),
+            "step600_raw_cmos_fixed_ols": step600_raw.detach().cpu(),
+            "step900_raw_cmos_same_fixed_ols": step900_raw.detach().cpu(),
+            "generator_arm": {"raw_cmos_start": generator_result["raw_cmos"]["start"], "raw_cmos_end": generator_result["raw_cmos"]["end"], "raw_cmos_observation_end": generator_result["raw_cmos"]["observation_end"]},
+            "ols_arm": {"raw_cmos_start": ols_result["raw_cmos"]["start"], "raw_cmos_end": ols_result["raw_cmos"]["end"], "optimized_ols": ols_result["optimized_ols"]},
+        }
+        raw_path = target / "renderability_raw_tensors.pt"
+        atomic_torch_save_new(raw_path, artifact_payload, artifact_kind="fixed TRAIN renderability upper-bound CMOS and OLS tensors")
+        sheets = {
+            "step600_fixed_ols": target / "step600_fixed_ols_contact_sheet.png",
+            "step900_comparison": target / "step900_same_ols_contact_sheet.png",
+            "generator_end": target / "generator_arm_contact_sheet.png",
+            "ols_end": target / "ols_input_arm_contact_sheet.png",
+            "real_train": target / "real_train_reference_contact_sheet.png",
+        }
+        sheet_views = {
+            "step600_fixed_ols": _evaluator_view(step600_raw),
+            "step900_comparison": _evaluator_view(step900_raw),
+            "generator_end": _evaluator_view(generator_result["raw_cmos"]["end"]),
+            "ols_end": _evaluator_view(ols_result["raw_cmos"]["end"]),
+            "real_train": data["fit_targets"],
+        }
+        common_display_scale = float(torch.quantile(torch.cat([value.detach().cpu().flatten() for value in sheet_views.values()]), 0.995).clamp_min(1.0e-8))
+        for name, title in (
+            ("step600_fixed_ols", "step600 fixed TRAIN OLS"),
+            ("step900_comparison", "step900 read-only comparison, same OLS"),
+            ("generator_end", "Generator-only fixed-pair end"),
+            ("ols_end", "OLS-input-only end"),
+            ("real_train", "Real TRAIN targets"),
+        ):
+            _save_contact_sheet(sheets[name], sheet_views[name], data["fit_labels"].cpu(), scale=common_display_scale, title=title)
+
+        data_reads = context.ledger.to_dict()
+        resource = _device_snapshot(device)
+        _require(resource["used_bytes"] <= int(resource["total_bytes"] * MAX_DEVICE_MEMORY_FRACTION), "device usage exceeded 90 percent during execution", ResourceBudgetExceeded)
+        total_wall_seconds = cumulative_preflight_seconds + time.time() - attempt_started_epoch
+        _require(total_wall_seconds <= MAX_TOTAL_SECONDS, "two-hour total wall-clock budget exceeded", ResourceBudgetExceeded)
+        resource["peak_allocated_bytes"] = int(torch.cuda.max_memory_allocated(device))
+        resource["peak_reserved_bytes"] = int(torch.cuda.max_memory_reserved(device))
+        report = {
+            "schema": REPORT_SCHEMA,
+            "task_id": TASK_ID,
+            "status": RUN_COMPLETED,
+            "result": RUN_COMPLETED,
+            "outer_gate": OUTER_GATE,
+            "outer_gate_passed": True,
+            "classification": gate_classification,
+            "authorization_consumed": {"id": AUTHORIZATION_ID, "scope": "one bounded two-arm TRAIN-only renderability localization"},
+            "step600_fixed_input_baseline": step600_metrics,
+            "step900_read_only_comparison": step900_metrics,
+            "real_train_E_D_qualification": real_metrics,
+            "gradient_alignment": alignment,
+            "recovery": {"checkpoint_interval_updates": 25, "retained_slots": RECOVERY_SLOT_COUNT, "last_checkpoint": recovery_manifest},
+            "generator_only_arm": {key: value for key, value in generator_result.items() if key != "raw_cmos"},
+            "ols_input_only_arm": {key: value for key, value in ols_result.items() if key not in {"raw_cmos", "optimized_ols"}},
+            "gate_checks": {
+                "generator_arm_reaches_fixed_pair_threshold": _arm_reaches_target(generator_result["end"]),
+                "ols_input_arm_reaches_fixed_pair_threshold": _arm_reaches_target(ols_result["end"]),
+                "all_raw_cmos_finite_nonconstant_nonzero": all(record["raw_cmos"]["all_finite"] and record["raw_cmos"]["all_nonconstant"] and record["raw_cmos"]["all_nonzero"] for record in valid_raw_records),
+                "E_D_frozen": _digest_state(_state_snapshot(evaluator)) == _digest_state(evaluator_state) and all(not parameter.requires_grad and parameter.grad is None for parameter in evaluator.parameters()),
+                "runtime_frozen_in_OLS_arm": bool(ols_result["runtime_frozen"]),
+                "encoder_frozen_in_Generator_arm": bool(generator_result["encoder_frozen"]),
+                "protected_test_sealed_reads_zero": True,
+                "total_wall_clock_within_two_hours": total_wall_seconds <= MAX_TOTAL_SECONDS,
+                "device_memory_within_90_percent": True,
+            },
+            "data_identity": context.data_identity,
+            "data_reads": data_reads,
+            "artifacts": {
+                "measurement_tensors": {"path": raw_path.name, "sha256": file_sha256(raw_path), "size_bytes": raw_path.stat().st_size},
+                "contact_sheets": {name: {"path": path.name, "sha256": file_sha256(path), "size_bytes": path.stat().st_size} for name, path in sheets.items()},
+            },
+            "display_scale": {"common_28x28_intensity_99_5_percentile": common_display_scale, "per_image_rescaling": False},
+            "run_identity": run_identity.to_dict(),
+            "source_manifest": source,
+            "preflight": {"status": PREFLIGHT_READY, "receipt": receipt.to_dict()},
+            "resource": {"attempt_wall_seconds": time.time() - attempt_started_epoch, "cumulative_preflight_seconds": cumulative_preflight_seconds, "total_wall_seconds": total_wall_seconds, "maximum_seconds": MAX_TOTAL_SECONDS, "device_snapshot": resource, "device_memory_fraction_limit": MAX_DEVICE_MEMORY_FRACTION},
+            "claim_boundary": {"fixed_train_pairs_only": True, "not_generation_acceptance": True, "not_architecture_impossibility_proof": True, "optimized_OLS_is_not_a_sampler": True, "no_automatic_follow_on": True},
+            "next_action": "NONE",
+        }
+        atomic_write_new_json(target / "report.json", report, artifact_kind="M0 renderability localization report")
+        heartbeat.update(state=RUN_COMPLETED, phase="COMPLETE", step=2 * UPDATE_COUNT_PER_ARM, force=True)
+        _write_status(target / "status.json", RUN_COMPLETED, "COMPLETE", completed_updates=2 * UPDATE_COUNT_PER_ARM, outer_gate_passed=True, classification=gate_classification, cumulative_execution_seconds=time.time() - attempt_started_epoch)
+        control.complete()
+        return report
+    except ResourceBudgetExceeded as error:
+        heartbeat.update(state=RUN_INTERRUPTED, phase="RESOURCE_ABORTED", step=0, force=True)
+        _write_status(target / "status.json", RUN_INTERRUPTED, "RESOURCE_ABORTED", error=str(error), cumulative_execution_seconds=time.time() - attempt_started_epoch)
+        control.interrupted()
+        raise
+    except KeyboardInterrupt:
+        heartbeat.update(state=RUN_INTERRUPTED, phase="INTERRUPTED", step=0, force=True)
+        _write_status(target / "status.json", RUN_INTERRUPTED, "INTERRUPTED", error="KeyboardInterrupt", cumulative_execution_seconds=time.time() - attempt_started_epoch)
+        control.interrupted()
+        raise
+    except Exception as error:
+        heartbeat.update(state=RUN_INVALID_HARNESS, phase="INVALID_HARNESS", step=0, force=True)
+        _write_status(target / "status.json", RUN_INVALID_HARNESS, "INVALID_HARNESS", error=f"{type(error).__name__}: {error}")
+        control.invalid_harness()
+        raise
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--preflight", action="store_true")
+    mode.add_argument("--execute", action="store_true")
+    mode.add_argument("--review-root-cause", action="store_true")
+    parser.add_argument("--sequence", type=int, default=3)
+    parser.add_argument("--resume", action="store_true", help="resume attempt_01 from a verified operational recovery checkpoint")
+    parser.add_argument("--authorization-token", default=None)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
+    root = _root()
+    try:
+        if args.preflight:
+            result = _preflight(root, sequence=args.sequence, token=args.authorization_token)
+            print(json.dumps({"task_id": TASK_ID, "status": result["status"], "classification": result.get("classification"), "reason": result.get("reason"), "elapsed_seconds": result.get("elapsed_seconds")}, ensure_ascii=False, indent=2))
+            return 0 if result["status"] == PREFLIGHT_READY else 2
+        if args.review_root_cause:
+            _require(args.authorization_token == AUTHORIZATION_TOKEN, "authorization token mismatch")
+            result = _write_root_cause_review(root)
+            print(json.dumps({"task_id": TASK_ID, "review_id": result["review_id"], "failure_id": result["failure_id"], "root_cause_review": str(root / ROOT_CAUSE_REVIEW)}, ensure_ascii=False, indent=2))
+            return 0
+        result = _execute(root, sequence=args.sequence, token=args.authorization_token, resume=args.resume)
+    except ResourceBudgetExceeded as error:
+        print(json.dumps({"status": RUN_INTERRUPTED, "classification": "RESOURCE_ABORTED", "reason": str(error)}, ensure_ascii=False, indent=2))
+        return 2
+    except Exception as error:
+        print(json.dumps({"status": RUN_INVALID_HARNESS, "classification": RUN_INVALID_HARNESS, "reason": f"{type(error).__name__}: {error}"}, ensure_ascii=False, indent=2))
+        return 2
+    print(json.dumps({"status": result["status"], "classification": result["classification"], "outer_gate": result["outer_gate"], "output_dir": result["output_dir"] if "output_dir" in result else str(root / ATTEMPT_DIR)}, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

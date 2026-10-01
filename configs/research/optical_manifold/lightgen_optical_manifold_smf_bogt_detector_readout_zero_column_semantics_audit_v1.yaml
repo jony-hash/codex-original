@@ -1,0 +1,175 @@
+schema: lightgen_optical_manifold_smf_bogt_detector_readout_zero_column_semantics_audit_v1
+hypothesis: H-LOMA-CBOGT-S5-ZCSA
+rmal_consumer:
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
+  config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_review_v1.json
+  review_sha256: 73ba944ac5766c88591e0f5125cc031a1c9c55bd84aa2cbc30ea457bd4fb30e8
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/validation.json
+  validation_sha256: affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/audit.json
+  audit_sha256: 5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa
+  compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/compact_report.json
+  compact_report_sha256: c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137
+  probe: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/probes.pt
+  probe_sha256: 3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed
+  implementation_commit: 5b274b926474784a1ad49744e75190afff31747c
+  audit_status: passed
+  audit_classification: bounded_recoverability_established_at_detector
+rwsa_identity:
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_v1.yaml
+  config_sha256: 076e447cd2a574cdaf6196bfecfa7071d3fd66957501d61e06bdb0847998171a
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_review_v1.json
+  review_sha256: b616d431e3727b59c6dbaa146be84513f04c1fd89e1457b523f91f5ddbbb77ae
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_v1_attempt_02/validation.json
+  validation_sha256: 498903c577b6997a3f57fabe21c27217fcc29abc4eff6e1de029f9b9ba692763
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_v1_attempt_02/audit.json
+  audit_sha256: 4d0154eb002cb812056eed40fce11d7f8e2e9a2f6cfc998d4393b1a14f2d654f
+  implementation_module_sha256: f9ef7f32d8d02051fcb11286e02c6e06aaed66a8724a79fec5e63ddacf59844c
+  implementation_commit: 5b274b926474784a1ad49744e75190afff31747c
+  result_git_commit: 0dead1b73655b3556450cedbb5d0a2c579385209
+  validation_status: passed
+  audit_status: invalid_harness
+  audit_classification: invalid_harness
+references:
+  scaled_chen_checkpoint:
+    path: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+    sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+    producer_commit: 019b76ef911e0bd16b8d5d4169807323427684af
+    global_step: 5000
+    role: frozen_scaled_chen_reference
+fit_panel:
+  source: mnist_train_indices_0_54999
+  count: 1000
+  per_label: 100
+  construction: first_100_sorted_per_label_after_excluding_calibration_confirmation_plan3_plan4
+  calibration_excluded: true
+  confirmation_excluded: true
+  plan3_plan4_excluded: true
+  schedule_overlap_allowed_for_fit_only: true
+  indices_sha256: 532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d
+evaluation_panels:
+  selection:
+    source: mnist_test_indices_5000_9999
+    count: 1000
+    per_label: 100
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  confirmation:
+    source: horizon_heldout_train_indices_55000_59999
+    count: 5000
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  candidate_prefix:
+    source: mnist_test_indices_0_4999
+    count: 5000
+    consumed: false
+  no_new_samples: true
+target:
+  kind: camera_intensity_same_fov
+  shape: [1, 200, 200]
+  preprocessing: base.render_intensity_batch
+  normalization: MNIST_uint8_div_255_to_float32
+  interpolation: bilinear
+  align_corners: false
+  clamp: [0.0, 1.0]
+  paired_target: true
+  exact_constant: all(target[:,j] == target[0,j])
+  population_variance: unbiased=false
+  sample_order: registered_panel_order
+probe_contract:
+  weights_shape: [257, 40000]
+  dynamic_weights_shape: [256, 40000]
+  bias_shape: [40000]
+  storage_dtype: torch.float32
+  dynamic_mass: sum_i abs(W_ij)
+  zero_identity: dynamic_mass_j == 0 exact
+  expected_zero_w_count: 6498
+  expected_dynamic_active_count: 33502
+  active_minimum_mass_telemetry: true
+  weight_mutation: false
+taxonomy:
+  priority:
+    - dynamic_active
+    - target_zero_static
+    - bias_only_constant
+    - bias_only_variable_target
+    - zero_W_constant_target_bias_mismatch
+  definitions:
+    dynamic_active: dynamic_mass_j > 0
+    target_zero_static: dynamic_mass_j == 0 AND b_j == 0 AND fit target column exactly zero
+    bias_only_constant: dynamic_mass_j == 0 AND fit target exact constant AND fit constant != 0
+    bias_only_variable_target: dynamic_mass_j == 0 AND fit target not constant
+    zero_W_constant_target_bias_mismatch: dynamic_mass_j == 0 AND fit target exact zero constant AND b_j != 0
+  mutually_exclusive: true
+  collectively_exhaustive: true
+spatial:
+  mask_shape: [200, 200]
+  reshape: row-major
+  pixel_pitch_m: [2.5e-6, 2.5e-6]
+  origin: centered
+  row_axis: y
+  column_axis: x
+  edge_definition: outermost one-pixel image boundary
+  connectivity: deterministic 4-connected
+  morphology: null
+  neighborhood_tuning: null
+measurement:
+  objective: zero_dynamic_weight_column_target_bias_and_spatial_semantics
+  primary_checkpoint: scaled_chen_step_5000
+  fit_count: 1000
+  selection_count: 1000
+  confirmation_count: 5000
+  candidate_prefix_consumed: false
+  target_renderer: base.render_intensity_batch
+  target_only: true
+  no_optical_forward: true
+  no_cmos_replay: true
+  no_feature_regeneration: true
+  no_raw_cmos_bank: true
+  no_large_feature_bank_artifact: true
+  microbatch_size: 32
+  descriptive_only: true
+gates:
+  expected_zero_w_count: 6498
+  expected_dynamic_active_count: 33502
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  optimizer_created: false
+  backward_calls: 0
+  evaluator_calls: 0
+  checkpoint_written: false
+  prior_sampled: false
+  generation_started: false
+  physical_forward_modified: false
+  formal_promotion: false
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_scaled_chen_zero_column_semantics_audit
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  mechanism_evidence_only: true
+  descriptive_only: true
+  prohibited:
+    - optimizer
+    - gradient
+    - backward
+    - probe_refit
+    - probe_regularization
+    - weight_mutation
+    - checkpoint_write
+    - prior_sampling
+    - generation
+    - evaluator
+    - CMOS_replay
+    - pooled_feature_regeneration
+    - large_feature_bank
+    - DOAA_reconstruction_candidate
+    - W_locality
+    - local_global_readout_classification
+    - detector_coordinate_mismatch
+    - optical_bottleneck
+    - training
+    - promotion
+    - physical_forward_modification
+    - new_samples

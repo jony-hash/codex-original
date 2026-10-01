@@ -1,0 +1,1319 @@
+"""Bounded step600-to-1200 continuation using the original three-term BOGT loss."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import ctypes
+import gc
+import json
+import math
+import os
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+import traceback
+from ctypes import wintypes
+from functools import partial
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import torch
+
+import ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training as bogt
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PREFLIGHT_BLOCKED, PREFLIGHT_READY, RESOURCE_ENVELOPE, HeartbeatWriter, InterruptController, PreflightReceipt, RecoveryCheckpointManager, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INTERRUPTED, RUN_INVALID_HARNESS, RUN_PREPARING, RUN_VALID_FAILED, RUNNING, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from scripts.research.lightgen import execute_lightgen_2d_chen_bogt_complex_ols_training_v1 as parent
+from scripts.research.lightgen import execute_lightgen_2d_establish_sic_independent_confirmation_evaluator_v1 as ed_authority
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1 as m0
+from scripts.research.lightgen import execute_lightgen_2d_semantically_conditioned_ols_sampler_v1 as s1
+
+
+TASK_ID = "EXECUTE_M0_BOGT_JOINT_GENERATION_CANARY_V1"
+AUTHORIZATION_ID = f"{TASK_ID}:authorization:01"
+AUTHORIZATION_TOKEN = "AUTHORIZED_EXECUTE_M0_BOGT_JOINT_GENERATION_CANARY_V1"
+SEMANTIC_AUTHORITY_ID = "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION"
+RUN_ID = "m0-bogt-joint-generation-canary-v1"
+TRAJECTORY_ID = "m0-bogt-joint-generation-canary-trajectory-v1"
+ATTEMPT_ID = f"{RUN_ID}:attempt_02"
+OUTER_GATE = "M0_BOGT_JOINT_GENERATION_CANARY_RESOLVED"
+CLASSIFICATION_SUPPORTED = "BOGT_JOINT_GENERATION_SUPPORTED"
+RUNS_DIR = Path("outputs/20260928_m0_bogt_joint_generation_canary_v1/runs")
+ATTEMPT_DIR = RUNS_DIR / "attempt_02"
+FIRST_PREFLIGHT_PATH = RUNS_DIR / "preflight_01.json"
+SECOND_PREFLIGHT_PATH = RUNS_DIR / "preflight_02.json"
+PREVIOUS_PREFLIGHT_PATH = RUNS_DIR / "preflight_03.json"
+PREFLIGHT_PATH = RUNS_DIR / "preflight_04.json"
+FAILED_ATTEMPT_DIR = RUNS_DIR / "attempt_01"
+START_RUN = Path("outputs/20260925_m0_bogt_semantic_generation_canary_v1/runs/attempt_01")
+START_CHECKPOINT = START_RUN / "scientific_step_000600.pt"
+START_REPORT = START_RUN / "resolved_report_05.json"
+START_LATEST_STATUS = START_RUN / "latest_status.json"
+START_CHECKPOINT_SHA256 = "ee8616e6c3962d305c8571dbd34de20ae1254be76bc88a963f2ebf57e8f3074e"
+START_REPORT_SHA256 = "e9814c90bc6600f7cccda1f7ec4e54d560c22d7d67553db37b0e26a7516ab8d4"
+START_STEP = 600
+END_STEP = 1200
+UPDATE_COUNT = END_STEP - START_STEP
+FIXED_CHECKPOINT_STEPS = (800, 1000, 1200)
+PREFLIGHT_BUDGET_SECONDS = 600.0
+EXECUTION_BUDGET_SECONDS = 14_400.0
+MAX_DEVICE_MEMORY_FRACTION = 0.90
+TRAIN_BATCH_SIZE = 10
+GENERATION_COUNT = 2_000
+PER_CLASS_GENERATION = 200
+DEV_RECONSTRUCTION_TOLERANCE = 0.005
+ED_MACRO_THRESHOLD = 0.50
+ED_CLASS_THRESHOLD = 0.10
+REPORT_SCHEMA = "m0_bogt_joint_generation_canary_report.v1"
+PREFLIGHT_SCHEMA = "m0_bogt_joint_generation_canary_preflight.v1"
+CHECKPOINT_SCHEMA = "m0_bogt_joint_generation_canary_checkpoint.v1"
+
+
+class CanaryError(RuntimeError):
+    """The bounded M0 contract could not be demonstrated."""
+
+
+class ResourceBudgetExceeded(CanaryError):
+    """The registered resource envelope was exceeded."""
+
+
+def _require(condition: bool, message: str, error: type[Exception] = CanaryError) -> None:
+    if not condition:
+        raise error(message)
+
+
+def _root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _prepare_cuda_dll_path() -> dict[str, Any]:
+    if os.name != "nt":
+        return {"status": "not_applicable", "scope": "current_process"}
+    prefix = Path(sys.prefix)
+    candidates = (prefix / "Library" / "bin", prefix / "Scripts", prefix / "bin")
+    existing = [path.resolve() for path in candidates if path.is_dir()]
+    current = os.environ.get("PATH", "")
+    normalized = {os.path.normcase(os.path.normpath(part)) for part in current.split(os.pathsep) if part}
+    missing = [path for path in existing if os.path.normcase(os.path.normpath(str(path))) not in normalized]
+    if missing:
+        os.environ["PATH"] = os.pathsep.join([*(str(path) for path in missing), current]) if current else os.pathsep.join(str(path) for path in missing)
+    return {"status": "updated" if missing else "already_present", "scope": "current_process", "paths": [str(path) for path in existing]}
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    _require(isinstance(value, dict), f"JSON authority is not an object: {path}")
+    return value
+
+
+def _source_paths(root: Path) -> tuple[Path, ...]:
+    return (
+        Path(__file__).resolve(),
+        Path(m0.__file__).resolve(),
+        Path(parent.__file__).resolve(),
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py",
+        root / "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+        root / "src/ldm_project/v2/application/research/shared/research_run_control.py",
+        root / "src/ldm_project/v2/student/evaluator.py",
+        root / m0.ED_IMPLEMENTATION,
+        Path(s1.__file__).resolve(),
+        root / "src/ldm_project/v2/evidence/io.py",
+    )
+
+
+def _fixed_authorities(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    legacy = m0._authority_files(root)
+    _require(file_sha256(root / START_CHECKPOINT) == START_CHECKPOINT_SHA256, "accepted step600 checkpoint hash changed")
+    _require(file_sha256(root / START_REPORT) == START_REPORT_SHA256, "accepted step600 report hash changed")
+    report = _read_json(root / START_REPORT)
+    _require(
+        report.get("result") == "VALID_FAILED"
+        and report.get("outer_gate") == "M0_BOGT_SEMANTIC_GENERATION_CANARY_RESOLVED"
+        and report.get("training", {}).get("selected_step") == START_STEP
+        and report.get("training", {}).get("optimizer_state_step") == START_STEP
+        and report.get("training", {}).get("additional_updates") == 300,
+        "step600 report is not the registered completed starting authority",
+    )
+    artifact = report.get("artifacts", {}).get("step600_checkpoint", {})
+    _require(
+        artifact.get("path") == START_CHECKPOINT.as_posix()
+        and artifact.get("sha256") == START_CHECKPOINT_SHA256
+        and artifact.get("size_bytes") == (root / START_CHECKPOINT).stat().st_size,
+        "step600 report does not bind the accepted checkpoint bytes",
+    )
+    latest = _read_json(root / START_LATEST_STATUS)
+    _require(
+        latest.get("state") == RUN_VALID_FAILED
+        and latest.get("step") == START_STEP
+        and latest.get("total_steps") == START_STEP,
+        "step600 producer status is not terminal at the selected step",
+    )
+    checkpoint = safe_torch_load(root / START_CHECKPOINT, map_location="cpu")
+    _require(
+        isinstance(checkpoint, Mapping)
+        and checkpoint.get("schema") == "m0_bogt_semantic_generation_checkpoint.v1"
+        and checkpoint.get("artifact_kind") == "M0_SCIENTIFIC_CHECKPOINT"
+        and checkpoint.get("selected_checkpoint") is True
+        and checkpoint.get("step") == START_STEP
+        and checkpoint.get("parent_step") == 300,
+        "accepted step600 checkpoint schema/selection is invalid",
+    )
+    _require(
+        checkpoint.get("source_manifest_id") == checkpoint.get("run_identity", {}).get("source_manifest_id")
+        and checkpoint.get("data_identity") == checkpoint.get("references", {}).get("data_identity"),
+        "step600 checkpoint lineage or data identity is inconsistent",
+    )
+    _require(
+        checkpoint.get("weights", {}).get("data_role") == bogt.TRAIN_ROLE
+        and checkpoint.get("references", {}).get("data_role") == bogt.TRAIN_ROLE
+        and checkpoint.get("references", {}).get("count") == 55_000
+        and checkpoint.get("references", {}).get("engineering_only") is False,
+        "step600 BOGT inputs do not have scientific TRAIN role",
+    )
+    _require(len(checkpoint.get("training_history", [])) == START_STEP, "step600 history length changed")
+    _require(
+        checkpoint.get("sampler_state", {}).get("cursor") == START_STEP
+        and checkpoint.get("sampler_state", {}).get("steps") == START_STEP,
+        "step600 class-balanced sampler cursor is invalid",
+    )
+    optimizer_state = checkpoint.get("optimizer_state", {}).get("state")
+    _require(isinstance(optimizer_state, Mapping) and len(optimizer_state) == 2, "step600 Adam state is incomplete")
+    steps = {int(value["step"].item() if torch.is_tensor(value.get("step")) else value["step"]) for value in optimizer_state.values()}
+    _require(steps == {START_STEP}, "step600 Adam internal step does not match the selected checkpoint")
+    _require(
+        checkpoint.get("optimizer_configuration", {}).get("parameter_names") == ["encoder.phase", "generator.phase"]
+        and checkpoint.get("optimizer_configuration", {}).get("name") == "Adam",
+        "step600 optimizer scope changed",
+    )
+    return legacy, dict(checkpoint)
+
+
+def _previous_preflight_authority(root: Path) -> dict[str, Any]:
+    first_path = root / FIRST_PREFLIGHT_PATH
+    second_path = root / SECOND_PREFLIGHT_PATH
+    latest_path = root / PREVIOUS_PREFLIGHT_PATH
+    _require(first_path.is_file() and second_path.is_file() and latest_path.is_file(), "the pre-repair source-bound preflight records are incomplete")
+    first = _read_json(first_path)
+    second = _read_json(second_path)
+    latest = _read_json(latest_path)
+    first_failure = first.get("failure", {})
+    second_failure = second.get("failure", {})
+    second_previous = second.get("previous_preflight", {})
+    latest_previous = latest.get("previous_preflight", {})
+    _require(
+        first.get("task_id") == TASK_ID
+        and first.get("outer_gate") == OUTER_GATE
+        and first.get("authorization_id") == AUTHORIZATION_ID
+        and first.get("status") == "INVALID_HARNESS"
+        and first.get("attempt_created") is False
+        and first_failure.get("type") == "RuntimeError"
+        and first_failure.get("message") == "Invalid device argument ",
+        "first preflight is not the expected pre-attempt CUDA device-selection failure",
+    )
+    _require(
+        second.get("task_id") == TASK_ID
+        and second.get("outer_gate") == OUTER_GATE
+        and second.get("authorization_id") == AUTHORIZATION_ID
+        and second.get("status") == "INVALID_HARNESS"
+        and second.get("attempt_created") is False
+        and second.get("source_semantics_id") == second.get("source_manifest", {}).get("execution_source_semantics_id")
+        and second_previous.get("sha256") == file_sha256(first_path)
+        and second_failure.get("phase") == "TRAIN_OLS_S1_ED_forward_and_tensor_write_resource_probe"
+        and second_failure.get("type") == "RuntimeError"
+        and second_failure.get("message") == "Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!",
+        "second preflight is not the expected pre-attempt CPU/CUDA S1 probe mismatch",
+    )
+    expected_history = [
+        {"path": FIRST_PREFLIGHT_PATH.as_posix(), "sha256": file_sha256(first_path)},
+        {"path": SECOND_PREFLIGHT_PATH.as_posix(), "sha256": file_sha256(second_path)},
+    ]
+    latest_records = latest_previous.get("records", [])
+    _require(
+        latest.get("task_id") == TASK_ID
+        and latest.get("outer_gate") == OUTER_GATE
+        and latest.get("authorization_id") == AUTHORIZATION_ID
+        and latest.get("status") == PREFLIGHT_READY
+        and latest.get("source_semantics_id") == latest.get("source_manifest", {}).get("execution_source_semantics_id")
+        and len(latest_records) == len(expected_history)
+        and all(
+            latest_records[index].get("path") == expected_history[index]["path"]
+            and latest_records[index].get("sha256") == expected_history[index]["sha256"]
+            for index in range(len(expected_history))
+        )
+        and latest.get("source_manifest", {}).get("config_identity", {}).get("repair_history") == latest_previous
+        and latest.get("step600_restored_adam_step") == START_STEP
+        and len(latest.get("three_real_updates", [])) == 3
+        and latest.get("recovery_equivalence", {}).get("status") == "PASS",
+        "preflight_03 is not the source-bound READY receipt for the repaired lifecycle",
+    )
+
+    failed_attempt_dir = root / FAILED_ATTEMPT_DIR
+    failed_attempt = _read_json(failed_attempt_dir / "status.json")
+    failed_latest = _read_json(failed_attempt_dir / "latest_status.json")
+    failed_source = _read_json(failed_attempt_dir / "source_manifest.json")
+    failed_preflight = _read_json(failed_attempt_dir / "preflight.json")
+    failed_manifest = _read_json(failed_attempt_dir / "execution_manifest.json")
+    execution_instances = sorted(failed_attempt_dir.glob("execution_instance_*.json"))
+    _require(bool(execution_instances), "pre-update attempt_01 lacks process-instance evidence")
+    _require_previous_process_exited(_read_json(execution_instances[-1]))
+    telemetry = [json.loads(line) for line in (failed_attempt_dir / "resource_telemetry.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    attempt_checks = {
+        "status_is_invalid_at_step600": failed_attempt.get("state") == RUN_INVALID_HARNESS and failed_attempt.get("current_step") == START_STEP,
+        "status_failure_is_the_known_heartbeat_phase_error": failed_attempt.get("error") == "RunControlError: heartbeat phase is invalid: STEP600_BASELINE",
+        "status_source_matches_ready_receipt": failed_attempt.get("source_manifest_id") == latest.get("source_manifest_id"),
+        "latest_status_is_invalid_at_zero_updates": failed_latest.get("state") == RUN_INVALID_HARNESS and failed_latest.get("step") == 0,
+        "no_recovery_checkpoint_was_saved": failed_latest.get("last_recovery_checkpoint") is None and not list(failed_attempt_dir.glob("recovery_*")),
+        "attempt_source_matches_ready_receipt": failed_source == latest.get("source_manifest"),
+        "attempt_preflight_matches_ready_receipt": failed_preflight == latest,
+        "execution_manifest_binds_step600": failed_manifest.get("starting_checkpoint_sha256") == START_CHECKPOINT_SHA256 and failed_manifest.get("scientific_adam_start_step") == START_STEP,
+        "attempt_id_is_01": failed_manifest.get("run_identity", {}).get("scientific_attempt_id") == f"{RUN_ID}:attempt_01",
+        "only_scientific_runtime_load_was_recorded": bool(telemetry) and all(item.get("phase") == "independent_scientific_runtime_reconstruction_from_accepted_step600" for item in telemetry),
+        "no_scientific_checkpoint_or_output_exists": not list(failed_attempt_dir.glob("*.pt")),
+    }
+    _require(all(attempt_checks.values()), f"attempt_01 is not a verified zero-update harness failure at the accepted step600 start: {[name for name, valid in attempt_checks.items() if not valid]}")
+    prior_elapsed = float(failed_attempt.get("total_elapsed_seconds", 0.0))
+    _require(
+        math.isfinite(prior_elapsed)
+        and prior_elapsed >= float(latest.get("elapsed_seconds", 0.0))
+        and prior_elapsed >= 0.0,
+        "preflight and failed attempt cumulative elapsed time is invalid",
+    )
+    return {
+        "records": [
+            {"path": FIRST_PREFLIGHT_PATH.as_posix(), "sha256": file_sha256(first_path), "elapsed_seconds": float(first["elapsed_seconds"]), "failure": first_failure["message"]},
+            {"path": SECOND_PREFLIGHT_PATH.as_posix(), "sha256": file_sha256(second_path), "elapsed_seconds": float(second["elapsed_seconds"]), "failure": second_failure["message"]},
+            {"path": PREVIOUS_PREFLIGHT_PATH.as_posix(), "sha256": file_sha256(latest_path), "elapsed_seconds": float(latest["elapsed_seconds"]), "failure": "READY preflight; attempt_01 subsequently failed before any optimizer update"},
+        ],
+        "cumulative_elapsed_seconds": prior_elapsed,
+        "preserved_attempt_01": {
+            "path": FAILED_ATTEMPT_DIR.as_posix(),
+            "status_sha256": file_sha256(FAILED_ATTEMPT_DIR / "status.json"),
+            "classification": "INVALID_HARNESS_BEFORE_SCIENTIFIC_UPDATE",
+            "global_step_at_failure": START_STEP,
+            "scientific_updates": 0,
+            "recovery_checkpoints": 0,
+            "decision": "preserve immutable attempt_01 and open attempt_02 as the sole scientific training execution",
+        },
+        "repairs": [
+            "select cuda:0 before phase resource measurement",
+            "move the preflight OLS probe onto the frozen Generator device before forward",
+            "use heartbeat phases accepted by the shared lifecycle contract",
+        ],
+    }
+
+
+def _identity(
+    source: Mapping[str, Any],
+    data_identity: Mapping[str, Any],
+    checkpoint: Mapping[str, Any],
+) -> ResearchRunIdentity:
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        trajectory_id=TRAJECTORY_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role=bogt.TRAIN_ROLE,
+        config_identity={
+            "scientific_attempt_id": ATTEMPT_ID,
+            "start_checkpoint_sha256": START_CHECKPOINT_SHA256,
+            "data_identity": dict(data_identity),
+            "objective": {
+                "formula": "alpha*L_dist + beta*L_rec + gamma*L_op",
+                "weights": dict(checkpoint["weights"]),
+                "semantic_evaluator_loss": False,
+                "weights_recalibrated": False,
+            },
+            "budget": {"updates": UPDATE_COUNT, "wall_seconds": EXECUTION_BUDGET_SECONDS, "device_fraction": MAX_DEVICE_MEMORY_FRACTION},
+            "sampling": {"family": "S1", "neighbors": 16, "per_class": PER_CLASS_GENERATION, "seed": s1.BANK_SEED},
+        },
+        model_identity={"runtime": "LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1", "trainable": ["encoder.phase", "generator.phase"], "frozen_evaluator": ed_authority.SEMANTIC_AUTHORITY_ID},
+        optimizer_identity=dict(checkpoint["optimizer_configuration"]),
+        sampler_identity={"seed": 1234, "batch_size": 10, "rows_per_class": 1, "start_cursor": START_STEP, "end_cursor": END_STEP, "schedule": "extend the accepted stored per-class TRAIN permutations without reshuffling"},
+        execution_source_semantics_id=str(source["execution_source_semantics_id"]),
+        source_manifest_id=str(source["source_manifest_id"]),
+        scientific_attempt_id=ATTEMPT_ID,
+    )
+
+
+def _device_memory(device: torch.device) -> dict[str, int | float]:
+    index = torch.cuda.current_device() if device.index is None else device.index
+    result = subprocess.run(
+        ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits", "-i", str(index)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    fields = result.stdout.strip().split(",")
+    _require(len(fields) == 2, "nvidia-smi returned malformed device memory telemetry", ResourceBudgetExceeded)
+    used_mib, total_mib = (int(field.strip()) for field in fields)
+    fraction = used_mib / total_mib
+    return {"global_used_bytes": used_mib * 1024 * 1024, "global_total_bytes": total_mib * 1024 * 1024, "global_used_fraction": fraction}
+
+
+def _resource(device: torch.device) -> dict[str, int | float]:
+    torch.cuda.synchronize(device)
+    return {
+        **_device_memory(device),
+        "torch_allocated_bytes": torch.cuda.memory_allocated(device),
+        "torch_reserved_bytes": torch.cuda.memory_reserved(device),
+        "torch_peak_allocated_bytes": torch.cuda.max_memory_allocated(device),
+        "torch_peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
+    }
+
+
+def _measure_phase(device: torch.device, name: str, fn: Any) -> tuple[Any, dict[str, Any]]:
+    torch.cuda.set_device(device)
+    torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    value = fn()
+    metrics = _resource(device)
+    metrics.update({"phase": name, "elapsed_seconds": time.perf_counter() - started})
+    _require(metrics["global_used_fraction"] <= MAX_DEVICE_MEMORY_FRACTION, f"device memory exceeded 90% during {name}: {metrics['global_used_fraction']:.4f}", ResourceBudgetExceeded)
+    return value, metrics
+
+
+def _record_resource(path: Path, stages: list[dict[str, Any]], stage: Mapping[str, Any]) -> None:
+    normalized = dict(stage)
+    stages.append(normalized)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(normalized, sort_keys=True, allow_nan=False) + "\n")
+
+
+def _process_creation_identity(pid: int | None = None) -> int | None:
+    target_pid = os.getpid() if pid is None else int(pid)
+    if os.name == "nt":
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        kernel.GetProcessTimes.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        process = kernel.OpenProcess(0x1000, False, target_pid)
+        if not process:
+            return None
+        creation = ctypes.c_ulonglong()
+        exit_time = ctypes.c_ulonglong()
+        kernel_time = ctypes.c_ulonglong()
+        user_time = ctypes.c_ulonglong()
+        try:
+            succeeded = kernel.GetProcessTimes(
+                process,
+                ctypes.byref(creation),
+                ctypes.byref(exit_time),
+                ctypes.byref(kernel_time),
+                ctypes.byref(user_time),
+            )
+            return int(creation.value) if succeeded else None
+        finally:
+            kernel.CloseHandle(process)
+    stat_path = Path(f"/proc/{target_pid}/stat")
+    if stat_path.is_file():
+        fields = stat_path.read_text(encoding="utf-8").split()
+        return int(fields[21])
+    return None
+
+
+def _require_previous_process_exited(instance: Mapping[str, Any]) -> None:
+    pid = instance.get("pid")
+    created = instance.get("creation_identity")
+    _require(isinstance(pid, int) and isinstance(created, int), "attempt process-instance identity is incomplete")
+    current_created = _process_creation_identity(pid)
+    _require(current_created != created, "the previous scientific attempt process is still active")
+
+
+def _write_execution_instance(target: Path) -> dict[str, Any]:
+    existing = sorted(target.glob("execution_instance_*.json"))
+    if existing:
+        _require_previous_process_exited(_read_json(existing[-1]))
+    sequence = len(existing) + 1
+    identity = {"pid": os.getpid(), "creation_identity": _process_creation_identity(), "sequence": sequence}
+    _require(isinstance(identity["creation_identity"], int), "current process-instance identity cannot be established")
+    atomic_write_new_json(target / f"execution_instance_{sequence:02d}.json", identity, artifact_kind="M0 execution process identity")
+    return identity
+
+
+def _load_scientific_runtime(
+    root: Path,
+    context: m0.RuntimeContext,
+    checkpoint: Mapping[str, Any],
+) -> tuple[bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer, torch.optim.Adam]:
+    device = next(context.independent_evaluator.parameters()).device
+    consumer = bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer(device=device, propagation_grid_size=bogt.PRODUCTION_PROPAGATION_GRID)
+    optimizer = consumer.create_optimizer()
+    references = bogt.FrozenBogtReferences.from_payload(checkpoint["references"])
+    weights = bogt.BogtLossWeights.from_payload(checkpoint["weights"])
+    consumer.bind_references(references, for_scientific=True)
+    consumer.bind_weights(weights, for_scientific=True)
+    external_references = parent._load_references(root / m0.FROZEN_REFERENCES, expected_data_identity=context.data_identity)
+    external_weights = parent._load_weights(root / m0.FROZEN_WEIGHTS, expected_reference_identity=canonical_sha256(external_references.identity()))
+    _require(references.identity() == external_references.identity(), "accepted checkpoint TRAIN reference differs from the frozen reference authority")
+    _require(weights.identity() == external_weights.identity(), "accepted checkpoint BOGT weights differ from the frozen weight authority")
+    consumer.load_trainable_state_dict(checkpoint["trainable_parameter_state"])
+    optimizer.load_state_dict(copy.deepcopy(checkpoint["optimizer_state"]))
+    _require(consumer.optimizer_manifest(optimizer) == checkpoint["optimizer_configuration"], "restored Adam configuration differs from step600")
+    for state in optimizer.state.values():
+        _require(int(state["step"].item()) == START_STEP, "restored scientific Adam does not begin at internal step600")
+    bogt.restore_rng_state(checkpoint["rng_state"])
+    _require(consumer.references.identity() == references.identity() and consumer.weights.identity() == weights.identity(), "frozen BOGT state changed while loading the scientific runtime")
+    return consumer, optimizer
+
+
+def _preflight_gradient_probe(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    sampler: "ExtendedTrainSampler",
+    context: m0.RuntimeContext,
+    device: torch.device,
+) -> dict[str, Any]:
+    state = copy.deepcopy(sampler.state_dict())
+    indices, _ = sampler.next_batch()
+    sampler.load_state_dict(state)
+    images = context.images.index_select(0, indices).to(device)
+    breakdown = consumer.forward_loss(images, data_role=bogt.TRAIN_ROLE)
+    named_parameters = list(consumer.runtime.named_parameters())
+    terms = {
+        "alpha_L_dist": consumer.weights.alpha * breakdown.l_dist,
+        "beta_L_rec": consumer.weights.beta * breakdown.l_rec,
+        "gamma_L_op": consumer.weights.gamma * breakdown.l_op,
+    }
+    return _term_gradient_controls(terms, [value for _, value in named_parameters], [name for name, _ in named_parameters])
+
+
+def _three_preflight_updates(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Adam,
+    sampler: "ExtendedTrainSampler",
+    context: m0.RuntimeContext,
+    device: torch.device,
+) -> list[dict[str, Any]]:
+    output = []
+    for _ in range(3):
+        step_started = time.perf_counter()
+        output.append(_train_update(consumer, optimizer, sampler, context))
+        torch.cuda.synchronize(device)
+        output[-1]["elapsed_seconds"] = time.perf_counter() - step_started
+    return output
+
+
+def _interrupt_payload_factory(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Adam,
+    sampler: "ExtendedTrainSampler",
+    history: list[dict[str, Any]],
+    context: m0.RuntimeContext,
+    source: Mapping[str, Any],
+    identity: ResearchRunIdentity,
+) -> Any:
+    def make(_: int) -> Mapping[str, Any]:
+        return {"phase": "TRAINING", "scientific_state": _checkpoint_payload(consumer, optimizer, sampler, history, context, source, identity)}
+
+    return make
+
+
+class ExtendedTrainSampler:
+    """Use the exact saved class permutations, extending their cursor to 1200."""
+
+    def __init__(self, context: m0.RuntimeContext, saved: Mapping[str, Any], *, cursor: int = START_STEP) -> None:
+        _require(saved.get("schema") == bogt.SAMPLER_SCHEMA and saved.get("seed") == 1234 and saved.get("class_count") == 10, "accepted class-balanced sampler identity changed")
+        _require(saved.get("steps") == START_STEP and saved.get("cursor") == START_STEP, "accepted sampler was not exhausted at step600")
+        perms = saved.get("permutations")
+        _require(isinstance(perms, list) and len(perms) == 10, "accepted per-class TRAIN permutations are missing")
+        labels_at_train = context.labels.index_select(0, context.train_indices)
+        self.permutations: list[torch.Tensor] = []
+        expected_counts: list[int] = []
+        for digit, permutation in enumerate(perms):
+            candidates = context.train_indices[labels_at_train == digit].cpu()
+            _require(candidates.numel() >= END_STEP, f"TRAIN class {digit} has fewer rows than the fixed 1200-step continuation")
+            _require(permutation.dtype == torch.long and permutation.shape == candidates.shape, f"class-{digit} permutation shape changed")
+            _require(torch.equal(torch.sort(permutation).values, torch.sort(candidates).values), f"class-{digit} saved permutation no longer matches TRAIN")
+            self.permutations.append(permutation.clone().cpu())
+            expected_counts.append(int(candidates.numel()))
+        _require(saved.get("rows_per_class") == expected_counts, "accepted sampler TRAIN counts changed")
+        self.cursor = cursor
+
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        _require(self.cursor < END_STEP, "extended TRAIN sampler is exhausted")
+        indices = torch.stack([permutation[self.cursor] for permutation in self.permutations])
+        self.cursor += 1
+        return indices, torch.arange(10, dtype=torch.long)
+
+    def state_dict(self) -> dict[str, Any]:
+        return {"schema": bogt.SAMPLER_SCHEMA, "seed": 1234, "steps": END_STEP, "cursor": self.cursor, "class_count": 10, "rows_per_class": [int(value.numel()) for value in self.permutations], "permutations": [value.clone() for value in self.permutations]}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        _require(state.get("schema") == bogt.SAMPLER_SCHEMA and state.get("seed") == 1234 and state.get("steps") == END_STEP, "recovery sampler identity changed")
+        _require(state.get("rows_per_class") == [int(value.numel()) for value in self.permutations], "recovery TRAIN population changed")
+        cursor = state.get("cursor")
+        _require(isinstance(cursor, int) and START_STEP <= cursor <= END_STEP, "recovery TRAIN cursor is invalid")
+        rows = state.get("permutations")
+        _require(isinstance(rows, list) and len(rows) == 10 and all(torch.equal(a, b) for a, b in zip(rows, self.permutations, strict=True)), "recovery changed a saved class permutation")
+        self.cursor = cursor
+
+
+def _tree_equal(left: Any, right: Any) -> bool:
+    if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
+        return left.dtype == right.dtype and left.shape == right.shape and torch.equal(left.cpu(), right.cpu())
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return set(left) == set(right) and all(_tree_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)) and isinstance(right, type(left)):
+        return len(left) == len(right) and all(_tree_equal(a, b) for a, b in zip(left, right, strict=True))
+    return left == right
+
+
+def _train_update(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Adam,
+    sampler: ExtendedTrainSampler,
+    context: m0.RuntimeContext,
+) -> dict[str, Any]:
+    indices, labels = sampler.next_batch()
+    batch = context.images.index_select(0, indices).to(consumer.device)
+    context.ledger.record(bogt.TRAIN_ROLE, int(indices.numel()))
+    consumer.runtime.train()
+    optimizer.zero_grad(set_to_none=True)
+    before = consumer.trainable_state_dict()
+    loss = consumer.forward_loss(batch, data_role=bogt.TRAIN_ROLE)
+    total = loss.l_total
+    total.backward()
+    gradient_norms: dict[str, float] = {}
+    for name, parameter in consumer.runtime.named_parameters():
+        _require(parameter.grad is not None and bool(torch.isfinite(parameter.grad).all().item()), f"full BOGT gradient is missing or nonfinite: {name}")
+        norm = float(parameter.grad.detach().to(torch.float64).norm().cpu())
+        _require(math.isfinite(norm) and norm > 0.0, f"full BOGT gradient is zero: {name}")
+        gradient_norms[name] = norm
+    optimizer.step()
+    after = consumer.trainable_state_dict()
+    updates = {name: float((after[name].to(torch.float64) - before[name].to(torch.float64)).norm()) for name in before}
+    _require(all(math.isfinite(value) and value > 0.0 for value in updates.values()), "Encoder and Generator must both update")
+    _require(all(parameter.grad is None for parameter in context.training_evaluator.parameters()), "frozen training evaluator received gradients")
+    _require(all(parameter.grad is None for parameter in context.independent_evaluator.parameters()), "independent E_D received gradients")
+    internal_steps = {int(value["step"].item()) for value in optimizer.state.values()}
+    expected_internal = sampler.cursor
+    _require(internal_steps == {expected_internal}, "Adam internal step does not follow the global continuation step")
+    return {
+        "step": sampler.cursor,
+        "loss": {"L_dist": float(loss.l_dist.detach().cpu()), "weighted_L_dist": float((consumer.weights.alpha * loss.l_dist).detach().cpu()), "L_rec": float(loss.l_rec.detach().cpu()), "weighted_L_rec": float((consumer.weights.beta * loss.l_rec).detach().cpu()), "L_op": float(loss.l_op.detach().cpu()), "weighted_L_op": float((consumer.weights.gamma * loss.l_op).detach().cpu()), "L_total": float(total.detach().cpu())},
+        "gradient_norms": gradient_norms,
+        "update_norms": updates,
+        "train_indices_sha256": tensor_sha256(indices),
+        "labels": labels.tolist(),
+        "data_role": bogt.TRAIN_ROLE,
+    }
+
+
+def _term_gradient_controls(
+    terms: Mapping[str, torch.Tensor],
+    parameters: Sequence[torch.nn.Parameter],
+    names: Sequence[str],
+) -> dict[str, Any]:
+    _require(set(terms) == {"alpha_L_dist", "beta_L_rec", "gamma_L_op"}, "three-term BOGT objective composition changed")
+    total = sum(terms.values())
+    full_gradients = torch.autograd.grad(total, parameters, retain_graph=True, allow_unused=True)
+    full_norms = {name: 0.0 if value is None else float(value.detach().to(torch.float64).norm().cpu()) for name, value in zip(names, full_gradients, strict=True)}
+    _require(all(math.isfinite(value) and value > 0.0 for value in full_norms.values()), "full BOGT objective does not update both trainable groups")
+    per_term: dict[str, dict[str, float]] = {}
+    ablation_delta: dict[str, float] = {}
+    for name, term in terms.items():
+        gradients = torch.autograd.grad(term, parameters, retain_graph=True, allow_unused=True)
+        norms = {parameter_name: 0.0 if value is None else float(value.detach().to(torch.float64).norm().cpu()) for parameter_name, value in zip(names, gradients, strict=True)}
+        per_term[name] = norms
+        _require(all(math.isfinite(value) for value in norms.values()) and any(value > 0.0 for value in norms.values()), f"BOGT term has no finite trainable gradient: {name}")
+        without_term = torch.autograd.grad(total - term, parameters, retain_graph=True, allow_unused=True)
+        delta = math.sqrt(sum(
+            float((torch.zeros_like(parameter) if full is None else full.detach()).to(torch.float64).sub(
+                torch.zeros_like(parameter) if ablated is None else ablated.detach()
+            ).square().sum().cpu())
+            for parameter, full, ablated in zip(parameters, full_gradients, without_term, strict=True)
+        ))
+        _require(math.isfinite(delta) and delta > 0.0, f"disabling BOGT term did not change the update direction: {name}")
+        ablation_delta[name] = delta
+    return {"term_gradient_norms": per_term, "disabled_term_gradient_differences": ablation_delta, "full_gradient_norms": full_norms}
+
+
+def _checkpoint_payload(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Adam,
+    sampler: ExtendedTrainSampler,
+    history: Sequence[Mapping[str, Any]],
+    context: m0.RuntimeContext,
+    source: Mapping[str, Any],
+    identity: ResearchRunIdentity,
+) -> dict[str, Any]:
+    return {
+        "schema": CHECKPOINT_SCHEMA,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "authorization_id": AUTHORIZATION_ID,
+        "source_manifest_id": identity.source_manifest_id,
+        "source_manifest": dict(source),
+        "run_identity": identity.to_dict(),
+        "parent_checkpoint_sha256": START_CHECKPOINT_SHA256,
+        "step": sampler.cursor,
+        "data_identity": context.data_identity,
+        "trainable_parameter_state": consumer.trainable_state_dict(),
+        "optimizer_state": copy.deepcopy(optimizer.state_dict()),
+        "optimizer_configuration": consumer.optimizer_manifest(optimizer),
+        "sampler_state": sampler.state_dict(),
+        "rng_state": bogt._rng_state_payload(),
+        "frozen_runtime_state_sha256": consumer.frozen_state_sha256,
+        "cumulative_elapsed_seconds": _elapsed_seconds(),
+        "references": consumer.references.to_payload(),
+        "weights": consumer.weights.to_payload(),
+        "training_history": [dict(item) for item in history],
+        "read_ledger": context.ledger.to_dict(),
+    }
+
+
+def _restore_recovery(
+    payload: Mapping[str, Any],
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Adam,
+    sampler: ExtendedTrainSampler,
+    context: m0.RuntimeContext,
+    source: Mapping[str, Any],
+    identity: ResearchRunIdentity,
+) -> list[dict[str, Any]]:
+    _require(payload.get("schema") == CHECKPOINT_SCHEMA and payload.get("task_id") == TASK_ID and payload.get("outer_gate") == OUTER_GATE, "recovery checkpoint schema/task changed")
+    _require(payload.get("authorization_id") == AUTHORIZATION_ID and payload.get("parent_checkpoint_sha256") == START_CHECKPOINT_SHA256, "recovery authorization or parent changed")
+    _require(payload.get("source_manifest_id") == identity.source_manifest_id and payload.get("source_manifest") == dict(source) and payload.get("run_identity") == identity.to_dict(), "recovery source binding changed")
+    _require(payload.get("data_identity") == context.data_identity and payload.get("frozen_runtime_state_sha256") == consumer.frozen_state_sha256, "recovery runtime/data identity changed")
+    _require(_tree_equal(payload.get("references"), consumer.references.to_payload()) and _tree_equal(payload.get("weights"), consumer.weights.to_payload()), "recovery BOGT references/weights changed")
+    step = payload.get("step")
+    history = payload.get("training_history")
+    sampler_state = payload.get("sampler_state")
+    _require(isinstance(step, int) and START_STEP <= step <= END_STEP and isinstance(history, list) and len(history) == step, "recovery step/history is invalid")
+    _require(isinstance(sampler_state, Mapping) and sampler_state.get("cursor") == step, "recovery sampler cursor differs")
+    consumer.load_trainable_state_dict(payload["trainable_parameter_state"])
+    optimizer.load_state_dict(payload["optimizer_state"])
+    _require(consumer.optimizer_manifest(optimizer) == payload["optimizer_configuration"], "recovery optimizer configuration changed")
+    sampler.load_state_dict(sampler_state)
+    bogt.restore_rng_state(payload["rng_state"])
+    return [dict(item) for item in history]
+
+
+def _dev_measurement(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    context: m0.RuntimeContext,
+    *,
+    expected_rows: int = 5_000,
+) -> dict[str, Any]:
+    consumer.runtime.eval()
+    context.independent_evaluator.eval()
+    confusion = torch.zeros((10, 10), dtype=torch.long)
+    reconstruction_sum = 0.0
+    raw_finite = True
+    raw_min = float("inf")
+    raw_max = float("-inf")
+    powers: list[torch.Tensor] = []
+    predictions: list[torch.Tensor] = []
+    labels_all: list[torch.Tensor] = []
+    with torch.no_grad():
+        for start in range(0, int(context.development_indices.numel()), TRAIN_BATCH_SIZE):
+            indices = context.development_indices[start : start + TRAIN_BATCH_SIZE]
+            images = context.images.index_select(0, indices).to(consumer.device)
+            labels = context.labels.index_select(0, indices).to(consumer.device)
+            result = consumer.runtime.forward_from_image(images)
+            raw = result.raw_intensity
+            raw_finite = raw_finite and bool(torch.isfinite(raw).all().item())
+            if raw_finite:
+                reconstruction_sum += float((raw - result.image_input.slm_intensity).square().sum().cpu())
+                raw_min = min(raw_min, float(raw.min().cpu()))
+                raw_max = max(raw_max, float(raw.max().cpu()))
+                logits = context.independent_evaluator(m0._evaluator_view(raw))
+                _require(bool(torch.isfinite(logits).all().item()), "E_D produced nonfinite DEV logits")
+                predicted = logits.argmax(1).cpu()
+                code = labels.cpu() * 10 + predicted
+                confusion += torch.bincount(code, minlength=100).reshape(10, 10)
+                predictions.append(predicted)
+                labels_all.append(labels.cpu())
+            powers.append(bogt.contracted_plane_powers(result).detach().to(torch.float64).cpu())
+            context.ledger.record(bogt.DEV_ROLE, int(indices.numel()))
+    power_values = torch.cat(powers)
+    rows = int(context.development_indices.numel())
+    _require(rows == expected_rows, "fixed DEV row population changed")
+    powers_finite = bool(torch.isfinite(power_values).all().item())
+    per_class = confusion.diag().to(torch.float64) / confusion.sum(1).clamp_min(1)
+    return {
+        "rows": rows,
+        "data_role": bogt.DEV_ROLE,
+        "L_rec": reconstruction_sum / (rows * 200 * 200) if raw_finite else None,
+        "E_D": {
+            "evaluated": raw_finite,
+            "macro_recall": float(per_class.mean()) if raw_finite else None,
+            "per_class_recall": per_class.tolist() if raw_finite else None,
+            "confusion_matrix": confusion.tolist() if raw_finite else None,
+            "prediction_histogram": confusion.sum(0).tolist() if raw_finite else None,
+            "prediction_labels": torch.cat(predictions).tolist() if raw_finite else None,
+            "true_labels": torch.cat(labels_all).tolist() if raw_finite else None,
+        },
+        "raw_cmos": {"finite": raw_finite, "min": raw_min if raw_finite else None, "max": raw_max if raw_finite else None},
+        "optical_power": {"finite": powers_finite, "mean_by_plane": power_values.mean(0).tolist() if powers_finite else [None] * int(power_values.shape[1])},
+    }
+
+
+def _collect_train_ols(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    context: m0.RuntimeContext,
+    target: Path,
+    *,
+    identity: ResearchRunIdentity,
+    endpoint_checkpoint_sha256: str,
+    heartbeat: HeartbeatWriter,
+) -> torch.Tensor:
+    chunks: list[torch.Tensor] = []
+    pending: list[torch.Tensor] = []
+    completed = 0
+    for saved_path in sorted(target.glob("train_ols_chunk_*.pt")):
+        chunk = safe_torch_load(saved_path, map_location="cpu")
+        _require(isinstance(chunk, Mapping) and chunk.get("schema") == "m0_bogt_joint_train_ols_chunk.v1" and chunk.get("source_manifest_id") == identity.source_manifest_id and chunk.get("endpoint_checkpoint_sha256") == endpoint_checkpoint_sha256 and chunk.get("data_identity") == context.data_identity and chunk.get("start_row") == completed, f"TRAIN OLS recovery chunk identity changed: {saved_path.name}")
+        values = chunk.get("z")
+        _require(isinstance(values, torch.Tensor) and values.shape == (min(1000, 55_000 - completed), 100) and torch.is_complex(values) and bool(torch.isfinite(values.real).all().item()) and bool(torch.isfinite(values.imag).all().item()), "TRAIN OLS recovery chunk is malformed")
+        chunks.append(values)
+        context.ledger.record(bogt.TRAIN_ROLE, int(values.shape[0]))
+        completed += int(values.shape[0])
+    consumer.runtime.eval()
+    cursor = completed
+    while cursor < 55_000:
+        if _elapsed_seconds() > EXECUTION_BUDGET_SECONDS:
+            raise ResourceBudgetExceeded("four-hour total execution budget exceeded during TRAIN OLS collection")
+        indices = context.train_indices[cursor : cursor + TRAIN_BATCH_SIZE]
+        with torch.no_grad():
+            result = consumer.runtime.forward_from_image(context.images.index_select(0, indices).to(consumer.device))
+            z = result.z_ols.coefficients.detach().to(torch.complex64).cpu().contiguous()
+        _require(z.shape == (int(indices.numel()), 100), "TRAIN OLS collection shape changed")
+        pending.append(z)
+        context.ledger.record(bogt.TRAIN_ROLE, int(indices.numel()))
+        cursor += int(indices.numel())
+        if cursor - completed >= 1000 or cursor == 55_000:
+            suffix = torch.cat(pending, 0)
+            for offset in range(0, int(suffix.shape[0]), 1000):
+                part = suffix[offset : offset + 1000]
+                row_start = completed + offset
+                path = target / f"train_ols_chunk_{row_start:05d}.pt"
+                if not path.exists():
+                    atomic_torch_save_new(path, {"schema": "m0_bogt_joint_train_ols_chunk.v1", "start_row": row_start, "z": part.contiguous(), "source_manifest_id": identity.source_manifest_id, "endpoint_checkpoint_sha256": endpoint_checkpoint_sha256, "data_identity": context.data_identity}, artifact_kind="step1200 TRAIN OLS chunk")
+            chunks.extend(pending)
+            pending.clear()
+            completed = cursor
+            memory = _resource(consumer.device)
+            _require(memory["global_used_fraction"] <= MAX_DEVICE_MEMORY_FRACTION, f"device memory exceeded 90% during TRAIN OLS collection: {memory['global_used_fraction']:.4f}", ResourceBudgetExceeded)
+            heartbeat.update(state=RUNNING, phase="POST_TRAIN_COLLECTION", step=UPDATE_COUNT, latest_losses={"collected_train_ols_rows": cursor, "global_step": END_STEP}, force=True)
+    bank = torch.cat(chunks, 0)
+    _require(bank.shape == (55_000, 100) and bool(torch.isfinite(bank.real).all().item()) and bool(torch.isfinite(bank.imag).all().item()), "step1200 TRAIN OLS bank is incomplete or nonfinite")
+    return bank
+
+
+def _generated_forward(
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    context: m0.RuntimeContext,
+    ols: torch.Tensor,
+    labels: torch.Tensor,
+    heartbeat: HeartbeatWriter,
+    resource_stages: list[dict[str, Any]],
+    resource_path: Path,
+) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    _require(ols.shape == (GENERATION_COUNT, 100) and torch.is_complex(ols) and labels.shape == (GENERATION_COUNT,), "fixed S1 bank shape changed")
+    raw_parts: list[torch.Tensor] = []
+    power_parts: list[torch.Tensor] = []
+    predictions: list[torch.Tensor] = []
+    confusion = torch.zeros((10, 10), dtype=torch.long)
+    all_finite = True
+    consumer.runtime.eval()
+    context.independent_evaluator.eval()
+    with torch.no_grad():
+        for start in range(0, GENERATION_COUNT, TRAIN_BATCH_SIZE):
+            z = ols[start : start + TRAIN_BATCH_SIZE].to(consumer.device)
+            requested = labels[start : start + TRAIN_BATCH_SIZE].to(consumer.device)
+            result = consumer.generated_forward(z)
+            raw = result.raw_intensity
+            finite = bool(torch.isfinite(raw).all().item())
+            all_finite = all_finite and finite
+            raw_parts.append(raw.detach().cpu().to(torch.float32))
+            power_fields = (result.generator_input_field, *result.generator_records)
+            power = torch.stack([bogt.physical_plane_power(field) for field in power_fields], dim=1).detach().cpu().to(torch.float64)
+            power_parts.append(power)
+            if finite:
+                logits = context.independent_evaluator(m0._evaluator_view(raw))
+                _require(bool(torch.isfinite(logits).all().item()), "E_D logits are nonfinite for finite generated CMOS")
+                predicted = logits.argmax(1).cpu()
+                confusion += torch.bincount(requested.cpu() * 10 + predicted, minlength=100).reshape(10, 10)
+                predictions.append(predicted)
+            heartbeat.update(state=RUNNING, phase="POST_TRAIN_COLLECTION", step=UPDATE_COUNT, latest_losses={"generated_rows": start + len(z)}, force=False)
+            if (start + len(z)) % 250 == 0 or start + len(z) == GENERATION_COUNT:
+                telemetry = {**_resource(consumer.device), "phase": "S1_GENERATED_FORWARD", "generated_rows": start + len(z), "elapsed_seconds": _elapsed_seconds()}
+                _require(telemetry["global_used_fraction"] <= MAX_DEVICE_MEMORY_FRACTION, f"device memory exceeded 90% during S1 generation: {telemetry['global_used_fraction']:.4f}", ResourceBudgetExceeded)
+                _record_resource(resource_path, resource_stages, telemetry)
+    raw_bank = torch.cat(raw_parts)
+    power_bank = torch.cat(power_parts)
+    if all_finite:
+        per_class = confusion.diag().to(torch.float64) / confusion.sum(1)
+        pred_bank = torch.cat(predictions)
+        metrics = {"evaluated": True, "macro_recall": float(per_class.mean()), "per_class_recall": per_class.tolist(), "confusion_matrix": confusion.tolist(), "prediction_histogram": torch.bincount(pred_bank, minlength=10).tolist(), "prediction_labels": pred_bank.tolist()}
+    else:
+        metrics = {"evaluated": False, "macro_recall": None, "per_class_recall": None, "confusion_matrix": None, "prediction_histogram": None, "prediction_labels": []}
+    return raw_bank, power_bank, {"E_D": metrics, "raw_cmos_finite": all_finite, "optical_power_finite": bool(torch.isfinite(power_bank).all().item())}
+
+
+def _gate(
+    dev0: Mapping[str, Any],
+    dev1: Mapping[str, Any],
+    generated: Mapping[str, Any],
+    raw_validity: Mapping[str, Any],
+) -> tuple[str, dict[str, bool]]:
+    delta = float(dev1["L_rec"]) - float(dev0["L_rec"]) if dev0.get("L_rec") is not None and dev1.get("L_rec") is not None else float("inf")
+    ed = generated["E_D"]
+    conditions = {
+        "S1_ED_macro_recall_at_least_0_50": ed.get("evaluated") is True and float(ed.get("macro_recall", -1.0)) >= ED_MACRO_THRESHOLD,
+        "S1_each_class_ED_recall_at_least_0_10": ed.get("evaluated") is True and min(ed.get("per_class_recall") or [-1.0]) >= ED_CLASS_THRESHOLD,
+        "all_2000_raw_CMOS_finite_nonzero_nonconstant": bool(raw_validity.get("finite") and raw_validity.get("all_nonzero") and raw_validity.get("all_nonconstant") and raw_validity.get("count") == GENERATION_COUNT),
+        "S1_optical_power_finite": bool(generated.get("optical_power_finite")),
+        "DEV_reconstruction_delta_at_most_0_005": math.isfinite(delta) and delta <= DEV_RECONSTRUCTION_TOLERANCE,
+    }
+    return (CLASSIFICATION_SUPPORTED if all(conditions.values()) else "VALID_FAILED"), conditions
+
+
+def _preflight(
+    root: Path,
+    source: Mapping[str, Any],
+    authorities: Mapping[str, Any],
+    *,
+    task_started: float,
+) -> tuple[dict[str, Any], PreflightReceipt]:
+    device = torch.device("cuda:0")
+    _require(torch.cuda.is_available(), "CUDA is required for the production BOGT preflight", ResourceBudgetExceeded)
+    stages: list[dict[str, Any]] = []
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer | None = None
+    optimizer: torch.optim.Adam | None = None
+    sampler: ExtendedTrainSampler | None = None
+    context: m0.RuntimeContext | None = None
+    trace: list[dict[str, Any]] = []
+    phase = "preflight_initialization"
+    try:
+        phase = "load_FIXED_TRAIN_DEV_data_and_frozen_evaluators"
+        load_context = partial(m0._load_runtime_context, root, device, authorities["legacy"])
+        context, stage = _measure_phase(device, "load_FIXED_TRAIN_DEV_data_and_frozen_evaluators", load_context)
+        stages.append(stage)
+        _require(context.data_identity == authorities["checkpoint"]["data_identity"], "step600 checkpoint TRAIN/DEV identity differs from the local dataset")
+        identity = _identity(source, context.data_identity, authorities["checkpoint"])
+        phase = "load_step600_runtime_optimizer_references_rng"
+        load_scientific_runtime = partial(_load_scientific_runtime, root, context, authorities["checkpoint"])
+        (consumer, optimizer), stage = _measure_phase(device, "load_step600_runtime_optimizer_references_rng", load_scientific_runtime)
+        stages.append(stage)
+        sampler = ExtendedTrainSampler(context, authorities["checkpoint"]["sampler_state"])
+        runtime_before = consumer.trainable_state_dict()
+        frozen_before = consumer.frozen_state_sha256
+        evaluator_before = m0._module_snapshot(context.independent_evaluator)
+        train_evaluator_before = m0._module_snapshot(context.training_evaluator)
+        _require(m0._states_equal(runtime_before, authorities["checkpoint"]["trainable_parameter_state"]), "preflight start model did not match accepted step600")
+
+        phase = "three_term_gradient_and_disabled_term_counterfactuals"
+        gradient_call = partial(_preflight_gradient_probe, consumer, sampler, context, device)
+        gradients, stage = _measure_phase(device, "three_term_gradient_and_disabled_term_counterfactuals", gradient_call)
+        stages.append(stage)
+        phase = "three_real_cuda_BOGT_updates"
+        updates_call = partial(_three_preflight_updates, consumer, optimizer, sampler, context, device)
+        trace, stage = _measure_phase(device, "three_real_cuda_BOGT_updates", updates_call)
+        stages.append(stage)
+        _require(sampler.cursor == START_STEP + 3 and {int(state["step"].item()) for state in optimizer.state.values()} == {START_STEP + 3}, "three real CUDA updates did not advance step600 to603")
+        _require(consumer.frozen_state_sha256 == frozen_before, "preflight changed frozen optical state")
+        _require(m0._states_equal(evaluator_before, m0._module_snapshot(context.independent_evaluator)) and m0._states_equal(train_evaluator_before, m0._module_snapshot(context.training_evaluator)), "preflight changed frozen evaluator weights")
+
+        recovery_info: dict[str, Any]
+        phase = "recovery_checkpoint_write_read_and_next_update_equivalence"
+        with tempfile.TemporaryDirectory(prefix="m0-bogt-joint-preflight-") as temp:
+            temp_dir = Path(temp)
+            recovery = RecoveryCheckpointManager(temp_dir, identity, source_manifest_id=identity.source_manifest_id, authorization_id=AUTHORIZATION_ID, keep=4)
+            preflight_history = [dict(item) for item in authorities["checkpoint"]["training_history"]] + [dict(item) for item in trace]
+            pre_next = _checkpoint_payload(consumer, optimizer, sampler, preflight_history, context, source, identity)
+            recovery.save({"scientific_state": pre_next}, step=sampler.cursor)
+            expected_next = _train_update(consumer, optimizer, sampler, context)
+            expected_history = preflight_history + [expected_next]
+            expected_state = _checkpoint_payload(consumer, optimizer, sampler, expected_history, context, source, identity)
+            expected_parameters = consumer.trainable_state_dict()
+            expected_optimizer = copy.deepcopy(optimizer.state_dict())
+            loaded = recovery.load(recovery.latest())
+            restored_history = _restore_recovery(loaded["payload"]["scientific_state"], consumer, optimizer, sampler, context, source, identity)
+            resumed_next = _train_update(consumer, optimizer, sampler, context)
+            observed_state = _checkpoint_payload(consumer, optimizer, sampler, restored_history + [resumed_next], context, source, identity)
+            _require(_tree_equal(expected_parameters, consumer.trainable_state_dict()) and _tree_equal(expected_optimizer, optimizer.state_dict()) and expected_next["train_indices_sha256"] == resumed_next["train_indices_sha256"], "recovery next update is not equivalent")
+            _require(_tree_equal(expected_state["sampler_state"], observed_state["sampler_state"]), "recovery did not preserve the class-balanced TRAIN scheduler")
+            recovery_info = {"status": "PASS", "checkpoint_step": START_STEP + 3, "next_update_step": START_STEP + 4, "same_next_train_batch": True, "model_optimizer_rng_scheduler_restored": True}
+        phase = "TRAIN_OLS_S1_ED_forward_and_tensor_write_resource_probe"
+        with tempfile.TemporaryDirectory(prefix="m0-bogt-joint-generation-probe-") as temp:
+            train_indices = context.train_indices[:TRAIN_BATCH_SIZE]
+            raw_start = time.perf_counter()
+            with torch.no_grad():
+                sample_result = consumer.runtime.forward_from_image(context.images.index_select(0, train_indices).to(device))
+                fit_elapsed = time.perf_counter() - raw_start
+                sample_z = sample_result.z_ols.coefficients.detach().to(device=device, dtype=torch.complex64)
+                ols_elapsed = fit_elapsed
+                generated_result = consumer.generated_forward(sample_z)
+                s1_elapsed = time.perf_counter() - raw_start - fit_elapsed
+                dev_probe_started = time.perf_counter()
+                logits = context.independent_evaluator(m0._evaluator_view(generated_result.raw_intensity))
+                dev_probe_elapsed = time.perf_counter() - dev_probe_started
+                _require(not generated_result.raw_intensity.requires_grad and generated_result.raw_intensity.grad_fn is None and not logits.requires_grad and logits.grad_fn is None, "frozen S1 observation retained an autograd graph")
+            write_probe_path = Path(temp) / "raw_probe.pt"
+            write_started = time.perf_counter()
+            atomic_torch_save_new(write_probe_path, {"raw": generated_result.raw_intensity.detach().cpu()}, artifact_kind="M0 write resource probe")
+            write_seconds = time.perf_counter() - write_started
+        probe_resource = _resource(device)
+        stages.append({"phase": "train_ols_s1_ed_and_tensor_write_probes", "fit_batch_seconds": fit_elapsed, "ols_batch_seconds": ols_elapsed, "s1_forward_batch_seconds": s1_elapsed, "ed_forward_batch_seconds": dev_probe_elapsed, "raw_tensor_write_seconds": write_seconds, **probe_resource})
+        update_seconds = statistics.mean([float(item["elapsed_seconds"]) for item in trace])
+        ols_batch_seconds = max(ols_elapsed, 1.0e-6)
+        dev_batch_seconds = max(fit_elapsed + dev_probe_elapsed, 1.0e-6)
+        generated_batch_seconds = max(s1_elapsed + dev_probe_elapsed, 1.0e-6)
+        projected = {
+            "training_seconds": update_seconds * UPDATE_COUNT * 1.25,
+            "train_ols_55000_rows_seconds": ols_batch_seconds * (55_000 / TRAIN_BATCH_SIZE) * 1.25,
+            "dev_step0_and_final_seconds": dev_batch_seconds * (5_000 / TRAIN_BATCH_SIZE) * 2.0 * 1.25,
+            "s1_2000_forward_seconds": generated_batch_seconds * (GENERATION_COUNT / TRAIN_BATCH_SIZE) * 1.25,
+            "raw_artifact_write_seconds": write_seconds * (GENERATION_COUNT / TRAIN_BATCH_SIZE) * 1.5,
+        }
+        projected["total_seconds"] = sum(projected.values())
+        phase = "preflight_budget_and_READY_receipt"
+        elapsed = time.perf_counter() - task_started
+        _require(elapsed <= PREFLIGHT_BUDGET_SECONDS, f"preflight exceeded 600 seconds: {elapsed:.3f}", ResourceBudgetExceeded)
+        _require(elapsed + projected["total_seconds"] <= EXECUTION_BUDGET_SECONDS, f"projected preflight plus scientific work exceeds 4 hours: {projected['total_seconds']:.1f} seconds", ResourceBudgetExceeded)
+        receipt = PreflightReceipt(
+            source_semantics_id=str(source["execution_source_semantics_id"]),
+            authorization_id=AUTHORIZATION_ID,
+            checks={
+                CORRECTNESS_INVARIANTS: {"status": "READY", "step600_authority": "PASS", "data_roles": "PASS", "three_term_gradients_and_counterfactuals": "PASS", "three_real_cuda_updates": "PASS", "freeze_and_evaluator_isolation": "PASS", "recovery_next_update_equivalence": "PASS"},
+                RESOURCE_ENVELOPE: {"status": "READY", "max_device_fraction": MAX_DEVICE_MEMORY_FRACTION, "projected": projected, "phases": stages},
+                IMPLEMENTATION_SELECTION: {"status": "READY", "engine": "CUDA", "optimizer": "restore accepted step600 Adam", "objective": "original alpha L_dist + beta L_rec + gamma L_op"},
+            },
+            selected_engine="CUDA",
+            resource={"projected": projected, "stages": stages, "cumulative_elapsed_seconds": elapsed},
+            status=PREFLIGHT_READY,
+        )
+        return ({"schema": PREFLIGHT_SCHEMA, "status": PREFLIGHT_READY, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "source_manifest": dict(source), "source_semantics_id": source["execution_source_semantics_id"], "source_manifest_id": source["source_manifest_id"], "input_authorities": {"step600_checkpoint": {"path": START_CHECKPOINT.as_posix(), "sha256": START_CHECKPOINT_SHA256}, "step600_report": {"path": START_REPORT.as_posix(), "sha256": START_REPORT_SHA256}, "s1_report_sha256": m0.S1_REPORT_SHA256, "s1_winner_sha256": m0.S1_WINNER_SHA256, "ed_checkpoint_sha256": m0.ED_CHECKPOINT_SHA256}, "step600_restored_adam_step": START_STEP, "objective_gradient_controls": gradients, "three_real_updates": trace, "recovery_equivalence": recovery_info, "resource_stages": stages, "projection": projected, "elapsed_seconds": elapsed, "data_firewall": {"train_rows_preflight": 70, "dev_model_evaluations": 0, "protected": 0, "official_test": 0, "sealed": 0}, "receipt": receipt.to_dict()}, receipt)
+    except Exception as error:
+        setattr(error, "preflight_phase", phase)
+        raise
+    finally:
+        del optimizer, consumer, sampler, context
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+def _save_checkpoint(path: Path, payload: Mapping[str, Any]) -> None:
+    if not path.exists():
+        atomic_torch_save_new(path, dict(payload), artifact_kind="M0 joint-generation checkpoint")
+        return
+    saved = safe_torch_load(path, map_location="cpu")
+    _require(_tree_equal(saved, payload), f"existing checkpoint conflicts with deterministic state: {path.name}")
+
+
+def _write_json_or_compare(path: Path, payload: Mapping[str, Any], artifact_kind: str) -> None:
+    if path.exists():
+        saved = _read_json(path)
+        _require(saved == dict(payload), f"existing JSON artifact conflicts with resumed measurement: {path.name}")
+    else:
+        atomic_write_new_json(path, dict(payload), artifact_kind=artifact_kind)
+
+
+def _write_torch_or_compare(path: Path, payload: Mapping[str, Any], artifact_kind: str) -> None:
+    if path.exists():
+        saved = safe_torch_load(path, map_location="cpu")
+        _require(_tree_equal(saved, payload), f"existing tensor artifact conflicts with resumed measurement: {path.name}")
+    else:
+        atomic_torch_save_new(path, dict(payload), artifact_kind=artifact_kind)
+
+
+_EXECUTION_STARTED = 0.0
+
+
+def _elapsed_seconds() -> float:
+    return 0.0 if _EXECUTION_STARTED <= 0.0 else time.perf_counter() - _EXECUTION_STARTED
+
+
+def _run_attempt(
+    root: Path,
+    context: m0.RuntimeContext,
+    checkpoint: Mapping[str, Any],
+    source: Mapping[str, Any],
+    identity: ResearchRunIdentity,
+    receipt: PreflightReceipt,
+    preflight: Mapping[str, Any],
+    *,
+    task_started: float,
+    budget_base_elapsed: float = 0.0,
+    resume: bool,
+) -> dict[str, Any]:
+    global _EXECUTION_STARTED
+    _EXECUTION_STARTED = time.perf_counter() - budget_base_elapsed if resume else task_started
+    if resume:
+        _require(ATTEMPT_DIR.is_dir(), "resume requires the existing M0 scientific attempt")
+        saved_source = _read_json(ATTEMPT_DIR / "source_manifest.json")
+        saved_preflight = _read_json(ATTEMPT_DIR / "preflight.json")
+        _require(saved_source == dict(source) and saved_preflight == dict(preflight), "resume source or READY preflight changed")
+        old = _read_json(ATTEMPT_DIR / "latest_status.json")
+        _require(old.get("state") in {RUN_PREPARING, RUN_INTERRUPTED, RUNNING}, "only a preparing, running, or interrupted attempt can be resumed")
+        instances = sorted(ATTEMPT_DIR.glob("execution_instance_*.json"))
+        _require(bool(instances), "attempt has no process-instance recovery evidence")
+        _require_previous_process_exited(_read_json(instances[-1]))
+    else:
+        _require(not ATTEMPT_DIR.exists(), "attempt_01 already exists; it is write-once")
+
+    device = torch.device("cuda:0")
+    consumer: bogt.LightGen2DChenBOGTComplexOLSTrainingConsumer | None = None
+    optimizer: torch.optim.Adam | None = None
+    sampler: ExtendedTrainSampler | None = None
+    control: ResearchRunControl | None = None
+    heartbeat: HeartbeatWriter | None = None
+    attempt_opened = False
+    resource_stages: list[dict[str, Any]] = []
+    try:
+        runtime_load_call = partial(_load_scientific_runtime, root, context, checkpoint)
+        (consumer, optimizer), runtime_load_stage = _measure_phase(device, "independent_scientific_runtime_reconstruction_from_accepted_step600", runtime_load_call)
+        resource_path = ATTEMPT_DIR / "resource_telemetry.jsonl"
+        if resume and resource_path.exists():
+            resource_stages.extend(json.loads(line) for line in resource_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        sampler = ExtendedTrainSampler(context, checkpoint["sampler_state"])
+        history = [dict(item) for item in checkpoint["training_history"]]
+        _require(_tree_equal(consumer.trainable_state_dict(), checkpoint["trainable_parameter_state"]), "scientific runtime does not match accepted step600")
+        _require({int(value["step"].item()) for value in optimizer.state.values()} == {START_STEP}, "scientific Adam did not restore internal step600")
+        if resume:
+            control = ResearchRunControl(identity, AUTHORIZATION_ID, preflight_status=PREFLIGHT_READY, state=RUN_INTERRUPTED, receipt=receipt)
+            effective = control.resume_scientific_attempt(ATTEMPT_DIR, ATTEMPT_ID, receipt)
+            attempt_opened = True
+            _write_execution_instance(ATTEMPT_DIR)
+        else:
+            control = ResearchRunControl(identity, AUTHORIZATION_ID)
+            control.mark_preflight_ready(receipt)
+            control.start_execution()
+            effective = control.open_scientific_attempt(ATTEMPT_DIR, ATTEMPT_ID, receipt)
+            attempt_opened = True
+            _write_execution_instance(ATTEMPT_DIR)
+            atomic_write_new_json(ATTEMPT_DIR / "source_manifest.json", dict(source), artifact_kind="M0 joint source manifest")
+            atomic_write_new_json(ATTEMPT_DIR / "preflight.json", dict(preflight), artifact_kind="M0 source-bound READY preflight")
+            atomic_write_new_json(ATTEMPT_DIR / "execution_manifest.json", {"task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization": {"id": AUTHORIZATION_ID, "token": AUTHORIZATION_TOKEN, "scope": "one 600-update step600-to1200 full three-term BOGT continuation"}, "starting_checkpoint": START_CHECKPOINT.as_posix(), "starting_checkpoint_sha256": START_CHECKPOINT_SHA256, "source_manifest_id": identity.source_manifest_id, "run_identity": effective.to_dict(), "trainable": ["encoder.phase", "generator.phase"], "objective": "alpha*L_dist + beta*L_rec + gamma*L_op", "frozen": ["W_OLS", "optical geometry", "training evaluator", "independent E_D"], "scientific_adam_start_step": START_STEP}, artifact_kind="M0 joint-generation execution manifest")
+        _record_resource(resource_path, resource_stages, runtime_load_stage)
+        manager = RecoveryCheckpointManager(ATTEMPT_DIR, identity, source_manifest_id=identity.source_manifest_id, authorization_id=AUTHORIZATION_ID, keep=32)
+        heartbeat = HeartbeatWriter(ATTEMPT_DIR, effective.run_id, total_steps=UPDATE_COUNT)
+        heartbeat.update(state=RUN_PREPARING, phase="STATISTICS", step=0, latest_losses={"global_step": START_STEP}, force=True)
+        if not resume and manager.latest() is None:
+            initial_recovery = manager.save({"phase": "TRAINING", "scientific_state": _checkpoint_payload(consumer, optimizer, sampler, history, context, source, identity)}, step=START_STEP)
+            heartbeat.update(state=RUN_PREPARING, phase="STATISTICS", step=0, latest_losses={"global_step": START_STEP}, last_recovery_checkpoint=initial_recovery.name, force=True)
+        if resume:
+            latest = manager.latest()
+            _require(latest is not None, "interrupted attempt has no recoverable checkpoint")
+            wrapper = manager.load(latest)
+            payload = wrapper.get("payload", {})
+            _require(payload.get("phase") == "TRAINING", "only training-phase recovery is supported")
+            history = _restore_recovery(payload["scientific_state"], consumer, optimizer, sampler, context, source, identity)
+        baseline_path = ATTEMPT_DIR / "step600_dev_baseline.json"
+        if not baseline_path.exists():
+            dev_call = partial(_dev_measurement, consumer, context)
+            dev0, dev0_stage = _measure_phase(device, "step600_full_DEV_E_D_and_reconstruction_baseline", dev_call)
+            _record_resource(resource_path, resource_stages, dev0_stage)
+            _require(dev0["E_D"]["evaluated"] and abs(float(dev0["E_D"]["macro_recall"]) - 0.1318) <= 0.001, "step600 DEV E_D baseline did not reproduce accepted 0.1318 metric")
+            accepted_dev_rec = float(_read_json(root / (START_RUN / "dev_step_000600.json"))["L_rec"])
+            _require(abs(float(dev0["L_rec"]) - accepted_dev_rec) <= 1.0e-6, "step600 DEV reconstruction baseline did not reproduce accepted measurement")
+            _write_json_or_compare(baseline_path, dev0, "step600 baseline DEV confirmation")
+        else:
+            dev0 = _read_json(baseline_path)
+        heartbeat.update(state=RUNNING, phase="TRAINING", step=sampler.cursor - START_STEP, latest_losses={"global_step": sampler.cursor}, force=True)
+        initial_frozen = consumer.frozen_state_sha256
+        initial_encoder = consumer.trainable_state_dict()["encoder.phase"]
+        initial_generator = consumer.trainable_state_dict()["generator.phase"]
+        last_loss: dict[str, Any] = {}
+        payload_factory = _interrupt_payload_factory(consumer, optimizer, sampler, history, context, source, identity)
+        with InterruptController(heartbeat, manager, payload_factory, phase="TRAINING", total_steps=UPDATE_COUNT) as interrupt:
+            while sampler.cursor < END_STEP:
+                elapsed = _elapsed_seconds()
+                _require(elapsed <= EXECUTION_BUDGET_SECONDS, "four-hour total wall-clock budget exceeded", ResourceBudgetExceeded)
+                last_loss = _train_update(consumer, optimizer, sampler, context)
+                history.append(last_loss)
+                completed = sampler.cursor - START_STEP
+                if completed % 25 == 0 or sampler.cursor == END_STEP:
+                    recovery_path = manager.save({"phase": "TRAINING", "scientific_state": _checkpoint_payload(consumer, optimizer, sampler, history, context, source, identity)}, step=sampler.cursor)
+                    telemetry = {**_resource(device), "phase": "TRAINING", "global_step": sampler.cursor, "completed_updates": completed, "elapsed_seconds": _elapsed_seconds()}
+                    _require(telemetry["global_used_fraction"] <= MAX_DEVICE_MEMORY_FRACTION, f"device memory exceeded 90% during training: {telemetry['global_used_fraction']:.4f}", ResourceBudgetExceeded)
+                    _record_resource(resource_path, resource_stages, telemetry)
+                    heartbeat.update(state=RUNNING, phase="TRAINING", step=completed, latest_losses={**last_loss["loss"], "global_step": sampler.cursor}, last_recovery_checkpoint=recovery_path.name, force=True)
+                if interrupt.requested:
+                    path = interrupt.handle_safe_boundary(step=completed, latest_losses={**last_loss["loss"], "global_step": sampler.cursor})
+                    heartbeat.update(state=RUN_INTERRUPTED, phase="INTERRUPTED", step=completed, latest_losses={"global_step": sampler.cursor}, last_recovery_checkpoint=path.name if path else None, force=True)
+                    raise KeyboardInterrupt("M0 joint BOGT continuation interrupted at update boundary")
+        _require(sampler.cursor == END_STEP and len(history) == END_STEP, "fixed 600 scientific updates did not reach step1200")
+        _require({int(value["step"].item()) for value in optimizer.state.values()} == {END_STEP}, "final Adam step is not 1200")
+        endpoint_payload = _checkpoint_payload(consumer, optimizer, sampler, history, context, source, identity)
+        _save_checkpoint(ATTEMPT_DIR / "scientific_step_001200.pt", endpoint_payload)
+        checkpoint_hash = file_sha256(ATTEMPT_DIR / "scientific_step_001200.pt")
+        heartbeat.update(state=RUNNING, phase="POST_TRAIN_COLLECTION", step=UPDATE_COUNT, latest_losses={**last_loss.get("loss", {}), "global_step": END_STEP}, force=True)
+        collect_call = partial(_collect_train_ols, consumer, context, ATTEMPT_DIR, identity=identity, endpoint_checkpoint_sha256=checkpoint_hash, heartbeat=heartbeat)
+        bank, ols_stage = _measure_phase(device, "post_training_collection_of_55000_TRAIN_OLS_rows", collect_call)
+        _record_resource(resource_path, resource_stages, ols_stage)
+        _write_torch_or_compare(ATTEMPT_DIR / "step1200_train_ols.pt", {"schema": "m0_bogt_joint_step1200_train_ols.v1", "z": bank, "data_identity": context.data_identity, "source_manifest_id": identity.source_manifest_id, "selected_checkpoint_sha256": checkpoint_hash, "selected_step": END_STEP, "data_role": bogt.TRAIN_ROLE}, "step1200 TRAIN OLS bank")
+        generated_ols, s1_metadata, _ = m0._fit_s1_and_generate_inputs(bank, context)
+        s1_metadata["selected_step"] = END_STEP
+        _write_torch_or_compare(ATTEMPT_DIR / "generated_s1_ols_coefficients.pt", {"schema": "m0_bogt_joint_s1_coefficients.v1", "ols_coefficients": generated_ols, "requested_labels": torch.tensor(s1_metadata["requested_labels"], dtype=torch.long), "sample_indices": torch.tensor(s1_metadata["sample_indices"], dtype=torch.long), "seeds": torch.tensor(s1_metadata["seeds"], dtype=torch.long), "metadata": s1_metadata, "data_role": bogt.TRAIN_ROLE}, "step1200 S1 OLS coefficients")
+        labels = torch.tensor(s1_metadata["requested_labels"], dtype=torch.long)
+        generated_call = partial(_generated_forward, consumer, context, generated_ols, labels, heartbeat, resource_stages, resource_path)
+        (raw, powers, generated_metrics), generated_stage = _measure_phase(device, "step1200_S1_raw_CMOS_generation_and_E_D_forward", generated_call)
+        _record_resource(resource_path, resource_stages, generated_stage)
+        _write_torch_or_compare(ATTEMPT_DIR / "generated_raw_cmos.pt", {"schema": "m0_bogt_joint_generated_raw_cmos.v1", "raw_cmos": raw, "requested_labels": labels, "prediction_labels": torch.tensor(generated_metrics["E_D"].get("prediction_labels") or [], dtype=torch.long), "optical_powers": powers, "source_step": END_STEP, "data_role": bogt.TRAIN_ROLE, "sampler_family": "S1"}, "step1200 S1 raw CMOS bank")
+        fixed_dev_path = root / START_RUN / "fixed_dev_real_controls.pt"
+        accepted_fixed_dev_ref = _read_json(root / START_REPORT).get("artifacts", {}).get("fixed_dev_controls", {})
+        _require(
+            fixed_dev_path.is_file()
+            and accepted_fixed_dev_ref.get("path") == (START_RUN / "fixed_dev_real_controls.pt").as_posix()
+            and file_sha256(fixed_dev_path) == accepted_fixed_dev_ref.get("sha256"),
+            "accepted step600 fixed DEV raw-CMOS control identity changed",
+        )
+        fixed_dev = safe_torch_load(fixed_dev_path, map_location="cpu")
+        expected_indices, expected_labels = m0._fixed_dev_control_indices(context)
+        _require(
+            isinstance(fixed_dev, Mapping)
+            and fixed_dev.get("selected_step") == START_STEP
+            and fixed_dev.get("data_role") == bogt.DEV_ROLE
+            and torch.equal(fixed_dev.get("source_indices"), expected_indices)
+            and torch.equal(fixed_dev.get("labels"), expected_labels)
+            and isinstance(fixed_dev.get("raw_cmos"), torch.Tensor)
+            and fixed_dev["raw_cmos"].shape == (100, 1, 200, 200),
+            "accepted step600 fixed DEV real-control rows changed",
+        )
+        _write_json_or_compare(
+            ATTEMPT_DIR / "fixed_dev_real_controls_authority.json",
+            {"path": (START_RUN / "fixed_dev_real_controls.pt").as_posix(), "sha256": accepted_fixed_dev_ref["sha256"], "selected_step": START_STEP, "data_role": bogt.DEV_ROLE, "source_indices": expected_indices.tolist(), "labels": expected_labels.tolist()},
+            artifact_kind="step600 fixed DEV control authority",
+        )
+        dev_call = partial(_dev_measurement, consumer, context)
+        dev1, dev1_stage = _measure_phase(device, "step1200_full_DEV_E_D_and_reconstruction_confirmation", dev_call)
+        _record_resource(resource_path, resource_stages, dev1_stage)
+        _write_json_or_compare(ATTEMPT_DIR / "step1200_dev_measurement.json", dev1, "step1200 DEV confirmation")
+        sheet_call = partial(m0._save_contact_sheets, raw, labels, fixed_dev["raw_cmos"], fixed_dev["labels"], ATTEMPT_DIR)
+        sheets, sheet_stage = _measure_phase(device, "contact_sheet_render_and_write", sheet_call)
+        _record_resource(resource_path, resource_stages, sheet_stage)
+        raw_validity = m0._raw_cmos_validity(raw)
+        classification, conditions = _gate(dev0, dev1, generated_metrics, raw_validity)
+        status = RUN_COMPLETED if classification == CLASSIFICATION_SUPPORTED else RUN_VALID_FAILED
+        report = {
+            "schema": REPORT_SCHEMA,
+            "task_id": TASK_ID,
+            "outer_gate": OUTER_GATE,
+            "classification": classification,
+            "gate_conditions": conditions,
+            "training": {"start_step": START_STEP, "end_step": END_STEP, "additional_updates": UPDATE_COUNT, "adam_internal_step_start": START_STEP, "adam_internal_step_end": END_STEP, "loss_objective": "alpha*L_dist + beta*L_rec + gamma*L_op", "weights": consumer.weights.to_payload(), "fixed_step_loss_records": {str(step): history[step - 1] for step in FIXED_CHECKPOINT_STEPS}, "final_dev": dev1["L_rec"]},
+            "step600_baseline": dev0,
+            "step1200_dev": dev1,
+            "dev_reconstruction_delta": float(dev1["L_rec"]) - float(dev0["L_rec"]),
+            "S1": {"metadata": s1_metadata, "E_D": generated_metrics["E_D"], "raw_cmos_validity": raw_validity, "optical_power_finite": generated_metrics["optical_power_finite"], "input_coefficients_path": "generated_s1_ols_coefficients.pt", "raw_cmos_path": "generated_raw_cmos.pt"},
+            "contact_sheets": sheets,
+            "data_reads": context.ledger.to_dict(),
+            "forbidden_data_reads": {"protected": 0, "official_test": 0, "sealed": 0},
+            "frozen_state_checks": {"encoder_updated": not torch.equal(initial_encoder, consumer.trainable_state_dict()["encoder.phase"]), "generator_updated": not torch.equal(initial_generator, consumer.trainable_state_dict()["generator.phase"]), "frozen_runtime_unchanged": consumer.frozen_state_sha256 == initial_frozen, "training_evaluator_no_grad": all(parameter.grad is None for parameter in context.training_evaluator.parameters()), "independent_E_D_no_grad": all(parameter.grad is None for parameter in context.independent_evaluator.parameters()), "W_OLS_identity": torch.equal(consumer.runtime.ols.transport.detach().cpu(), torch.eye(100, dtype=torch.complex64))},
+            "artifacts": {path.name: {"sha256": file_sha256(path), "size_bytes": path.stat().st_size} for path in sorted(ATTEMPT_DIR.iterdir()) if path.is_file() and path.name not in {"report.json", "status.json"}},
+            "total_elapsed_seconds": _elapsed_seconds(),
+            "automatic_next_action": "NONE",
+        }
+        atomic_write_new_json(ATTEMPT_DIR / "report.json", report, artifact_kind="M0 joint-generation Gate report")
+        if status == RUN_COMPLETED:
+            control.complete()
+        else:
+            control.valid_failed()
+        terminal = {"task_id": TASK_ID, "outer_gate": OUTER_GATE, "attempt_id": ATTEMPT_ID, "state": status, "classification": classification, "source_manifest_id": identity.source_manifest_id, "global_step": END_STEP, "scientific_updates": UPDATE_COUNT, "adam_internal_step": END_STEP, "total_elapsed_seconds": report["total_elapsed_seconds"], "read_ledger": context.ledger.to_dict()}
+        atomic_write_new_json(ATTEMPT_DIR / "status.json", terminal, artifact_kind="M0 joint-generation terminal status")
+        heartbeat.update(state=status, phase=status, step=UPDATE_COUNT, latest_losses={**last_loss.get("loss", {}), "classification": classification}, force=True)
+        return report
+    except KeyboardInterrupt:
+        raise
+    except Exception as error:
+        if attempt_opened:
+            state = RUN_INTERRUPTED if isinstance(error, ResourceBudgetExceeded) else RUN_INVALID_HARNESS
+            if control is not None and control.state not in {RUN_INTERRUPTED, RUN_INVALID_HARNESS}:
+                control.interrupted() if state == RUN_INTERRUPTED else control.invalid_harness()
+            phase = "RESOURCE_STOPPED" if state == RUN_INTERRUPTED else "INVALID_HARNESS"
+            latest = {"task_id": TASK_ID, "outer_gate": OUTER_GATE, "attempt_id": ATTEMPT_ID, "state": state, "phase": phase, "source_manifest_id": identity.source_manifest_id, "error": f"{type(error).__name__}: {error}", "current_step": sampler.cursor if sampler is not None else START_STEP, "total_elapsed_seconds": _elapsed_seconds()}
+            status_path = ATTEMPT_DIR / "status.json"
+            if not status_path.exists():
+                atomic_write_new_json(status_path, latest, artifact_kind=f"M0 joint-generation {phase.lower()} status")
+            if heartbeat is not None:
+                heartbeat.update(state=state, phase="INTERRUPTED" if state == RUN_INTERRUPTED else phase, step=(sampler.cursor - START_STEP) if sampler is not None else 0, latest_losses={"error": latest["error"]}, force=True)
+        raise
+    finally:
+        del optimizer, consumer, sampler
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--preflight", action="store_true", help="run the one source-bound CUDA preflight without opening attempt_01")
+    parser.add_argument("--execute", action="store_true", help="run READY preflight and then the single bounded scientific attempt")
+    parser.add_argument("--resume", action="store_true", help="resume attempt_01 from its verified recovery checkpoint")
+    args = parser.parse_args(argv)
+    _require(args.preflight or args.execute, "choose --preflight or --execute")
+    _require(not (args.preflight and args.resume), "--resume is only valid with --execute")
+    root = _root()
+    task_started = time.perf_counter()
+    cuda_dll_path = _prepare_cuda_dll_path()
+    device = torch.device("cuda:0")
+    previous_preflight = _previous_preflight_authority(root)
+    task_started -= float(previous_preflight["cumulative_elapsed_seconds"])
+    source_probe = capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        relevant_paths=_source_paths(root),
+        config_identity={"attempt_id": ATTEMPT_ID, "start": START_CHECKPOINT.as_posix(), "start_sha256": START_CHECKPOINT_SHA256, "end_step": END_STEP, "objective": "alpha*L_dist + beta*L_rec + gamma*L_op", "repair_history": previous_preflight},
+    )
+    source = source_probe.to_dict()
+    legacy, checkpoint = _fixed_authorities(root)
+    if args.resume:
+        preflight = _read_json(PREFLIGHT_PATH)
+        _require(preflight.get("status") == PREFLIGHT_READY and preflight.get("source_semantics_id") == source["execution_source_semantics_id"], "resume preflight is not READY for current source")
+        receipt = PreflightReceipt.from_mapping(preflight["receipt"])
+        context = m0._load_runtime_context(root, device, legacy)
+        identity = _identity(source, context.data_identity, checkpoint)
+        manager = RecoveryCheckpointManager(ATTEMPT_DIR, identity, source_manifest_id=identity.source_manifest_id, authorization_id=AUTHORIZATION_ID, keep=32)
+        latest = manager.latest()
+        _require(latest is not None, "interrupted attempt has no recovery checkpoint")
+        wrapper = manager.load(latest)
+        recovery_payload = wrapper.get("payload", {}).get("scientific_state", {})
+        budget_base_elapsed = float(recovery_payload.get("cumulative_elapsed_seconds", 0.0))
+        _require(math.isfinite(budget_base_elapsed) and budget_base_elapsed >= float(preflight.get("elapsed_seconds", 0.0)), "resume cumulative wall-clock evidence is incomplete")
+        report = _run_attempt(root, context, checkpoint, source, identity, receipt, preflight, task_started=task_started, budget_base_elapsed=budget_base_elapsed, resume=True)
+        print(json.dumps({"state": "COMPLETED", "classification": report["classification"], "attempt": ATTEMPT_DIR.as_posix()}, ensure_ascii=False))
+        return 0
+    _require(not ATTEMPT_DIR.exists(), "attempt_01 already exists; this authorization is write-once")
+    _require(not PREFLIGHT_PATH.exists(), "preflight_01 already exists; this authorization is write-once")
+    identity = _identity(source, checkpoint["data_identity"], checkpoint)
+    try:
+        preflight, receipt = _preflight(root, source, {"legacy": legacy, "checkpoint": checkpoint}, task_started=task_started)
+        preflight["cuda_runtime_dll_path"] = cuda_dll_path
+    except Exception as error:
+        PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        blocked = {"schema": PREFLIGHT_SCHEMA, "status": PREFLIGHT_BLOCKED if isinstance(error, ResourceBudgetExceeded) else "INVALID_HARNESS", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "source_manifest": source, "source_semantics_id": source["execution_source_semantics_id"], "failure": {"phase": getattr(error, "preflight_phase", "authority_resolution"), "type": type(error).__name__, "message": str(error), "traceback": traceback.format_exc()}, "previous_preflight": previous_preflight, "elapsed_seconds": time.perf_counter() - task_started, "attempt_created": False}
+        atomic_write_new_json(PREFLIGHT_PATH, blocked, artifact_kind="M0 joint-generation blocked preflight")
+        print(json.dumps({"status": blocked["status"], "failure": blocked["failure"], "preflight": PREFLIGHT_PATH.as_posix()}, ensure_ascii=False))
+        return 2
+    PREFLIGHT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    preflight["previous_preflight"] = previous_preflight
+    atomic_write_new_json(PREFLIGHT_PATH, preflight, artifact_kind="M0 source-bound READY preflight")
+    if args.preflight:
+        print(json.dumps({"status": PREFLIGHT_READY, "source_semantics_id": source["execution_source_semantics_id"], "preflight": PREFLIGHT_PATH.as_posix(), "projected_seconds": preflight["projection"]["total_seconds"]}, ensure_ascii=False))
+        return 0
+    receipt = PreflightReceipt.from_mapping(preflight["receipt"])
+    control = ResearchRunControl(identity, AUTHORIZATION_ID)
+    control.mark_preflight_ready(receipt)
+    context = m0._load_runtime_context(root, device, legacy)
+    report = _run_attempt(root, context, checkpoint, source, identity, receipt, preflight, task_started=task_started, resume=False)
+    print(json.dumps({"state": RUN_COMPLETED if report["classification"] == CLASSIFICATION_SUPPORTED else RUN_VALID_FAILED, "classification": report["classification"], "attempt": ATTEMPT_DIR.as_posix()}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,495 @@
+"""Freeze the N3 class-conditioned low-rank structural model-order contract.
+
+This definition consumer only validates immutable authorities and materializes
+deterministic TRAIN-only role identities.  It never fits a candidate, selects a
+rank, opens a scientific attempt, or runs CUDA.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import git_identity
+from ldm_project.v2.evidence import (
+    atomic_write_new_json,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from ldm_project.v2.student.evaluator import stratified_mnist_indices
+
+
+TASK_ID = "DEFINE_LIGHTGEN_2D_N3_LOW_RANK_CLASS_CONDITIONED_STRUCTURAL_MODEL_ORDER_CONTRACT_V1"
+CONTRACT_SCHEMA = "lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract.v1"
+CLASSIFICATION = "N3_LOW_RANK_MODEL_ORDER_CONTRACT_DEFINED"
+OUTER_GATE = CLASSIFICATION
+PROPOSED_AUTHORIZATION = (
+    "AUTHORIZED_EXECUTE_LIGHTGEN_2D_N3_LOW_RANK_CLASS_CONDITIONED_STRUCTURAL_MODEL_ORDER_V1"
+)
+
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_CONSUMER_HEAD = "500045d6a92843c81ffeda010e01351f559e453b"
+HISTORICAL_PRODUCER_HEAD = "a9cd1749adfa690e282fd52a6425564fc2cf102c"
+
+START_STEP = 9000
+CLASS_COUNT = 10
+PHASE_SHAPE = (2, 1, 100, 100)
+PARAMETER_DIMENSION = 20_000
+RANK_DOMAIN = (0, 1, 2)
+SPLIT_SEED = 1234
+VALIDATION_PER_LABEL = 500
+FIT_ROWS_PER_CLASS = 256
+SELECT_ROWS_PER_CLASS = 128
+CONFIRM_ROWS_PER_CLASS = 128
+FIT_UPDATES = 300
+INITIAL_CORRECTION_ABS = 1.0e-6
+
+START_CHECKPOINT = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/"
+    "attempt_03/scientific_step_009000.pt"
+)
+START_CHECKPOINT_SHA256 = "14e76f3273e6f794cbadaee63a881bd686645016c5c5aba62c727ce9860afcee"
+TRAINING_SOURCE = Path("data/MNIST/processed/training.pt")
+TRAINING_SOURCE_SHA256 = "8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd"
+STRUCTURAL_REPORT = Path(
+    "outputs/20260921_non_classifier_structural_semantic_confirmation_v1/runs/"
+    "attempt_04/report.json"
+)
+STRUCTURAL_REPORT_SHA256 = "126d5ed7dd35ed3117c23683582e28e790ab948da16be063deb3e2cc4fd29b95"
+STRUCTURAL_REFERENCE = Path(
+    "outputs/20260921_non_classifier_structural_semantic_confirmation_v1/runs/"
+    "attempt_04/structural_reference.pt"
+)
+STRUCTURAL_REFERENCE_SHA256 = "e6304ac70fafc7f5d5ecc61c0d91af6520fa257bc8fe50903cbe340a7bcae142"
+ATTRIBUTION_REPORT = Path(
+    "outputs/20260921_attribute_step9000_structural_classifier_semantic_tradeoff_v1/"
+    "runs/attempt_01/report.json"
+)
+ATTRIBUTION_REPORT_SHA256 = "5fdbfa5db583808a411280463acbd2219aed57b158bef7560bb24dd506757a83"
+ATTRIBUTION_GRADIENTS = Path(
+    "outputs/20260921_attribute_step9000_structural_classifier_semantic_tradeoff_v1/"
+    "runs/attempt_01/gradient_attribution.pt"
+)
+ATTRIBUTION_GRADIENTS_SHA256 = "8ff09bf3c30fabd494af16f578c6223c148fd36d1408797af10cbd65ae3df2e2"
+DIAGNOSTIC_BANK = Path(
+    "outputs/20260921_attribute_step9000_structural_classifier_semantic_tradeoff_v1/"
+    "runs/attempt_01/diagnostic_bank.pt"
+)
+DIAGNOSTIC_BANK_SHA256 = "ab14dd92418845656ccc3638bc7cbc454b176907b039e10ebad53e3c6b706664"
+CLASS_BALANCED_REPORT = Path(
+    "outputs/20260922_class_balanced_joint_canary_v1/runs/attempt_01/report.json"
+)
+CLASS_BALANCED_REPORT_SHA256 = "5cdb634e0761e6aab0b3b821aa1791779102f06f96e9c8b1b0a45ba86ebe2aac"
+LOCAL_CANARY_REPORT = Path(
+    "outputs/20260922_local_compute_bounded_joint_canary_v1/runs/attempt_02/report.json"
+)
+LOCAL_CANARY_REPORT_SHA256 = "4f0b21bf571b35e1af3885fb9d85316282092474baa436f2b9f0e260d2cd9e7f"
+
+OUTPUT_ROOT = Path("outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1")
+DEFAULT_OUTPUT_DIR = OUTPUT_ROOT / "runs" / "contract_definition_01"
+SCIENTIFIC_ATTEMPT_ROOT = OUTPUT_ROOT / "runs"
+CONTRACT_NAME = "lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract.v1.json"
+
+# Previously consumed TRAIN-only diagnostic rows.  These identities are
+# exclusions, never candidate-selection inputs.
+TRAIN_A = (22511, 9298, 49805, 37569, 16290, 49023, 25077, 4280, 19906, 30942)
+TRAIN_B = (
+    54392,
+    7753,
+    25118,
+    41799,
+    49916,
+    45319,
+    2734,
+    42199,
+    53564,
+    42330,
+    22393,
+    53634,
+    38185,
+    35968,
+    24138,
+    45626,
+    11625,
+    23405,
+    11825,
+    38768,
+)
+MULTIVIEW_C1 = (1, 6, 5, 7, 2, 11, 13, 15, 17, 4)
+MULTIVIEW_C2 = (21, 8, 16, 12, 9, 35, 18, 29, 31, 19)
+MULTIVIEW_C3 = (34, 14, 25, 27, 20, 65, 32, 38, 41, 22)
+MULTIVIEW_C4 = (37, 23, 76, 30, 26, 100, 36, 42, 46, 33)
+MULTIVIEW_VIEWS = (MULTIVIEW_C1, MULTIVIEW_C2, MULTIVIEW_C3, MULTIVIEW_C4)
+
+
+class ContractError(RuntimeError):
+    """Raised when the N3 model-order contract cannot be frozen safely."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ContractError(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _path(root: Path, value: str | Path) -> Path:
+    relative = Path(value)
+    _require(not relative.is_absolute(), f"{value} must be repository-relative")
+    return (root / relative).resolve()
+
+
+def _relative(root: Path, path: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def _artifact_ref(root: Path, relative: str | Path, expected: str, role: str) -> dict[str, str]:
+    target = _path(root, relative)
+    _require(target.is_file(), f"{role} is missing: {target}")
+    observed = file_sha256(target).lower()
+    _require(observed == expected.lower(), f"{role} hash changed")
+    return {"path": _relative(root, target), "sha256": expected.lower(), "role": role}
+
+
+def _validate_report(root: Path, relative: Path, expected_sha: str, expected_classification: str) -> dict[str, str]:
+    reference = _artifact_ref(root, relative, expected_sha, "historical diagnostic report")
+    payload = _mapping(json.loads((root / relative).read_text(encoding="utf-8")), "historical diagnostic report")
+    _require(payload.get("classification") == expected_classification, f"historical diagnostic classification changed: {relative}")
+    return reference
+
+
+def _git_contract(root: Path) -> dict[str, Any]:
+    current = git_identity(root)
+    _require(current.get("branch") == EXPECTED_BRANCH, "consumer branch changed")
+    _require(current.get("head") == EXPECTED_CONSUMER_HEAD, "consumer HEAD changed")
+    return {
+        "producer": {"head": HISTORICAL_PRODUCER_HEAD, "role": "historical producer/source provenance"},
+        "consumer": {
+            "branch": current.get("branch"),
+            "head": current.get("head"),
+            "worktree_dirty": current.get("worktree_dirty"),
+            "status_sha256": current.get("status_sha256"),
+        },
+        "consumer_head_exact_required": False,
+        "required_consumer_head": None,
+        "head_equal": current.get("head") == HISTORICAL_PRODUCER_HEAD,
+        "producer_head_is_provenance_only": True,
+        "semantics": "HASH_ON_TRUST_BOUNDARY_V2: producer HEAD is provenance unless an explicit consumer exact lock is consumed",
+    }
+
+
+def _load_train_labels(root: Path) -> tuple[torch.Tensor, torch.Tensor]:
+    source = _path(root, TRAINING_SOURCE)
+    _require(file_sha256(source).lower() == TRAINING_SOURCE_SHA256, "canonical TRAIN source identity changed")
+    payload = torch.load(source, map_location="cpu", weights_only=False)
+    _require(isinstance(payload, (tuple, list)) and len(payload) == 2, "canonical TRAIN source schema changed")
+    images, labels = payload
+    _require(isinstance(images, torch.Tensor) and isinstance(labels, torch.Tensor), "canonical TRAIN tensors are missing")
+    _require(tuple(images.shape) == (60_000, 28, 28), "canonical TRAIN image geometry changed")
+    _require(labels.shape == (60_000,) and labels.dtype == torch.long, "canonical TRAIN label geometry changed")
+    return images, labels
+
+
+def _excluded_rows(labels: torch.Tensor, train_indices: torch.Tensor) -> dict[str, Any]:
+    groups = {
+        "TRAIN_A": TRAIN_A,
+        "TRAIN_B": TRAIN_B,
+        "MULTIVIEW_C1": MULTIVIEW_C1,
+        "MULTIVIEW_C2": MULTIVIEW_C2,
+        "MULTIVIEW_C3": MULTIVIEW_C3,
+        "MULTIVIEW_C4": MULTIVIEW_C4,
+    }
+    all_rows = [row for values in groups.values() for row in values]
+    _require(len(set(all_rows)) == len(all_rows), "historical diagnostic rows overlap")
+    excluded = torch.tensor(sorted(all_rows), dtype=torch.long)
+    _require(bool(torch.isin(excluded, train_indices).all().item()), "historical diagnostic row left canonical TRAIN")
+    details: dict[str, Any] = {}
+    for name, values in groups.items():
+        indices = torch.tensor(values, dtype=torch.long)
+        labels_for_rows = labels.index_select(0, indices)
+        details[name] = {
+            "indices": list(values),
+            "count": len(values),
+            "label_histogram": torch.bincount(labels_for_rows, minlength=CLASS_COUNT).tolist(),
+            "role": "historical diagnostic exclusion; not an N3 candidate population",
+        }
+    return {"groups": details, "union": excluded.tolist(), "union_count": int(excluded.numel())}
+
+
+def build_partitions(root: Path) -> dict[str, Any]:
+    _images, labels = _load_train_labels(root)
+    train_indices, development_indices = stratified_mnist_indices(
+        labels, seed=SPLIT_SEED, validation_per_label=VALIDATION_PER_LABEL
+    )
+    train_indices = torch.sort(train_indices).values.contiguous()
+    development_indices = torch.sort(development_indices).values.contiguous()
+    _require(train_indices.numel() == 55_000 and development_indices.numel() == 5_000, "canonical split counts changed")
+    _require(torch.unique(torch.cat((train_indices, development_indices))).numel() == 60_000, "canonical split overlaps")
+    excluded = _excluded_rows(labels, train_indices)
+    excluded_tensor = torch.tensor(excluded["union"], dtype=torch.long)
+    available = train_indices[~torch.isin(train_indices, excluded_tensor)]
+    roles: dict[str, dict[str, Any]] = {}
+    per_class_total = FIT_ROWS_PER_CLASS + SELECT_ROWS_PER_CLASS + CONFIRM_ROWS_PER_CLASS
+    for role, count in (
+        ("N3_FIT", FIT_ROWS_PER_CLASS),
+        ("N3_SELECT", SELECT_ROWS_PER_CLASS),
+        ("N3_CONFIRM", CONFIRM_ROWS_PER_CLASS),
+    ):
+        by_class: dict[str, list[int]] = {}
+        flat: list[int] = []
+        for digit in range(CLASS_COUNT):
+            class_rows = available[labels.index_select(0, available) == digit]
+            _require(class_rows.numel() >= per_class_total, f"class {digit} lacks N3 support")
+            start = {
+                "N3_FIT": 0,
+                "N3_SELECT": FIT_ROWS_PER_CLASS,
+                "N3_CONFIRM": FIT_ROWS_PER_CLASS + SELECT_ROWS_PER_CLASS,
+            }[role]
+            selected = class_rows[start : start + count]
+            _require(selected.numel() == count, f"{role} class {digit} count changed")
+            values = [int(item) for item in selected.tolist()]
+            by_class[str(digit)] = values
+            flat.extend(values)
+        tensor = torch.tensor(flat, dtype=torch.long)
+        roles[role] = {
+            "count": int(tensor.numel()),
+            "rows_per_class": count,
+            "classes": list(range(CLASS_COUNT)),
+            "indices": flat,
+            "indices_sha256": tensor_sha256(tensor),
+            "label_histogram": torch.bincount(labels.index_select(0, tensor), minlength=CLASS_COUNT).tolist(),
+            "indices_by_class": by_class,
+            "ordering": "class-major, within-class canonical TRAIN row order",
+            "data_role": "TRAIN",
+        }
+    tensors = [torch.tensor(roles[name]["indices"], dtype=torch.long) for name in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")]
+    _require(torch.unique(torch.cat(tensors)).numel() == sum(tensor.numel() for tensor in tensors), "N3 roles overlap")
+    _require(not bool(torch.isin(torch.cat(tensors), excluded_tensor).any().item()), "N3 role consumed a historical diagnostic row")
+    return {
+        "source": {"path": TRAINING_SOURCE.as_posix(), "sha256": TRAINING_SOURCE_SHA256, "source_count": 60_000},
+        "canonical_split": {
+            "algorithm": "stratified_mnist_indices(labels, seed=1234, validation_per_label=500)",
+            "seed": SPLIT_SEED,
+            "train_count": int(train_indices.numel()),
+            "development_count": int(development_indices.numel()),
+            "train_indices_sha256": tensor_sha256(train_indices),
+            "development_indices_sha256": tensor_sha256(development_indices),
+            "development_used_by_n3": False,
+        },
+        "historical_exclusions": excluded,
+        "roles": roles,
+        "protected_test_sealed": {"protected": 0, "test": 0, "sealed": 0},
+    }
+
+
+def parameter_count(rank: int) -> dict[str, int]:
+    _require(rank in RANK_DOMAIN, "rank is outside the frozen candidate domain")
+    basis = PARAMETER_DIMENSION * rank
+    coefficients = CLASS_COUNT * rank
+    return {
+        "rank": rank,
+        "basis_B": basis,
+        "class_coefficients_A": coefficients,
+        "stored_trainable_correction_parameters": basis + coefficients,
+        "effective_gauge_dof_if_B_is_orthonormal": rank * (PARAMETER_DIMENSION + CLASS_COUNT - rank),
+        "shared_baseline_parameters": PARAMETER_DIMENSION,
+        "shared_baseline_parameters_trainable": 0,
+    }
+
+
+def _validate_start_checkpoint(root: Path) -> dict[str, Any]:
+    path = _path(root, START_CHECKPOINT)
+    payload = _mapping(safe_torch_load(path, expected_sha256=START_CHECKPOINT_SHA256, map_location="cpu"), "accepted step9000 checkpoint")
+    _require(payload.get("completed_updates") == START_STEP, "accepted checkpoint cursor changed")
+    _require(payload.get("trainable_parameter_names") == ["generator.phase"], "accepted trainable boundary changed")
+    generator = payload.get("generator_state")
+    _require(isinstance(generator, torch.Tensor) and tuple(generator.shape) == PHASE_SHAPE and generator.dtype == torch.float32, "accepted generator geometry changed")
+    _require(bool(torch.isfinite(generator).all().item()), "accepted generator state is nonfinite")
+    return {
+        "path": START_CHECKPOINT.as_posix(),
+        "sha256": START_CHECKPOINT_SHA256,
+        "schema": payload.get("schema"),
+        "completed_updates": START_STEP,
+        "generator_shape": list(PHASE_SHAPE),
+        "generator_dtype": str(generator.dtype),
+        "generator_tensor_sha256": tensor_sha256(generator),
+        "role": "frozen shared baseline theta_shared for every candidate",
+    }
+
+
+def build_contract(root: Path) -> dict[str, Any]:
+    root = root.resolve()
+    _require(not (_path(root, SCIENTIFIC_ATTEMPT_ROOT) / "attempt_01").exists(), "N3 scientific attempt_01 already exists")
+    partition = build_partitions(root)
+    checkpoint = _validate_start_checkpoint(root)
+    definition_path = Path(__file__).resolve()
+    authority_refs = {
+        "accepted_step9000_checkpoint": _artifact_ref(root, START_CHECKPOINT, START_CHECKPOINT_SHA256, "accepted step9000 checkpoint"),
+        "frozen_structural_report": _artifact_ref(root, STRUCTURAL_REPORT, STRUCTURAL_REPORT_SHA256, "frozen structural report"),
+        "frozen_structural_reference": _artifact_ref(root, STRUCTURAL_REFERENCE, STRUCTURAL_REFERENCE_SHA256, "frozen structural reference"),
+        "step9000_alignment_attribution_report": _artifact_ref(root, ATTRIBUTION_REPORT, ATTRIBUTION_REPORT_SHA256, "step9000 attribution report"),
+        "step9000_alignment_attribution_gradients": _artifact_ref(root, ATTRIBUTION_GRADIENTS, ATTRIBUTION_GRADIENTS_SHA256, "step9000 attribution gradients"),
+        "historical_structural_diagnostic_bank": _artifact_ref(root, DIAGNOSTIC_BANK, DIAGNOSTIC_BANK_SHA256, "historical diagnostic bank"),
+        "class_balanced_canary_report": _validate_report(root, CLASS_BALANCED_REPORT, CLASS_BALANCED_REPORT_SHA256, "JOINT_SEMANTIC_RECOVERY_WITHOUT_CANONICAL_STRUCTURAL_TRANSFER"),
+        "local_compute_canary_report": _validate_report(root, LOCAL_CANARY_REPORT, LOCAL_CANARY_REPORT_SHA256, "JOINT_SEMANTIC_RECOVERY_WITHOUT_CANONICAL_STRUCTURAL_TRANSFER"),
+        "canonical_train_source": _artifact_ref(root, TRAINING_SOURCE, TRAINING_SOURCE_SHA256, "canonical TRAIN source"),
+    }
+    return {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "result": "READY",
+        "status": "valid_completed",
+        "classification": CLASSIFICATION,
+        "outer_gate": OUTER_GATE,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git": _git_contract(root),
+        "definition_entrypoint": {"path": _relative(root, definition_path), "sha256": file_sha256(definition_path)},
+        "authorities": {"accepted_step9000": checkpoint, "artifacts": authority_refs, "historical_diagnostics_consumed_as": "model-family motivation only; no candidate selection inputs"},
+        "model_assumption": {
+            "status": "MODEL_ASSUMPTION",
+            "statement": "class-conditioned structural correction may occupy a low-dimensional shared subspace even when one shared direction is unstable",
+            "not_established_by_definition": True,
+        },
+        "model_family": {
+            "shared_baseline": "theta_shared = accepted step9000 generator.phase; frozen and common to every class",
+            "correction": "Delta_theta_c = reshape(B @ a_c, (2,1,100,100))",
+            "matrix_form": "Delta_Theta = A @ B.T, A in R^(10 x r), B in R^(20000 x r), rank(Delta_Theta) <= r",
+            "control_path": "add the class-indexed phase correction immediately before the existing generator FiniteCropPhaseStack phase-only modulation; no new optical layer, encoder, OLS, evaluator, or label-dependent upstream path",
+            "shared_parameters": ["accepted generator.phase theta_shared"],
+            "class_conditioned_parameters": ["A[c,:] class coefficients only; B is shared across all classes"],
+            "parameter_dtype": "float32 real phase parameters",
+            "parameter_shape": {"theta_shared": list(PHASE_SHAPE), "B": [PARAMETER_DIMENSION, "r"], "A": [CLASS_COUNT, "r"]},
+            "rank_constraint": "r in {0,1,2}; rank(B) <= r",
+            "rank_zero": "empty A/B correction, theta_c == theta_shared exactly; same frozen objective/evaluators/data roles and no alternate optimizer or sampler semantics",
+            "parameter_counts": [parameter_count(rank) for rank in RANK_DOMAIN],
+        },
+        "candidate_domain": {
+            "ranks": list(RANK_DOMAIN),
+            "justification": "smallest identifiable domain separating shared-only, one conditional mode, and several conditional modes; ten class coefficients support r=2 while avoiding an outcome-driven larger sweep",
+            "frozen_before_fitting": True,
+            "adaptive_expansion": False,
+        },
+        "data_roles": partition,
+        "candidate_fit_procedure": {
+            "objective": "mean frozen differentiable L_struct on N3_FIT only; L_S/L_I/L_C are not fused into a new weighted utility",
+            "updates": FIT_UPDATES,
+            "batch_schedule": "one canonical TRAIN row per class, class order 0..9, N3_FIT cursor modulo 256; identical schedule for r=1 and r=2",
+            "gradient_backend": "SCALAR_REFERENCE_VJP",
+            "optimizer": {"name": "Adam", "learning_rate": 1.0e-3, "betas": [0.9, 0.999], "eps": 1.0e-8, "weight_decay": 0.0, "amsgrad": False, "reset_from_step9000": True, "same_for_all_positive_ranks": True},
+            "initialization": {"B": "first r canonical row-major unit vectors in R^20000", "A": "centered +/-1e-6 checkerboard by class/rank coordinate", "data_dependent": False},
+            "early_stopping": False,
+            "rank_specific_tuning": False,
+            "rank_zero": "no updates; evaluate exact theta_shared baseline",
+        },
+        "semantic_feasibility": {
+            "domain": "N3_SELECT",
+            "rule": "each candidate must be finite and L_S(candidate)<=L_S(shared), L_I(candidate)<=L_I(shared), and L_C(candidate)<=L_C(shared)",
+            "comparison": "exact float64 per-domain reductions after frozen evaluator/objective computation; no weighted semantic utility score and no candidate-specific tolerance",
+            "nonfinite": "infeasible",
+        },
+        "structural_selection": {
+            "domain": "N3_SELECT",
+            "primary_metric": "frozen differentiable L_struct, class-balanced macro over classes 0..9",
+            "definitions": {
+                "aggregate_improvement": "mean_c(L_struct_shared[c]-L_struct_candidate[c])",
+                "favorable_fraction": "count_c(L_struct_candidate[c] <= L_struct_shared[c])/10",
+                "strict_improvement_fraction": "count_c(L_struct_candidate[c] < L_struct_shared[c])/10",
+                "worst_class_degradation": "max_c(L_struct_candidate[c]-L_struct_shared[c])",
+                "reversal_count": "count_c(L_struct_candidate[c] > L_struct_shared[c])",
+            },
+            "lexicographic_order": [
+                "semantic_feasibility=true",
+                "aggregate_improvement descending",
+                "favorable_fraction descending",
+                "worst_class_degradation ascending",
+                "reversal_count ascending",
+                "lower_rank ascending",
+            ],
+            "numeric_rule": "finite float64 reductions; no tunable weighted score",
+            "rank_zero_reference": "shared baseline metrics are measured, not refit",
+        },
+        "class_reversal_treatment": {
+            "reversal": "any strict per-class L_struct increase versus the shared baseline on N3_SELECT",
+            "reported": ["reversal_count", "worst_class_degradation", "strict_improvement_fraction"],
+            "selection": "reversal and worst-class terms are fixed lexicographic criteria; no post-hoc exception or candidate-specific threshold",
+            "confirmation": "frozen hard structural confirmation retains the existing severe per-class reversal rule unchanged",
+        },
+        "complexity_and_tie_break": {
+            "complexity_penalty": False,
+            "parsimony": "lower rank wins only after all preceding frozen criteria tie",
+            "final_tie_break": "numeric rank 0<1<2; no seed, checkpoint, or implementation tie-break",
+        },
+        "physical_validity": {
+            "phase_only": "theta_c is real finite phase and the existing transfer exp(i*theta_c) remains unit modulus",
+            "positivity": "amplitude/intensity positivity remains enforced by the existing runtime; the correction does not alter amplitude controls",
+            "constraints": ["finite correction", "existing FiniteCropPhaseStack and propagation", "raw CMOS finite/nonconstant", "existing nonnegative plane-power checks", "existing reconstruction and optical-validity rules"],
+            "clip_or_wrap": "none during fitting or evaluation; a violating candidate is infeasible, never silently clipped or reparameterized",
+            "frozen_authorities": ["337D hard structural metric", "q95", "class ordering", "structural threshold", "evaluator definitions"],
+        },
+        "one_shot_selection": {
+            "procedure": "fit every rank in the frozen domain once under the same procedure, evaluate N3_SELECT once, select exactly once using the frozen lexicographic rule",
+            "fallback": "none; no rank-specific redesign, sweep expansion, early redesign, or second-best substitution",
+            "selection_result_in_definition": False,
+        },
+        "confirmation": {
+            "domain": "N3_CONFIRM",
+            "procedure": "evaluate the single selected rank once against theta_shared",
+            "primary": "existing frozen 337D hard structural authority with macro_log_rho improvement and its existing paired CI/severe-reversal rules",
+            "secondary": ["L_S/L_I/L_C semantic non-increase", "reconstruction validity", "optical validity", "direction/finite checks"],
+            "failure": "valid negative scientific result; no fallback rank and no continuation",
+            "dev100": "secondary descriptive confirmation only; cannot select rank",
+        },
+        "execution_boundary": {
+            "scientific_candidate_training_executed": False,
+            "rank_selected": False,
+            "scientific_attempt_created": False,
+            "cuda_executed": False,
+            "optimizer_updates": 0,
+            "checkpoint_writes": 0,
+            "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+            "required_later_authorization": PROPOSED_AUTHORIZATION,
+        },
+        "claim_boundary": {
+            "contract_only": True,
+            "model_assumption_not_supported": True,
+            "no_candidate_support_claim": True,
+            "no_promotion": True,
+            "no_stage_continuation": True,
+        },
+    }
+
+
+def write_contract(root: Path, output_dir: str | Path = DEFAULT_OUTPUT_DIR) -> Path:
+    root = root.resolve()
+    target = (root / output_dir if not Path(output_dir).is_absolute() else Path(output_dir)).resolve()
+    outputs_root = (root / "outputs").resolve()
+    _require(outputs_root in target.parents and target not in {outputs_root, outputs_root / "runs"}, "contract output must be a distinct child under outputs")
+    _require(not target.exists(), f"contract output already exists: {target}")
+    payload = build_contract(root)
+    target.mkdir(parents=True, exist_ok=False)
+    path = target / CONTRACT_NAME
+    atomic_write_new_json(path, payload, artifact_kind="N3 class-conditioned low-rank structural model-order contract")
+    return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    args = parser.parse_args()
+    path = write_contract(args.repo_root, args.output_dir)
+    print(json.dumps({"result": "READY", "classification": CLASSIFICATION, "outer_gate": OUTER_GATE, "contract": path.as_posix(), "scientific_candidate_training_executed": False, "rank_selected": False}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

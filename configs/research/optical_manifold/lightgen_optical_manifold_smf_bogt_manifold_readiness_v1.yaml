@@ -1,0 +1,173 @@
+schema: lightgen_optical_manifold_smf_bogt_manifold_readiness_v1
+hypothesis: H-LOMA-CBOGT-S0-MRA
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+parent_prior:
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_v1.yaml
+  config_sha256: e3d1b536aa081a8298b21b0b608f232463444a2863e138f941765adf96d8a701
+  latent: z_j=abs(c_j)^2/s_j
+  kind: truncated_normal
+  mean: 1.0
+  variance: 0.25
+  lower: 0.0
+  phase: fixed_calibrated_zero_residual
+  binding: scaled_chen_parent_contract_only
+
+source:
+  paths:
+    scaled_chen_step_0: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_0.pt
+    scaled_chen_step_1000: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_1000.pt
+    scaled_chen_step_5000: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+    horizon_training: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/training.json
+    horizon_validation: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/validation.json
+    horizon_preflight: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/preflight.json
+    scaled_chen_calibration: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/scaled_chen_bogt_horizon_calibration.pt
+    horizon_v3: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_audit_v3.json
+    horizon_core: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_core.json
+    horizon_variants: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_variants.json
+    horizon_jacobian: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_jacobian.json
+    horizon_counterfactual: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_counterfactual_residual.json
+    identity_checkpoint: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/full_epoch_final_step_005500.pt
+    identity_training: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json
+    identity_validation: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_validation.json
+    identity_preflight: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_preflight.json
+    plan3_validation: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_reconstruction_audit_v1_attempt_03/reconstruction_audit_validation.json
+    plan3_audit: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_reconstruction_audit_v1_attempt_03/reconstruction_audit.json
+    plan4_observer: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_03/latent_observer.json
+    plan4_pre_ols: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_03/pre_ols_field.pt
+    plan4_interpolation: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_03/latent_interpolation_panel.pt
+    smf_background_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_bottleneck_attribution_v1_attempt_02/validation.json
+    smf_background_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_bottleneck_attribution_v1_attempt_02/preflight.json
+    smf_background_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_bottleneck_attribution_v1_attempt_02/training.json
+    smf_background_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_bottleneck_attribution_v1_attempt_02/audit.json
+    fmf_background_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_fmf_m2_integration_canary_v1_attempt_09/validation.json
+    fmf_background_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_fmf_m2_integration_canary_v1_attempt_09/preflight.json
+    fmf_background_training: outputs/20260828_v2/runs/lightgen_optical_manifold_fmf_m2_integration_canary_v1_attempt_09/training.json
+    fmf_background_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_fmf_m2_integration_canary_v1_attempt_09/training.json
+  hashes:
+    scaled_chen_step_0: 460f9745cbce4c231f75cf3443d23a861c07a5159bb57fa2a97543d153bc57ba
+    scaled_chen_step_1000: d18b359e2e54e7f027c47cbc87c78fc9b81714db67cc1c9529a1a0ec3415b850
+    scaled_chen_step_5000: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+    horizon_training: bf707a836dabbea6917aa6c8016e6c00764d9219cd67bb41f551f911f28c2c51
+    horizon_validation: ddb882b26aa1463a74d41896f0f8ff8b406614a29bf25a72b918f58094d3e945
+    horizon_preflight: e988485f18e1f45964bf44e6338308ec882048038a1ba910f09758521fdfea83
+    scaled_chen_calibration: a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959
+    horizon_v3: 98c55f8c6a2c2063a879e5dbe1eeeec26adc6c49a3f37990d88726097c107e26
+    horizon_core: 4bacfb93bde8df6bf7831a41feaad50738e530dc518cab6f7922f14dcfe8973d
+    horizon_variants: e44fc2dd75e3ed7da4ca9d70074227cf2208e457a10e791e99c11de24b792041
+    horizon_jacobian: 38d7fae07a85371f98c072426e822d53bf5ba9fda8fbec80e69494e020deaab1
+    horizon_counterfactual: c31ab1119835284f293d378e8d13325cb01a9e5ac3f3e6c4fe5038446897a582
+    identity_checkpoint: 56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f
+    identity_training: c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948
+    identity_validation: 258af9978653a3552f8786b0fc7d76e8434347ed8c7bd5833f41f0f21f9351cd
+    identity_preflight: e14f733bd8a83738892404a71452972eff11a7c6014d174aff1a33703e721a75
+    plan3_validation: fe86d7b1990f65d7f2cf51332bc1acca917302160afc1530471106ecdb442bd6
+    plan3_audit: 31ee69fd050902d0191fbc1b6847ebde040d8f91e0f01d9a6773a7bd8d284905
+    plan4_observer: 2109ccdbe9711e3d31799486b28dfb370418dc0580583c613182177aa8584281
+    plan4_pre_ols: ebf6af4a9efb7a9e8e91127c85566f27caa5f4f26e361dc9a3660e916ae91580
+    plan4_interpolation: 268ee1b89d5984ec5c2924b1c6a6d6b119f8d02350b6d99cc267da9fa120e50f
+    smf_background_validation: 4185875318a0a301ab966f99c8ab4eedde517b14c5354864e0520f12fedacb81
+    smf_background_preflight: "0000000000000000000000000000000000000000000000000000000000000000"
+    smf_background_training: "0000000000000000000000000000000000000000000000000000000000000000"
+    smf_background_audit: 6f9b87adff81069b0b08d2d86e623d5c49565f30b2ca903640aa59b2c9e7b766
+    fmf_background_validation: f4af9a87a2f953a4873a11a1f09814e1ab9826dc336638940bb05148a4abacce
+    fmf_background_preflight: 14abce541b0961ca848678f44d600e48c70e13e22b6cbdbf2ef8c32ba38100ca
+    fmf_background_training: f699fccce7da7fb5f1560c5823ee76e2c713ba9e726fb9f6213fe967da36afb6
+    fmf_background_audit: f699fccce7da7fb5f1560c5823ee76e2c713ba9e726fb9f6213fe967da36afb6
+  producer_commits:
+    implementation: 46ecf8ab66d6574e96d3ee6344a9c1cf71a36971
+    scaled_chen_horizon: 019b76ef911e0bd16b8d5d4169807323427684af
+    identity_full_epoch: 4bbe4383f07e03572e154854cea8da6b5d24022e
+    plan3_reconstruction: f7d38c538b88a9fd1d82f63f9e9404c59e56859f
+    plan4_latent_observer: 3e1476dbd957b83e3ad57959ec7cc79379d35f09
+  horizon_config_sha256: 304ff57307a7b4b301adf37766d3948c25cab9a83d90da5c85ed6a081003dd18
+  identity_config_sha256: f59e79090704319704e9e9161587003d369ed18ad4b502facef202d3b2a954a1
+  plan3_config_sha256: 3d7544963c41eb7fa349d8da093760980ed2533b3b0369497f848edc4cb71e07
+  plan4_config_sha256: 1dc998ed7fcf6493b931cfc5f3927cd6a0e88c6c2a38ad9d178d299e7d62f54b
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  selection_count: 1000
+  selection_per_label: 100
+  selection_source: mnist_test_indices_5000_9999
+  selection_seed: 1235
+  confirmation_count: 5000
+  confirmation_source: horizon_heldout_train_indices_55000_59999
+  calibration_excluded: true
+  schedule_excluded: true
+  plan3_plan4_panels_excluded: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  architecture: 2plus2_phase_only
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  ols_ports: 100
+  mode_model: step_index_lp01_ports
+  mode_waist_m: 7.111e-6
+  mode_v_number: 2.2
+  mode_grid_shape: [10, 10]
+  fixed_transport: identity
+  fixed_exposure: {scale: 1.0, gamma: 1.0}
+  no_complex_resize: true
+  formal_v2_unchanged: true
+
+measurement:
+  objective: frozen_forward_only
+  models: [identity_step_5500, scaled_chen_step_0, scaled_chen_step_1000, scaled_chen_step_5000]
+  scaled_chen_steps: [0, 1000, 5000]
+  stages: [slm_input, encoder_layer_1, encoder_layer_2, pre_ols, modal_complex, modal_power, post_ols, decoder_input, decoder_layer_1, decoder_layer_2, cmos]
+  segments:
+    - [slm_to_pre_ols, slm_input, pre_ols]
+    - [pre_ols_to_modal, pre_ols, modal_complex]
+    - [modal_to_post_ols, modal_complex, post_ols]
+    - [post_ols_to_decoder_input, post_ols, decoder_input]
+    - [decoder_input_to_decoder_layer_2, decoder_input, decoder_layer_2]
+    - [decoder_layer_2_to_cmos, decoder_layer_2, cmos]
+  selection_metric: paired_mse
+  negative_controls: [permuted_label, cyclic_target, class_template, identity_reference]
+  jacobian: reuse_matching_horizon_v3_else_remeasure_all
+  prior_metrics: [bogt_kl_surrogate, truncated_normal_numerical_kl, complex_effective_rank, power_effective_rank]
+  no_update: true
+
+gates:
+  rank_retention: 0.9
+  material_relative_improvement: 0.05
+  material_absolute_improvement: 0.05
+  bootstrap_replicates: 2000
+  bootstrap_seed: 1236
+  confidence_level: 0.95
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  wall_clock: observational_only
+  optimizer_created: false
+  evaluator_calls: 0
+  formal_promotion: false
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_scaled_chen_manifold_readiness_audit
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  prohibited:
+    - optimizer
+    - backward
+    - checkpoint_write
+    - generation
+    - evaluator
+    - fmf
+    - prior_sampling
+    - formal_promotion

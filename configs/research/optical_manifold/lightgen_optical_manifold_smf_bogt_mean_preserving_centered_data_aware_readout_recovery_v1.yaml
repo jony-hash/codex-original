@@ -1,0 +1,315 @@
+schema: lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1
+hypothesis: H-LOMA-CBOGT-S7-MPCDAR
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+lineage:
+  amendment: H-LOMA-CBOGT-S7-MPCDAR
+  parent_hypothesis: H-LOMA-CBOGT-S6-MCFA
+  lineage_start_head: ef82e8386da393e1bef96f5d77aa7d3e007f0f87
+  rmal_probe_frozen: true
+  lsda_passed_required: true
+  lrrc_passed_required: true
+  dsfa_passed_required: true
+  dmsa_passed_required: true
+  mcfa_passed_required: true
+  zcsa_passed_required: true
+  rwsa_active_passed_required: true
+  fit_selection_confirmation_separate: true
+authority:
+  rmal:
+    config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
+    config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f
+    review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_review_v1.json
+    review_sha256: 73ba944ac5766c88591e0f5125cc031a1c9c55bd84aa2cbc30ea457bd4fb30e8
+    validation: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/validation.json
+    validation_sha256: affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec
+    audit: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/audit.json
+    audit_sha256: 5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa
+    compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/compact_report.json
+    compact_report_sha256: c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137
+    implementation_commit: 5b274b926474784a1ad49744e75190afff31747c
+    audit_classification: bounded_recoverability_established_at_detector
+    probe: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/probes.pt
+    probe_sha256: 3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed
+  lsda:
+    config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit_v1.yaml
+    config_sha256: d5093fc9f26ccf19eaa1bb74c3867fb25023e5837c00e96c5432facd30d9339d
+    review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit_review_v1.json
+    review_sha256: b57b0098c4ed69591d96a889a806dea42479175740eb79b3e7d5ac8fe1536cb3
+    validation: outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/validation.json
+    validation_sha256: 3f24dcc7d56e098ec778998bb8ddc7871973131f1d7269c86da729395426c2f2
+    audit: outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/audit.json
+    audit_sha256: 97842d5707541516c79adb87c3a1e609ee533156895908c9e99c015cde0f9b13
+    compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/compact_report.json
+    compact_report_sha256: e281daf9a4a62f85828a3bc8055ce044027d0c0fb1af0a522febcf3c2b68185b
+    implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit.py
+    implementation_module_sha256: 0e501ee3d777bdbb17cfb156f2779352530f39a8ed4c62b8cbb48adc186ebd08
+    implementation_commit: bed235283d1fa47f4a5a38d41368d87ce2b5d218
+    status: passed
+    classification: linear_readout_spectral_attribution_completed
+  lrrc:
+    config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation_v1.yaml
+    config_sha256: 6b8bc357e7546327cea64fa94f519a2c1487a6ef385ad2a47c8ca66e80eff17d
+    review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation_review_v1.json
+    review_sha256: d2309a6de8d93c8490d07d892a9a72f067664f5a41b1faa59fc6a0be46fdb872
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/validation.json
+    validation_sha256: b305c38dc3c774ff995c98907977d67cfc396d56009b8a88f726e214f9efa004
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/audit.json
+    audit_sha256: 5ffcb3550e0a1d635f70cdf965d12c93ded6e99fadf8f0f6ef0cda829b4a6b58
+    compact_report: outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/compact_report.json
+    compact_report_sha256: 4ae704104accd8cebfcb0e3c19dba7deb90b4febf38bace3c7e578bd484951b8
+    implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation.py
+    implementation_module_sha256: ad201cd42cb4da6ec393278326db3fb9b8a6fee30cb42cc076df7267304a848b
+    implementation_commit: 2a061db61910a847118e38663d05c05bd9447063
+    status: passed
+    classification: low_rank_readout_recovery_confirmation_completed
+  dsfa:
+    config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_data_weighted_spectral_functional_attribution_v1.yaml
+    config_sha256: bdaa2a8a5f3f67e57df16383cfbf1a8ebe164c12fba4db2e8be4b557fcc67ded
+    review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_data_weighted_spectral_functional_attribution_review_v1.json
+    review_sha256: ec1aad5424ef75381d6906df809242c8e0dfb568dc9b26edc13e7f2b6293fffd
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/validation.json
+    validation_sha256: ff15d6da857f1db12b67b2abb0a182aff0a622b15718c44113ad01389fe7efbe
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/audit.json
+    audit_sha256: 2521e0ec4138d55cfaf17f153a493c40aef5151bf5628a4daa9852dc198a265e
+    compact_report: outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/compact_report.json
+    compact_report_sha256: 8aec1e2b718eb6de499f87d81b68203ebbd7d8483bff0c36066ed9e376dea3c3
+    implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_data_weighted_spectral_functional_attribution.py
+    implementation_module_sha256: ba05ed7b2ba06f4943d8e0188613f2d609eb5c128effb301c1ffe83dbb044237
+    implementation_commit: d032738c0f02af5ada85554224e045d238416e0a
+    status: passed
+    classification: data_weighted_spectral_functional_attribution_completed
+  dmsa:
+    config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_data_metric_spectral_attribution_v1.yaml
+    config_sha256: 48e3e34d47a486fd50052f2d805d387c84fc216a9e9498775059c2de45560828
+    review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_data_metric_spectral_attribution_review_v1.json
+    review_sha256: 2899715f961a19cdee83b53f709c9b77498ab618afe5963c6c63a5492ea2501a
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/validation.json
+    validation_sha256: f0eebcb978851b9ab58453e1b28e920eddc93e86a2b82133af0bd7ec8e8ce93d
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/audit.json
+    audit_sha256: c9cc448f1b58040d45b8b77c9cfaa9facd536cdcf40d0b4f152efe42e16411fe
+    compact_report: outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/compact_report.json
+    compact_report_sha256: 39564f0ce3973bd738d196191a06c7990407f9b7b6ab7e6e8a2eb3366dc2d0ac
+    implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_detector_data_metric_spectral_attribution.py
+    implementation_module_sha256: 88356728b165e7c1ff91fb825292a635901da2d02c60841da972b6434d36112f
+    implementation_commit: 9818e87441eb2c86eef06c18c1aa646f3e57dea5
+    status: passed
+    classification: detector_data_metric_spectral_attribution_completed
+  mcfa:
+    config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_mean_centered_functional_attribution_v1.yaml
+    config_sha256: 03a55ac53b591013592fb5c20c430c3cff1712aadc6d249d29727ee520ecbf07
+    review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_mean_centered_functional_attribution_review_v1.json
+    review_sha256: e626b011cc3bea5649d8f5300e93444408866270fa5e9d0a6089fba1666c3c69
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_detector_mean_centered_functional_attribution_v1_attempt_02/validation.json
+    validation_sha256: 35ad479aa931cb2e605bb9b582306549512106a5c2dcd070bfde35a2e552e7f1
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_detector_mean_centered_functional_attribution_v1_attempt_02/audit.json
+    audit_sha256: f69664cf9da1d61e90742a09614c4535388402f9228e401d2451e3ebeeefdc0b
+    compact_report: outputs/20260902_v2/runs/lightgen_scaled_chen_detector_mean_centered_functional_attribution_v1_attempt_02/compact_report.json
+    compact_report_sha256: e95c072bde8306dd3f7cb8d6c5af1a671a778cede8f84c285c450af854059494
+    implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_detector_mean_centered_functional_attribution.py
+    implementation_module_sha256: fdc1455d25e0a9601d21bda4c30e458e66e384a300757942c2800d651560175c
+    implementation_commit: 069cfa4b3aeda3943d754d739daf6daeba2a54a6
+    status: passed
+    classification: detector_mean_centered_functional_attribution_completed
+fit_panel: &id001
+  role: probe_fit_origin_reference
+  source: mnist_train_indices_0_54999
+  count: 1000
+  per_label: 100
+  indices_sha256: 532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d
+panel_contract:
+  fit: *id001
+  selection:
+    role: independent_registered_selection
+    count: 1000
+    source: mnist_test_indices_5000_9999
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  confirmation:
+    role: independent_registered_confirmation
+    count: 5000
+    source: horizon_heldout_train_indices_55000_59999
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  feature_path: output.camera -> mra._feature_projection(real, complex_value=False)
+  streaming: true
+  population_denominator: N
+  fit_is_reference_only: true
+  selection_confirmation_independent: true
+  pooled_feature_bank_saved: false
+  centered_feature_bank_saved: false
+  target_bank_saved: false
+  prediction_bank_saved: false
+  raw_cmos_bank_saved: false
+  internal_stage_capture: false
+fit_replay:
+  source: DMSA attempt-02 fit panel, exact registered 1000 samples
+  moment_accumulator: dmsa.MomentAccumulator
+  arithmetic: deterministic float64 Welford/Chan merge
+  population_denominator: N
+  mu: sum_z/N
+  centered: M2/N
+  hash_helper: ldm_project.v2.evidence.tensor_sha256
+  target_labels_used: false
+  target_values_used: false
+  selection_used: false
+  confirmation_used: false
+  dmsa_C_tensor_artifact_required: false
+data_aware:
+  C_fit: replayed_fit_centered_moment
+  C_psd_rule: DMSA _psd_square_root; no singular cutoff
+  A_fit: C_fit^(1/2) W64
+  G_fit: A_fit A_fit.T
+  eigendecomposition: 256x256 CPU float64 symmetric eigendecomposition
+  right_basis: A_fit.T Q diag(1/sigma_DA)
+  basis_shape:
+  - 40000
+  - 256
+  full_projector: (A_fit V256) V256.T and (W64 V256) V256.T
+  permanent_W_k_saved: false
+  V_VT_materialized: false
+  target_labels_used: false
+  target_values_used: false
+raw_comparator:
+  source: LSDA exact ordered raw-W SVD
+  old_lrrc: b + z U_raw_k U_raw_k.T W
+  mean_preserving_raw: b + mu_fit W + (z-mu_fit) W V_raw_k V_raw_k.T
+  raw_projector_equivalence: true
+  descriptive_only: true
+  primary_search: false
+  confirmation_trigger: false
+  stop_rule: false
+  family_expansion: false
+truncation:
+  primary: c_mean + (z-mu_fit) W V_DA_k V_DA_k.T
+  factorized: c_mean + ((z-mu_fit) T_DA_k) V_DA_k.T
+  mean_branch: c_mean=b+mu_fit W
+  bias: original frozen RMAL b
+  rank_specific_scaling: false
+  normalization: false
+  calibration: false
+  permanent_W_k_saved: false
+candidate_family:
+- 1
+- 2
+- 4
+- 8
+- 16
+- 32
+- 64
+- 128
+- 256
+controls:
+  rank_0_bias_only: prediction_0=b; not in search
+  mean_fit_control: prediction_mean_fit=b+mu_fit W; descriptive only
+  rank_256_full_positive_anchor: data-aware V256 projector and prediction replay
+  mean_preserving_raw_control: same mu_fit and centered input; descriptive only
+evaluation:
+  selection:
+    source: mnist_test_indices_5000_9999
+    count: 1000
+    per_label: 100
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  confirmation:
+    source: horizon_heldout_train_indices_55000_59999
+    count: 5000
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  candidate_prefix:
+    source: mnist_test_indices_0_4999
+    count: 5000
+    consumed: false
+  feature_path: output.camera -> mra._feature_projection(real, complex_value=False)
+  streaming: true
+  pooled_feature_bank_saved: false
+  centered_feature_bank_saved: false
+  target_bank_saved: false
+  prediction_bank_saved: false
+  raw_cmos_bank_saved: false
+  internal_stage_capture: false
+  no_refit: true
+  no_training: true
+gate_inheritance:
+  source: rmal._panel_gate(report, require_bootstrap=confirmation)
+  inherited_checks:
+  - finite
+  - feature_contract
+  - physical_anchor_replay
+  - relative_improvement
+  - strict_template_crossing
+  - paired_below_cyclic
+  - instance_sensitive
+  - frozen
+  - bootstrap_lower_bound
+  - square_law_consistency
+  material_relative_improvement: 0.05
+  bootstrap_replicates: 2000
+  bootstrap_seed: 1236
+  confidence_level: 0.95
+  no_energy_gate: true
+  no_effective_rank_gate: true
+  no_data_aware_superiority_gate: true
+  matched_control_new_gate: false
+measurement:
+  objective: mean_preserving_fit_data_aware_output_subspace_recovery
+  candidate_family:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  search_order_after_anchor:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+  - 64
+  - 128
+  rank_0_control: 0
+  rank_256_anchor_first: true
+  selection_before_confirmation: true
+  confirmation_conditional_on_selection: true
+  first_double_pass_stops: true
+  first_confirmed_candidate_rank_only: true
+  no_candidate_family_mutation: true
+  no_middle_rank_backtest: true
+  no_training: true
+  no_refit: true
+  no_physical_forward_modification: true
+  no_target_fitting: true
+  matched_control_descriptive_only: true
+  mechanism_evidence_only: true
+resource:
+  microbatch_size: 10
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  max_temporary_compact_feature_bytes: 134217728
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_mean_preserving_centered_data_aware_readout_recovery
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  mechanism_evidence_only: true
+  prohibited:
+  - training
+  - optimizer
+  - gradient
+  - backward
+  - probe_refit
+  - bias_refit
+  - decoder
+  - whitening
+  - optical_redesign
+  - new_rank_family
+  - generation
+  - promotion
+  - candidate_family_mutation
+  - target_fitting
+  - matched_control_search
+

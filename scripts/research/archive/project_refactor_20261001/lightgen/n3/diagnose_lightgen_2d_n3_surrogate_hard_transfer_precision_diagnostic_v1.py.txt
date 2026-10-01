@@ -1,0 +1,2122 @@
+"""Run one fixed, inference-only TRAIN diagnostic of N3 surrogate-to-hard transfer."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import shutil
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, RESOURCE_ENVELOPE, HeartbeatWriter, PreflightReceipt, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INVALID_HARNESS, RUN_PREPARING, RUN_SCIENTIFIC_ACTIVE, capture_execution_source_manifest
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_json,
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+from scripts.research.lightgen.n3 import diagnose_lightgen_2d_n3_surrogate_hard_transfer_attribution_v1 as prior
+from scripts.research.lightgen import execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1 as surrogate
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_low_rank_model_order_v1 as n3
+from scripts.research.lightgen import execute_lightgen_2d_non_classifier_structural_semantic_confirmation_v1 as hard
+
+
+TASK_ID = "DIAGNOSE_LIGHTGEN_2D_N3_SURROGATE_HARD_TRANSFER_PRECISION_DIAGNOSTIC_V1"
+AUTHORIZATION_ID = "USER_AUTHORIZED_READ_ONLY_N3_SURROGATE_HARD_TRANSFER_PRECISION_DIAGNOSTIC_V1"
+SEMANTIC_AUTHORITY_ID = "N3_SURROGATE_HARD_TRANSFER_PRECISION_DIAGNOSTIC_V1"
+RUNS_ROOT = Path("outputs/20260923_n3_surrogate_hard_transfer_precision_diagnostic_v1/runs")
+PREFLIGHT_DIR = RUNS_ROOT / "preflight_04"
+PREFLIGHT_FAILURE = RUNS_ROOT / "preflight_failure_04.json"
+ATTEMPT_DIR = RUNS_ROOT / "attempt_02"
+ATTEMPT_ID = "lightgen-2d-n3-surrogate-hard-transfer-precision-diagnostic-v1:attempt_02"
+LEGACY_ATTEMPT_01_SOURCE_SEMANTICS_ID = "abd800346b0738206e5034ae3acf0d1415de52da39449e12a0dded6b2f6ded3a"
+PREVIOUS_PREFLIGHT_DIR = RUNS_ROOT / "preflight_02"
+PREVIOUS_ATTEMPT_DIR = RUNS_ROOT / "attempt_01"
+FROZEN_DIAGNOSTIC_INDICES_SHA256 = "5c35c942e6368bce82d7cb2d5f05598067e10bd287103735913d65e00c8d1637"
+ROWS_PER_CLASS = 1_024
+DIAGNOSTIC_ROW_COUNT = n3.CLASS_COUNT * ROWS_PER_CLASS
+BOOTSTRAP_REPLICATES = 999
+BOOTSTRAP_SEED = 271828
+LOGICAL_BATCH_SIZE = prior.LOGICAL_BATCH_SIZE
+DISTANCE_RECONSTRUCTION_RTOL = 1.0e-9
+DISTANCE_RECONSTRUCTION_ATOL = 1.0e-10
+GAP_MAX_SPEARMAN = 0.0
+GAP_MAX_SIGN_CONCORDANCE = 0.5
+GAP_MAX_CONDITIONAL_HARD_FAVORABILITY = 0.5
+SCALE_FLOOR_DOMINANCE_MEDIAN = 0.5
+OLD_RUNS_ROOT = prior.RUNS_ROOT
+OLD_ATTEMPT_01 = OLD_RUNS_ROOT / "attempt_01"
+OLD_ATTEMPT_02 = OLD_RUNS_ROOT / "attempt_02"
+N3_RUN_ROOT = n3.RUNS_ROOT / "attempt_01"
+
+
+class PrecisionDiagnosticError(RuntimeError):
+    """Raised when a diagnostic authority, numerical check, or firewall fails."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise PrecisionDiagnosticError(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _normalise_execution_source_identity(
+    source_manifest: object,
+    *,
+    source_aliases: tuple[tuple[str, object], ...] = (),
+    semantic_aliases: tuple[tuple[str, object], ...] = (),
+    nested_source_identity: object | None = None,
+    expected_semantics_id: str | None = None,
+    context: str = "execution source",
+) -> dict[str, Any]:
+    """Validate historical/current provenance forms and return one identity shape."""
+    fields = ("branch", "head", "dirty", "source_manifest_id", "execution_source_semantics_id", "dirty_patch_digest")
+
+    def project(candidate: object, authority: str) -> dict[str, Any]:
+        source = _mapping(candidate, f"{context} {authority}")
+        identity = {field: source.get(field) for field in fields}
+        _require(isinstance(identity["branch"], str) and bool(identity["branch"].strip()), f"{context} {authority} branch is missing")
+        head = identity["head"]
+        _require(isinstance(head, str) and len(head) == 40 and all(char in "0123456789abcdef" for char in head.lower()), f"{context} {authority} HEAD is malformed")
+        _require(type(identity["dirty"]) is bool, f"{context} {authority} dirty marker is malformed")
+        for field in ("source_manifest_id", "execution_source_semantics_id", "dirty_patch_digest"):
+            digest = identity[field]
+            _require(
+                isinstance(digest, str) and len(digest) == 64 and all(char in "0123456789abcdef" for char in digest.lower()),
+                f"{context} {authority} {field} is malformed",
+            )
+        return identity
+
+    canonical = project(source_manifest, "source manifest")
+    for authority, candidate in source_aliases:
+        _require(project(candidate, authority) == canonical, f"{context} source identity conflicts with {authority}")
+    for authority, value in semantic_aliases:
+        _require(
+            isinstance(value, str)
+            and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value.lower()),
+            f"{context} {authority} semantics ID is missing or malformed",
+        )
+        _require(value == canonical["execution_source_semantics_id"], f"{context} semantics ID conflicts with {authority}")
+    if nested_source_identity is None:
+        _require(expected_semantics_id is not None, f"{context} nested source identity is missing outside the authorized legacy form")
+    else:
+        _require(project(nested_source_identity, "nested source identity") == canonical, f"{context} nested source identity conflicts with the source manifest")
+    if expected_semantics_id is not None:
+        _require(
+            isinstance(expected_semantics_id, str)
+            and len(expected_semantics_id) == 64
+            and all(char in "0123456789abcdef" for char in expected_semantics_id.lower()),
+            f"{context} expected semantics ID is malformed",
+        )
+        _require(canonical["execution_source_semantics_id"] == expected_semantics_id, f"{context} does not match the expected historical semantics ID")
+    return canonical
+
+
+def _sample_key(digit: int, source_index: int) -> bytes:
+    payload = f"{TASK_ID}\n{n3.CONTRACT_SHA256}\n{digit}\n{source_index}"
+    return hashlib.sha256(payload.encode("ascii")).digest()
+
+
+def select_precision_indices(
+    train_indices: torch.Tensor,
+    labels: torch.Tensor,
+    role_indices: Mapping[str, torch.Tensor],
+    historical_exclusions: torch.Tensor,
+    prior_diagnostic_indices: torch.Tensor,
+    reference_source_indices: torch.Tensor,
+    *,
+    rows_per_class: int = ROWS_PER_CLASS,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """Freeze a hash-ordered, class-balanced TRAIN bank before any forward."""
+    train = train_indices.to(torch.long).cpu().contiguous()
+    labels = labels.to(torch.long).cpu().contiguous()
+    _require(labels.shape == (60_000,), "canonical TRAIN labels changed")
+    exclusions = [value.to(torch.long).cpu().reshape(-1) for value in role_indices.values()]
+    exclusions.extend(
+        [
+            historical_exclusions.to(torch.long).cpu().reshape(-1),
+            prior_diagnostic_indices.to(torch.long).cpu().reshape(-1),
+        ]
+    )
+    forbidden = torch.unique(torch.cat(exclusions))
+    eligible = train[~torch.isin(train, forbidden)]
+    reference = torch.unique(reference_source_indices.to(torch.long).cpu().reshape(-1))
+    without_reference = eligible[~torch.isin(eligible, reference)]
+    reference_free_counts = torch.bincount(labels[without_reference], minlength=n3.CLASS_COUNT)
+    use_reference_disjoint = bool((reference_free_counts >= rows_per_class).all().item())
+    candidates = without_reference if use_reference_disjoint else eligible
+    selected: list[int] = []
+    for digit in range(n3.CLASS_COUNT):
+        rows = candidates[labels.index_select(0, candidates) == digit].tolist()
+        _require(len(rows) >= rows_per_class, f"class {digit} has fewer than {rows_per_class} eligible TRAIN rows")
+        chosen = sorted(rows, key=lambda row: (_sample_key(digit, int(row)), int(row)))[:rows_per_class]
+        selected.extend(sorted(int(row) for row in chosen))
+    indices = torch.tensor(selected, dtype=torch.long)
+    selected_labels = labels.index_select(0, indices)
+    _require(indices.shape == (DIAGNOSTIC_ROW_COUNT,), "precision diagnostic row count changed")
+    _require(torch.unique(indices).numel() == indices.numel(), "precision diagnostic contains duplicate source rows")
+    _require(bool(torch.isin(indices, train).all().item()), "precision diagnostic escaped canonical TRAIN")
+    _require(not bool(torch.isin(indices, forbidden).any().item()), "precision diagnostic overlaps an N3 or prior diagnostic exclusion")
+    counts = torch.bincount(selected_labels, minlength=n3.CLASS_COUNT)
+    _require(torch.equal(counts, torch.full((n3.CLASS_COUNT,), rows_per_class)), "precision diagnostic class balance changed")
+    selected_reference_overlap = torch.isin(indices, reference)
+    overlap_by_class = {
+        str(digit): int(selected_reference_overlap[selected_labels == digit].sum())
+        for digit in range(n3.CLASS_COUNT)
+    }
+    return indices, {
+        "rows_per_class": rows_per_class,
+        "candidate_count_by_class": torch.bincount(labels[eligible], minlength=n3.CLASS_COUNT).tolist(),
+        "reference_disjoint_candidate_count_by_class": reference_free_counts.tolist(),
+        "reference_disjoint_population_used": use_reference_disjoint,
+        "reference_overlap_rows": int(selected_reference_overlap.sum()),
+        "reference_overlap_rows_by_class": overlap_by_class,
+        "reference_overlap_fraction": float(selected_reference_overlap.to(torch.float64).mean()),
+        "reference_overlap_limitation": None if use_reference_disjoint else "frozen reference identity is available, but excluding it leaves fewer than 1024 canonical TRAIN rows in at least one class; preserve the preregistered 1024/class population and report overlap as a diagnostic limitation",
+    }
+
+
+def _validate_prior_attempt_02(root: Path, attempt_01_index_sha256: str) -> dict[str, Any]:
+    attempt = root / OLD_ATTEMPT_02
+    preflight_path = root / prior.PREFLIGHT_DIR / "preflight.json"
+    _require(preflight_path.is_file(), "prior attempt_02 READY receipt is missing")
+    prior_preflight = _mapping(json.loads(preflight_path.read_text(encoding="utf-8")), "prior attribution READY preflight")
+    required = {
+        "execution_manifest.json",
+        "latest_status.json",
+        "per_sample_values.pt",
+        "post_report_status_error.json",
+        "progress.jsonl",
+        "read_ledger.json",
+        "report.json",
+        "sample_indices.json",
+        "source_manifest.json",
+        "status.json",
+    }
+    _require(attempt.is_dir() and {path.name for path in attempt.iterdir()} == required, "prior attempt_02 artifact set changed")
+    report = _mapping(json.loads((attempt / "report.json").read_text(encoding="utf-8")), "prior attribution report")
+    status = _mapping(json.loads((attempt / "status.json").read_text(encoding="utf-8")), "prior attribution status")
+    latest = _mapping(json.loads((attempt / "latest_status.json").read_text(encoding="utf-8")), "prior attribution heartbeat")
+    failure = _mapping(json.loads((attempt / "post_report_status_error.json").read_text(encoding="utf-8")), "prior post-report lifecycle warning")
+    sample = _mapping(json.loads((attempt / "sample_indices.json").read_text(encoding="utf-8")), "prior attribution sample identities")
+    ledger = _mapping(json.loads((attempt / "read_ledger.json").read_text(encoding="utf-8")), "prior attribution read ledger")
+    values = _mapping(safe_torch_load(attempt / "per_sample_values.pt", map_location="cpu"), "prior attribution per-sample values")
+    execution = _mapping(json.loads((attempt / "execution_manifest.json").read_text(encoding="utf-8")), "prior attribution execution manifest")
+    source_manifest = _mapping(json.loads((attempt / "source_manifest.json").read_text(encoding="utf-8")), "prior attribution source manifest")
+    receipt = _mapping(prior_preflight.get("preflight_receipt"), "prior attribution preflight receipt")
+    _require(report.get("schema") == "n3_surrogate_hard_transfer_attribution_report.v1" and report.get("result") == "VALID_COMPLETED_DIAGNOSTIC", "prior attempt_02 is not a complete valid diagnostic")
+    _require(report.get("attempt", {}).get("attempt_id") == prior.DIAGNOSTIC_ATTEMPT_ID and report.get("training_started") is False, "prior attempt_02 scientific identity changed")
+    _require(report.get("zero_parameter_update", {}).get("optimizer_updates") == 0 and report.get("selected_rank_or_checkpoint") is None, "prior attempt_02 performed forbidden training or selection")
+    _require(prior_preflight.get("status") == "READY" and receipt.get("authorization_id") == prior.AUTHORIZATION_ID, "prior attempt_02 was not opened from its READY receipt")
+    prior_semantics = source_manifest.get("execution_source_semantics_id")
+    _require(receipt.get("source_semantics_id") == prior_semantics == execution.get("source_identity", {}).get("execution_source_semantics_id") == report.get("execution_source_identity", {}).get("execution_source_semantics_id") == report.get("run_identity", {}).get("execution_source_semantics_id"), "prior attempt_02 source semantics do not reconcile")
+    _require(execution.get("authorization_id") == prior.AUTHORIZATION_ID and execution.get("attempt_id") == prior.DIAGNOSTIC_ATTEMPT_ID, "prior attempt_02 execution authority changed")
+    _require(status.get("state") == RUN_COMPLETED and status.get("phase") == "DIAGNOSTIC_COMPLETE", "prior attempt_02 historical status changed")
+    _require(latest.get("state") == RUN_COMPLETED and latest.get("phase") == RUN_COMPLETED, "prior attempt_02 legal terminal heartbeat changed")
+    _require(failure.get("error_type") == "RunControlError" and failure.get("error") == "heartbeat phase is invalid: DIAGNOSTIC_COMPLETE", "prior attempt_02 is not the known post-report lifecycle defect")
+    _require(failure.get("report_sha256") == file_sha256(attempt / "report.json"), "prior attempt_02 report/lifecycle warning identity differs")
+    index_sha = sample.get("indices_sha256")
+    prior_indices = torch.tensor(sample.get("indices"), dtype=torch.long)
+    _require(sample.get("task_id") == prior.TASK_ID and sample.get("contract_sha256") == n3.CONTRACT_SHA256, "prior attempt_02 sample authority changed")
+    _require(isinstance(index_sha, str) and tensor_sha256(prior_indices) == index_sha == attempt_01_index_sha256, "prior attempt_01/02 fixed sample identities do not match")
+    _require(torch.equal(values.get("source_indices"), prior_indices), "prior attempt_02 per-sample identities changed")
+    reads = _mapping(ledger.get("observed_data_reads"), "prior attribution observed reads")
+    _require(reads.get("protected_test_sealed_reads") == {"protected": 0, "test": 0, "sealed": 0} and reads.get("DEV_rows_read") == 0, "prior attempt_02 crossed a protected data boundary")
+    return {
+        "attempt_id": prior.DIAGNOSTIC_ATTEMPT_ID,
+        "sample_indices_sha256": index_sha,
+        "report_sha256": file_sha256(attempt / "report.json"),
+        "status": status.get("state"),
+        "classification": report.get("classification"),
+        "known_operational_warning": failure.get("error"),
+        "prior_result_preserved": True,
+    }
+
+
+def _reference_info(authorities: Mapping[str, Any]) -> dict[str, Any]:
+    reference = authorities["reference"]
+    fit = _mapping(reference.get("structural_fit"), "frozen 337D reference fit")
+    source_indices = torch.as_tensor(fit.get("canonical_source_indices"), dtype=torch.long).cpu()
+    source_labels = torch.as_tensor(fit.get("labels"), dtype=torch.long).cpu()
+    raw = torch.as_tensor(fit.get("raw_signature"), dtype=torch.float64).cpu()
+    standardized = torch.as_tensor(fit.get("standardized_signature"), dtype=torch.float64).cpu()
+    _require(source_indices.ndim == source_labels.ndim == 1 and source_indices.shape == source_labels.shape, "frozen reference source identity mapping changed")
+    _require(raw.shape == standardized.shape == (source_indices.numel(), hard.SIGNATURE_DIMENSION), "frozen reference feature tensors changed")
+    _require(torch.unique(source_indices).numel() == source_indices.numel(), "frozen reference source identities are not unique")
+    _require(bool(((source_indices >= 0) & (source_indices < authorities["labels"].numel())).all()), "frozen reference source identity is out of range")
+    _require(torch.equal(authorities["labels"].index_select(0, source_indices), source_labels), "frozen reference source indices do not map to their frozen class labels")
+    normalization = _mapping(reference.get("normalization"), "hard reference normalization")
+    mean = torch.as_tensor(normalization.get("mean"), dtype=torch.float64).cpu()
+    scale = torch.as_tensor(normalization.get("population_std_clamped_scale"), dtype=torch.float64).cpu()
+    _require(mean.shape == scale.shape == (hard.SIGNATURE_DIMENSION,), "hard reference calibration dimensions changed")
+    reconstructed = (raw - mean) / scale
+    _require(torch.allclose(reconstructed, standardized, rtol=DISTANCE_RECONSTRUCTION_RTOL, atol=DISTANCE_RECONSTRUCTION_ATOL), "frozen raw/standardized reference signatures do not reconstruct")
+    train = authorities["train_indices"]
+    in_train = torch.isin(source_indices, train)
+    return {
+        "source_indices": source_indices,
+        "source_labels": source_labels,
+        "raw_signature": raw,
+        "standardized_signature": standardized,
+        "mean": mean,
+        "scale": scale,
+        "rows": int(source_indices.numel()),
+        "canonical_train_overlap": int(in_train.sum()),
+        "outside_canonical_train": int((~in_train).sum()),
+        "source_indices_sha256": tensor_sha256(source_indices),
+        "label_mapping_valid": True,
+    }
+
+
+def _feature_dimension_names() -> list[dict[str, Any]]:
+    names: list[dict[str, Any]] = []
+    gray_names = [
+        "mass_fraction",
+        "centroid_x",
+        "centroid_y",
+        "moment_xx",
+        "moment_yy",
+        "moment_xy",
+        "orientation_cos2",
+        "orientation_sin2",
+    ]
+    gray_names.extend(f"horizontal_projection_row_{row:02d}" for row in range(28))
+    gray_names.extend(f"vertical_projection_column_{column:02d}" for column in range(28))
+    names.extend({"index": index, "block": "grayscale_geometry", "feature": name} for index, name in enumerate(gray_names))
+    index = len(names)
+    for threshold in hard.THRESHOLDS:
+        threshold_name = f"threshold_{threshold:.2f}"
+        binary = [
+            "area_fraction",
+            "centroid_x",
+            "centroid_y",
+            "moment_xx",
+            "moment_yy",
+            "moment_xy",
+            "orientation_cos2",
+            "orientation_sin2",
+            "bounding_width",
+            "bounding_height",
+            "aspect_ratio",
+        ]
+        binary.extend(f"horizontal_projection_row_{row:02d}" for row in range(28))
+        binary.extend(f"vertical_projection_column_{column:02d}" for column in range(28))
+        names.extend({"index": index + offset, "block": f"{threshold_name}_binary_geometry", "feature": name, "threshold": threshold} for offset, name in enumerate(binary))
+        index += len(binary)
+        topology = list(hard.TOPOLOGY_NAMES)
+        names.extend({"index": index + offset, "block": f"{threshold_name}_topology", "feature": name, "threshold": threshold} for offset, name in enumerate(topology))
+        index += len(topology)
+        spatial = [f"cell_r{row}_c{column}" for row in range(4) for column in range(4)]
+        spatial.extend(f"quadrant_r{row}_c{column}" for row in range(2) for column in range(2))
+        names.extend({"index": index + offset, "block": f"{threshold_name}_spatial_morphology", "feature": name, "threshold": threshold} for offset, name in enumerate(spatial))
+        index += len(spatial)
+    _require(len(names) == hard.SIGNATURE_DIMENSION and [item["index"] for item in names] == list(range(hard.SIGNATURE_DIMENSION)), "337D semantic feature identity map does not cover the frozen signature")
+    return names
+
+
+def _floor_dimension_table(reference: Mapping[str, Any]) -> list[dict[str, Any]]:
+    scale = torch.as_tensor(reference["scale"], dtype=torch.float64).cpu()
+    names = _feature_dimension_names()
+    floor_indices = torch.nonzero(scale == hard.NORMALIZATION_EPS, as_tuple=False).flatten().tolist()
+    _require(bool(floor_indices), "frozen hard calibration has no exact lower-bound dimensions")
+    return [
+        {**names[index], "frozen_scale": float(scale[index]), "normalization_lower_bound": float(hard.NORMALIZATION_EPS)}
+        for index in floor_indices
+    ]
+
+
+def _summary(values: torch.Tensor) -> dict[str, float]:
+    value = values.to(torch.float64).cpu().reshape(-1)
+    _require(value.numel() > 0 and bool(torch.isfinite(value).all()), "summary input is empty or nonfinite")
+    quantiles = torch.quantile(value, torch.tensor([0.5, 0.9, 0.95], dtype=torch.float64), interpolation="linear")
+    return {
+        "count": int(value.numel()),
+        "mean": float(value.mean()),
+        "std_population": float(value.std(correction=0)),
+        "minimum": float(value.min()),
+        "median": float(quantiles[0]),
+        "q90": float(quantiles[1]),
+        "q95": float(quantiles[2]),
+        "maximum": float(value.max()),
+    }
+
+
+def _class_summaries(values: torch.Tensor, labels: torch.Tensor) -> dict[str, Any]:
+    values = values.to(torch.float64).cpu()
+    labels = labels.to(torch.long).cpu()
+    by_class: dict[str, Any] = {}
+    class_means = []
+    for digit in range(n3.CLASS_COUNT):
+        subset = values[labels == digit]
+        _require(subset.numel() == ROWS_PER_CLASS, f"diagnostic class {digit} count changed")
+        by_class[str(digit)] = _summary(subset)
+        class_means.append(float(subset.mean()))
+    return {"per_class": by_class, "macro_mean": sum(class_means) / n3.CLASS_COUNT}
+
+
+def _bootstrap_delta(labels: torch.Tensor, delta: torch.Tensor, *, seed: int = BOOTSTRAP_SEED) -> dict[str, Any]:
+    labels = labels.to(torch.long).cpu()
+    delta = delta.to(torch.float64).cpu()
+    _require(labels.shape == delta.shape and bool(torch.isfinite(delta).all()), "paired bootstrap input changed or is nonfinite")
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    class_replicates: list[torch.Tensor] = []
+    per_class: dict[str, Any] = {}
+    for digit in range(n3.CLASS_COUNT):
+        values = delta[labels == digit]
+        _require(values.numel() == ROWS_PER_CLASS, f"bootstrap class {digit} count changed")
+        draws = torch.randint(values.numel(), (BOOTSTRAP_REPLICATES, values.numel()), generator=generator)
+        estimates = values[draws].mean(dim=1)
+        ci = torch.quantile(estimates, torch.tensor([0.025, 0.975], dtype=torch.float64), interpolation="linear")
+        per_class[str(digit)] = {
+            "count": int(values.numel()),
+            "estimate": float(values.mean()),
+            "ci95": {"lower": float(ci[0]), "upper": float(ci[1])},
+        }
+        class_replicates.append(estimates)
+    macro = torch.stack(class_replicates).mean(dim=0)
+    ci = torch.quantile(macro, torch.tensor([0.025, 0.975], dtype=torch.float64), interpolation="linear")
+    return {
+        "replicates": BOOTSTRAP_REPLICATES,
+        "seed": seed,
+        "method": "class-stratified paired row bootstrap; equal-weight class means; linear 2.5/97.5 percentiles",
+        "estimate": sum(float(item["estimate"]) for item in per_class.values()) / n3.CLASS_COUNT,
+        "ci95": {"lower": float(ci[0]), "upper": float(ci[1])},
+        "per_class": per_class,
+    }
+
+
+def _average_ranks(values: torch.Tensor) -> torch.Tensor:
+    value = values.to(torch.float64).cpu().reshape(-1)
+    order = torch.argsort(value, stable=True)
+    sorted_values = value.index_select(0, order)
+    _, counts = torch.unique_consecutive(sorted_values, return_counts=True)
+    ends = counts.cumsum(0)
+    starts = ends - counts + 1
+    average = (starts.to(torch.float64) + ends.to(torch.float64)) * 0.5
+    sorted_ranks = torch.repeat_interleave(average, counts)
+    ranks = torch.empty_like(sorted_ranks)
+    ranks[order] = sorted_ranks
+    return ranks
+
+
+def _correlation(x: torch.Tensor, y: torch.Tensor) -> float | None:
+    x = x.to(torch.float64).cpu().reshape(-1)
+    y = y.to(torch.float64).cpu().reshape(-1)
+    if x.numel() < 3 or y.numel() != x.numel() or float(x.std(correction=0)) == 0.0 or float(y.std(correction=0)) == 0.0:
+        return None
+    xc, yc = x - x.mean(), y - y.mean()
+    return float((xc * yc).sum() / (xc.square().sum() * yc.square().sum()).sqrt())
+
+
+def _coupling_summary(delta_proxy: torch.Tensor, delta_hard: torch.Tensor) -> dict[str, Any]:
+    proxy = delta_proxy.to(torch.float64).cpu().reshape(-1)
+    hard_delta = delta_hard.to(torch.float64).cpu().reshape(-1)
+    _require(proxy.shape == hard_delta.shape and bool(torch.isfinite(proxy).all() and torch.isfinite(hard_delta).all()), "proxy-hard paired deltas changed or are nonfinite")
+    if proxy.numel() == 0:
+        return {
+            "count": 0,
+            "spearman_primary": None,
+            "pearson_secondary": None,
+            "strict_sign_concordance_fraction": None,
+            "strict_sign_concordance_count": 0,
+            "p_hard_improvement_given_proxy_improvement": None,
+            "proxy_improvement_count": 0,
+            "hard_improvement_count": 0,
+            "tie_count": 0,
+        }
+    proxy_positive = proxy > 0.0
+    same_strict_sign = (proxy * hard_delta) > 0.0
+    conditional_count = int(proxy_positive.sum())
+    return {
+        "count": int(proxy.numel()),
+        "spearman_primary": _correlation(_average_ranks(proxy), _average_ranks(hard_delta)),
+        "pearson_secondary": _correlation(proxy, hard_delta),
+        "strict_sign_concordance_fraction": float(same_strict_sign.to(torch.float64).mean()),
+        "strict_sign_concordance_count": int(same_strict_sign.sum()),
+        "p_hard_improvement_given_proxy_improvement": None if conditional_count == 0 else float((hard_delta[proxy_positive] > 0.0).to(torch.float64).mean()),
+        "proxy_improvement_count": conditional_count,
+        "hard_improvement_count": int((hard_delta > 0.0).sum()),
+        "tie_count": int(((proxy == 0.0) | (hard_delta == 0.0)).sum()),
+    }
+
+
+def _coupling_by_domain(delta_proxy: torch.Tensor, delta_hard: torch.Tensor, labels: torch.Tensor, switched: torch.Tensor) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "all": _coupling_summary(delta_proxy, delta_hard),
+        "reference_unchanged": _coupling_summary(delta_proxy[~switched], delta_hard[~switched]),
+        "reference_switched": _coupling_summary(delta_proxy[switched], delta_hard[switched]),
+        "per_class": {},
+    }
+    for digit in range(n3.CLASS_COUNT):
+        class_mask = labels == digit
+        result["per_class"][str(digit)] = {
+            "all": _coupling_summary(delta_proxy[class_mask], delta_hard[class_mask]),
+            "reference_unchanged": _coupling_summary(delta_proxy[class_mask & ~switched], delta_hard[class_mask & ~switched]),
+            "reference_switched": _coupling_summary(delta_proxy[class_mask & switched], delta_hard[class_mask & switched]),
+        }
+    return result
+
+
+def _distance(query: torch.Tensor, standardized_reference: torch.Tensor, nearest: torch.Tensor) -> torch.Tensor:
+    q = query.to(torch.float64).cpu()
+    refs = standardized_reference.to(torch.float64).cpu()
+    indices = nearest.to(torch.long).cpu()
+    difference = q - refs.index_select(0, indices)
+    return difference.square().mean(dim=1).sqrt()
+
+
+def _validate_reconstruction(actual: torch.Tensor, expected: torch.Tensor, name: str) -> dict[str, Any]:
+    difference = (actual.to(torch.float64).cpu() - expected.to(torch.float64).cpu()).abs()
+    max_abs = float(difference.max())
+    passed = torch.allclose(actual.to(torch.float64).cpu(), expected.to(torch.float64).cpu(), rtol=DISTANCE_RECONSTRUCTION_RTOL, atol=DISTANCE_RECONSTRUCTION_ATOL)
+    _require(passed, f"{name} reconstruction failed (max_abs={max_abs})")
+    return {"passed": True, "max_absolute_error": max_abs, "rtol": DISTANCE_RECONSTRUCTION_RTOL, "atol": DISTANCE_RECONSTRUCTION_ATOL}
+
+
+def _hard_measurement(raw_views: torch.Tensor, labels: torch.Tensor, reference: Mapping[str, Any], device: torch.device) -> dict[str, Any]:
+    source, public = surrogate._hard_structural_source("n3_surrogate_hard_transfer_precision_diagnostic", raw_views, labels, reference, device)
+    raw_signature = source["raw_signature"].to(torch.float64).cpu()
+    fit = reference["structural_fit"]
+    standardized_fit = torch.as_tensor(fit["standardized_signature"], dtype=torch.float64).cpu()
+    ref_labels = torch.as_tensor(fit["labels"], dtype=torch.long).cpu()
+    hard_mean = torch.as_tensor(reference["normalization"]["mean"], dtype=torch.float64).cpu()
+    hard_scale = torch.as_tensor(reference["normalization"]["population_std_clamped_scale"], dtype=torch.float64).cpu()
+    standardized = (raw_signature - hard_mean) / hard_scale
+    nearest = source["nearest_same_class_index"].to(torch.long).cpu()
+    distance = source["nearest_same_class_distance"].to(torch.float64).cpu()
+    q95 = source["q95_rows"].to(torch.float64).cpu()
+    class_labels = labels.to(torch.long).cpu()
+    _require(torch.equal(ref_labels.index_select(0, nearest), class_labels), "hard nearest reference is not in the same frozen class")
+    _require(bool((q95 > 0.0).all() and torch.isfinite(q95).all()), "frozen q95 rows are invalid")
+    _require(bool(torch.isfinite(public["_log_rho"]).all()), "hard log-rho is nonfinite")
+    blocks, reconstruction = prior.block_distance_contributions(standardized, standardized_fit, nearest, distance)
+    return {
+        "raw_signature": raw_signature,
+        "standardized_signature": standardized,
+        "log_rho": public["_log_rho"].to(torch.float64).cpu(),
+        "distance": distance,
+        "q95": q95,
+        "nearest_reference_index": nearest,
+        "nearest_reference_source_index": torch.as_tensor(fit["canonical_source_indices"], dtype=torch.long).cpu().index_select(0, nearest),
+        "block_squared_distance_contribution": blocks,
+        "distance_reconstruction": reconstruction,
+    }
+
+
+def _floor_contributions(rank: Mapping[str, Any], nearest: torch.Tensor, reference: Mapping[str, Any], floor_indices: torch.Tensor) -> dict[str, torch.Tensor]:
+    raw_reference = reference["raw_signature"]
+    nearest_raw = raw_reference.index_select(0, nearest)
+    raw_difference = rank["raw_signature"].index_select(1, floor_indices) - nearest_raw.index_select(1, floor_indices)
+    scale = reference["scale"].index_select(0, floor_indices)
+    standardized_sq = (raw_difference / scale).square() / float(hard.SIGNATURE_DIMENSION)
+    total_sq = rank["distance"].square()
+    floor_sq = standardized_sq.sum(dim=1)
+    fraction = torch.where(total_sq > 0.0, floor_sq / total_sq, torch.zeros_like(total_sq))
+    _require(bool(torch.isfinite(raw_difference).all() and torch.isfinite(standardized_sq).all() and torch.isfinite(fraction).all()), "scale-floor contribution is nonfinite")
+    return {"raw_difference": raw_difference, "standardized_squared_distance_contribution": standardized_sq, "total_squared_distance": total_sq, "floor_squared_distance_contribution": floor_sq, "fraction": fraction}
+
+
+def _distance_decomposition(
+    rank0: Mapping[str, Any], rank2: Mapping[str, Any], reference: Mapping[str, Any]
+) -> dict[str, torch.Tensor | dict[str, Any]]:
+    fit = reference["standardized_signature"]
+    nearest0, nearest2 = rank0["nearest_reference_index"], rank2["nearest_reference_index"]
+    d00 = _distance(rank0["standardized_signature"], fit, nearest0)
+    d22 = _distance(rank2["standardized_signature"], fit, nearest2)
+    d20 = _distance(rank2["standardized_signature"], fit, nearest0)
+    d02 = _distance(rank0["standardized_signature"], fit, nearest2)
+    checks = {
+        "D00_matches_frozen_rank0_hard_distance": _validate_reconstruction(d00, rank0["distance"], "rank0 D00"),
+        "D22_matches_frozen_rank2_hard_distance": _validate_reconstruction(d22, rank2["distance"], "rank2 D22"),
+    }
+    feature_motion = d20 - d00
+    reference_reassignment = d22 - d20
+    total_change = d22 - d00
+    checks["fixed_reference_components_reconstruct_actual_distance_change"] = _validate_reconstruction(feature_motion + reference_reassignment, total_change, "reference-switch decomposition")
+    return {
+        "D00": d00,
+        "D22": d22,
+        "D20": d20,
+        "D02": d02,
+        "feature_motion_component": feature_motion,
+        "reference_reassignment_component": reference_reassignment,
+        "actual_total_distance_change": total_change,
+        "checks": checks,
+    }
+
+
+def _stratified_subgroup_bootstrap(labels: torch.Tensor, delta: torch.Tensor, mask: torch.Tensor) -> dict[str, Any] | None:
+    selected_labels = labels[mask].to(torch.long).cpu()
+    selected_delta = delta[mask].to(torch.float64).cpu()
+    present = [digit for digit in range(n3.CLASS_COUNT) if int((selected_labels == digit).sum()) > 0]
+    if not present:
+        return None
+    generator = torch.Generator(device="cpu").manual_seed(BOOTSTRAP_SEED)
+    class_replicates = []
+    counts: dict[str, int] = {}
+    means: dict[str, float] = {}
+    for digit in present:
+        values = selected_delta[selected_labels == digit]
+        counts[str(digit)] = int(values.numel())
+        means[str(digit)] = float(values.mean())
+        draws = torch.randint(values.numel(), (BOOTSTRAP_REPLICATES, values.numel()), generator=generator)
+        class_replicates.append(values[draws].mean(dim=1))
+    macro = torch.stack(class_replicates).mean(dim=0)
+    ci = torch.quantile(macro, torch.tensor([0.025, 0.975], dtype=torch.float64), interpolation="linear")
+    return {"replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "equal_weight_present_classes": present, "class_counts": counts, "class_mean_estimates": means, "macro_estimate": float(sum(means.values()) / len(means)), "ci95": {"lower": float(ci[0]), "upper": float(ci[1])}}
+
+
+def _switch_stratified_summary(values: torch.Tensor, labels: torch.Tensor, switched: torch.Tensor) -> dict[str, Any]:
+    values = values.to(torch.float64).cpu()
+    labels = labels.to(torch.long).cpu()
+    switched = switched.to(torch.bool).cpu()
+    result: dict[str, Any] = {}
+    for name, status_mask in (("reference_unchanged", ~switched), ("reference_switched", switched)):
+        selected = values[status_mask]
+        by_class = {}
+        for digit in range(n3.CLASS_COUNT):
+            subset = values[status_mask & (labels == digit)]
+            by_class[str(digit)] = None if subset.numel() == 0 else _summary(subset)
+        result[name] = {"overall": None if selected.numel() == 0 else _summary(selected), "per_class": by_class}
+    return result
+
+
+def _scale_floor_summary(
+    labels: torch.Tensor,
+    switched: torch.Tensor,
+    rank0: Mapping[str, Any],
+    rank2: Mapping[str, Any],
+    floor0: Mapping[str, torch.Tensor],
+    floor2: Mapping[str, torch.Tensor],
+    floor_dimensions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    def summarize_rank(rank: Mapping[str, Any], floor: Mapping[str, torch.Tensor], reference_switch: torch.Tensor) -> dict[str, Any]:
+        fractions = floor["fraction"]
+        by_class = {str(d): _summary(fractions[labels == d]) for d in range(n3.CLASS_COUNT)}
+        by_switch = {
+            "reference_unchanged": _summary(fractions[~reference_switch]),
+            "reference_switched": _summary(fractions[reference_switch]),
+        }
+        dimensions = []
+        for position, descriptor in enumerate(floor_dimensions):
+            raw_delta = floor["raw_difference"][:, position]
+            contribution = floor["standardized_squared_distance_contribution"][:, position]
+            dimensions.append({**descriptor, "raw_difference_summary": _summary(raw_delta.abs()), "signed_raw_difference_mean": float(raw_delta.mean()), "standardized_squared_distance_contribution_summary": _summary(contribution)})
+        return {
+            "fraction_summary": _summary(fractions),
+            "fraction_over_50_percent": float((fractions > 0.5).to(torch.float64).mean()),
+            "fraction_over_90_percent": float((fractions > 0.9).to(torch.float64).mean()),
+            "per_class_fraction": by_class,
+            "by_reference_switch": by_switch,
+            "floor_dimensions": dimensions,
+            "total_squared_distance": _summary(floor["total_squared_distance"]),
+            "floor_squared_distance_contribution": _summary(floor["floor_squared_distance_contribution"]),
+            "feature_blocks": {},
+        }
+
+    result = {"rank0": summarize_rank(rank0, floor0, switched), "rank2": summarize_rank(rank2, floor2, switched)}
+    for rank_name, rank in (("rank0", rank0), ("rank2", rank2)):
+        block_summaries: dict[str, Any] = {}
+        for position, name in enumerate(prior.feature_blocks()):
+            contributions = rank["block_squared_distance_contribution"][:, position]
+            total_sq = rank["distance"].square()
+            fraction = torch.where(total_sq > 0.0, contributions / total_sq, torch.zeros_like(total_sq))
+            block_summaries[name] = {
+                "squared_distance_contribution": _summary(contributions),
+                "fraction_of_total_squared_distance": _summary(fraction),
+                "per_class_mean_fraction": {str(d): float(fraction[labels == d].mean()) for d in range(n3.CLASS_COUNT)},
+            }
+        result[rank_name]["feature_blocks"] = block_summaries
+    result["criteria"] = {
+        "dominance_flag": f"SCALE_FLOOR_DISTANCE_DOMINANCE_SUPPORTED iff rank2 median floor-dimension fraction > {SCALE_FLOOR_DOMINANCE_MEDIAN}",
+        "rank2_median_fraction": result["rank2"]["fraction_summary"]["median"],
+        "dominance_supported": result["rank2"]["fraction_summary"]["median"] > SCALE_FLOOR_DOMINANCE_MEDIAN,
+    }
+    return result
+
+
+def _primary_classification(surrogate_bootstrap: Mapping[str, Any], hard_bootstrap: Mapping[str, Any], coupling: Mapping[str, Any]) -> dict[str, Any]:
+    surrogate_supported = float(surrogate_bootstrap["ci95"]["lower"]) > 0.0
+    hard_supported = float(hard_bootstrap["ci95"]["lower"]) > 0.0
+    all_coupling = _mapping(coupling["all"], "global proxy-hard coupling")
+    weak_coupling = (
+        all_coupling.get("spearman_primary") is not None
+        and float(all_coupling["spearman_primary"]) <= GAP_MAX_SPEARMAN
+        and float(all_coupling["strict_sign_concordance_fraction"]) <= GAP_MAX_SIGN_CONCORDANCE
+        and all_coupling.get("p_hard_improvement_given_proxy_improvement") is not None
+        and float(all_coupling["p_hard_improvement_given_proxy_improvement"]) <= GAP_MAX_CONDITIONAL_HARD_FAVORABILITY
+    )
+    if surrogate_supported and hard_supported:
+        classification = "N3_SURROGATE_TO_HARD_TRANSFER_SUPPORTED"
+    elif surrogate_supported and not hard_supported and weak_coupling:
+        classification = "N3_SURROGATE_HARD_ALIGNMENT_GAP_SUPPORTED"
+    else:
+        classification = "N3_SURROGATE_HARD_TRANSFER_PRECISION_UNRESOLVED"
+    return {
+        "classification": classification,
+        "surrogate_improvement_supported": surrogate_supported,
+        "hard_improvement_supported": hard_supported,
+        "weak_inconsistent_coupling_supported": weak_coupling,
+        "gap_rule": {
+            "surrogate_ci_lower_gt_zero": True,
+            "hard_ci_lower_not_gt_zero": True,
+            "spearman_le": GAP_MAX_SPEARMAN,
+            "strict_sign_concordance_le": GAP_MAX_SIGN_CONCORDANCE,
+            "p_hard_improvement_given_proxy_improvement_le": GAP_MAX_CONDITIONAL_HARD_FAVORABILITY,
+        },
+    }
+
+
+def _aggregate(
+    labels: torch.Tensor,
+    rank0: Mapping[str, Any],
+    rank2: Mapping[str, Any],
+    hard0: Mapping[str, Any],
+    hard2: Mapping[str, Any],
+    reference: Mapping[str, Any],
+    decomposition: Mapping[str, Any],
+    floor0: Mapping[str, torch.Tensor],
+    floor2: Mapping[str, torch.Tensor],
+    floor_dimensions: list[dict[str, Any]],
+    timings: Mapping[str, float],
+    cuda_peak: Mapping[str, float],
+) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
+    labels = labels.to(torch.long).cpu()
+    proxy_delta = rank0["L_struct"] - rank2["L_struct"]
+    hard_delta = hard0["log_rho"] - hard2["log_rho"]
+    switched = hard0["nearest_reference_index"] != hard2["nearest_reference_index"]
+    _require(bool(torch.isfinite(proxy_delta).all() and torch.isfinite(hard_delta).all()), "paired diagnostic difference is nonfinite")
+    _require(torch.equal(rank0["L_struct"] - rank0["L_struct"], torch.zeros_like(rank0["L_struct"])), "rank0 surrogate self-control failed")
+    _require(torch.equal(hard0["log_rho"] - hard0["log_rho"], torch.zeros_like(hard0["log_rho"])), "rank0 hard self-control failed")
+    proxy_bootstrap = _bootstrap_delta(labels, proxy_delta)
+    hard_bootstrap = _bootstrap_delta(labels, hard_delta)
+    class_hard = hard_bootstrap["per_class"]
+    hard_favorable_class_fraction = sum(float(class_hard[str(d)]["estimate"]) > 0.0 for d in range(n3.CLASS_COUNT)) / n3.CLASS_COUNT
+    coupling = _coupling_by_domain(proxy_delta, hard_delta, labels, switched)
+    primary = _primary_classification(proxy_bootstrap, hard_bootstrap, coupling)
+    reassignment_bootstrap = _stratified_subgroup_bootstrap(labels, decomposition["reference_reassignment_component"], switched)
+    scale_floor = _scale_floor_summary(labels, switched, hard0, hard2, floor0, floor2, floor_dimensions)
+    class_ci_lower = [float(class_hard[str(d)]["ci95"]["lower"]) for d in range(n3.CLASS_COUNT)]
+    class_ci_upper = [float(class_hard[str(d)]["ci95"]["upper"]) for d in range(n3.CLASS_COUNT)]
+    class_heterogeneity = any(value > 0.0 for value in class_ci_lower) and any(value < 0.0 for value in class_ci_upper)
+    switch_supported = reassignment_bootstrap is not None and not (
+        reassignment_bootstrap["ci95"]["lower"] <= 0.0 <= reassignment_bootstrap["ci95"]["upper"]
+    )
+    secondary = []
+    if switch_supported:
+        secondary.append("REFERENCE_SWITCH_CONTRIBUTION_SUPPORTED")
+    if scale_floor["criteria"]["dominance_supported"]:
+        secondary.append("SCALE_FLOOR_DISTANCE_DOMINANCE_SUPPORTED")
+    if class_heterogeneity:
+        secondary.append("CLASS_CONDITIONED_HARD_TRANSFER_HETEROGENEITY_SUPPORTED")
+    summaries = {
+        "sample_count": int(labels.numel()),
+        "rows_per_class": ROWS_PER_CLASS,
+        "class_counts": torch.bincount(labels, minlength=n3.CLASS_COUNT).tolist(),
+        "surrogate": {
+            "rank0_L_struct": _class_summaries(rank0["L_struct"], labels),
+            "rank2_L_struct": _class_summaries(rank2["L_struct"], labels),
+            "rank0_minus_rank2_improvement": _class_summaries(proxy_delta, labels),
+            "paired_stratified_bootstrap": proxy_bootstrap,
+            "improvement_sign_distribution": {
+                "positive": int((proxy_delta > 0.0).sum()),
+                "negative": int((proxy_delta < 0.0).sum()),
+                "zero": int((proxy_delta == 0.0).sum()),
+            },
+        },
+        "hard_structural": {
+            "rank0_log_rho": _class_summaries(hard0["log_rho"], labels),
+            "rank2_log_rho": _class_summaries(hard2["log_rho"], labels),
+            "rank0_minus_rank2_improvement": _class_summaries(hard_delta, labels),
+            "paired_stratified_bootstrap": hard_bootstrap,
+            "favorable_class_fraction": hard_favorable_class_fraction,
+            "favorable_class_count": int(sum(float(class_hard[str(d)]["estimate"]) > 0.0 for d in range(n3.CLASS_COUNT))),
+            "rank0_distance": _class_summaries(hard0["distance"], labels),
+            "rank2_distance": _class_summaries(hard2["distance"], labels),
+            "rank0_q95": _class_summaries(hard0["q95"], labels),
+            "rank2_q95": _class_summaries(hard2["q95"], labels),
+            "nearest_reference_switch_fraction": _class_summaries(switched.to(torch.float64), labels),
+            "nearest_reference_switch_rate": float(switched.to(torch.float64).mean()),
+            "rank0_distance_reconstruction": hard0["distance_reconstruction"],
+            "rank2_distance_reconstruction": hard2["distance_reconstruction"],
+        },
+        "proxy_hard_coupling": coupling,
+        "reference_switch_decomposition": {
+            "rank0_fixed_reference_actual_D00": _class_summaries(decomposition["D00"], labels),
+            "rank2_fixed_reference_actual_D22": _class_summaries(decomposition["D22"], labels),
+            "rank2_to_rank0_reference_D20": _class_summaries(decomposition["D20"], labels),
+            "rank0_to_rank2_reference_D02": _class_summaries(decomposition["D02"], labels),
+            "feature_motion_D20_minus_D00": _class_summaries(decomposition["feature_motion_component"], labels),
+            "reference_reassignment_D22_minus_D20": _class_summaries(decomposition["reference_reassignment_component"], labels),
+            "actual_total_D22_minus_D00": _class_summaries(decomposition["actual_total_distance_change"], labels),
+            "reassignment_on_switched_rows_bootstrap": reassignment_bootstrap,
+            "reassignment_on_unchanged_rows": _summary(decomposition["reference_reassignment_component"][~switched]),
+            "by_reference_switch_status_and_class": {
+                name: _switch_stratified_summary(decomposition[name], labels, switched)
+                for name in ("D00", "D22", "D20", "D02", "feature_motion_component", "reference_reassignment_component", "actual_total_distance_change")
+            },
+            "arithmetic_and_actual_distance_checks": decomposition["checks"],
+        },
+        "scale_floor_conditioning": scale_floor,
+        "classification": primary,
+        "secondary_mechanism_flags": secondary,
+        "secondary_flag_rules": {
+            "REFERENCE_SWITCH_CONTRIBUTION_SUPPORTED": "switch-row class-stratified bootstrap CI for D22-D20 excludes zero",
+            "SCALE_FLOOR_DISTANCE_DOMINANCE_SUPPORTED": scale_floor["criteria"]["dominance_flag"],
+            "CLASS_CONDITIONED_HARD_TRANSFER_HETEROGENEITY_SUPPORTED": "at least one class hard-improvement CI is wholly positive and at least one is wholly negative",
+        },
+        "class_heterogeneity_check": {
+            "positive_class_ci_count": sum(value > 0.0 for value in class_ci_lower),
+            "negative_class_ci_count": sum(value < 0.0 for value in class_ci_upper),
+            "supported": class_heterogeneity,
+        },
+        "runtime_seconds": dict(timings),
+        "cuda_peak_gb": dict(cuda_peak),
+        "semantic_control": {"N3_SELECT_rank2_semantic_feasible": True, "N3_CONFIRM_semantic_nonincrease": True, "semantic_evaluator_loaded": False, "new_semantic_evaluation": False},
+    }
+    arrays = {
+        "source_indices": labels.new_empty((0,)),
+        "labels": labels,
+        "delta_proxy_L_struct_rank0_minus_rank2": proxy_delta,
+        "rank0_L_struct": rank0["L_struct"],
+        "rank2_L_struct": rank2["L_struct"],
+        "rank0_log_rho": hard0["log_rho"],
+        "rank2_log_rho": hard2["log_rho"],
+        "delta_hard_log_rho_rank0_minus_rank2": hard_delta,
+        "rank0_distance": hard0["distance"],
+        "rank2_distance": hard2["distance"],
+        "rank0_q95": hard0["q95"],
+        "rank2_q95": hard2["q95"],
+        "rank0_nearest_reference_index": hard0["nearest_reference_index"],
+        "rank2_nearest_reference_index": hard2["nearest_reference_index"],
+        "rank0_nearest_reference_source_index": hard0["nearest_reference_source_index"],
+        "rank2_nearest_reference_source_index": hard2["nearest_reference_source_index"],
+        "nearest_reference_switched": switched,
+        "rank0_feature_block_squared_distance_contribution": hard0["block_squared_distance_contribution"],
+        "rank2_feature_block_squared_distance_contribution": hard2["block_squared_distance_contribution"],
+        "reference_switch_decomposition": {key: value for key, value in decomposition.items() if isinstance(value, torch.Tensor)},
+        "scale_floor": {
+            "rank0_raw_difference_to_nearest_reference": floor0["raw_difference"],
+            "rank0_standardized_squared_distance_contribution": floor0["standardized_squared_distance_contribution"],
+            "rank0_total_squared_distance": floor0["total_squared_distance"],
+            "rank0_floor_squared_distance_contribution": floor0["floor_squared_distance_contribution"],
+            "rank0_fraction": floor0["fraction"],
+            "rank2_raw_difference_to_nearest_reference": floor2["raw_difference"],
+            "rank2_standardized_squared_distance_contribution": floor2["standardized_squared_distance_contribution"],
+            "rank2_total_squared_distance": floor2["total_squared_distance"],
+            "rank2_floor_squared_distance_contribution": floor2["floor_squared_distance_contribution"],
+            "rank2_fraction": floor2["fraction"],
+        },
+    }
+    return summaries, arrays
+
+
+def _relevant_sources() -> list[Path]:
+    return [
+        Path(__file__),
+        Path(prior.__file__),
+        Path("scripts/research/lightgen/n3/execute_lightgen_2d_n3_low_rank_model_order_v1.py"),
+        Path("scripts/research/lightgen/execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1.py"),
+        Path("scripts/research/lightgen/execute_lightgen_2d_non_classifier_structural_semantic_confirmation_v1.py"),
+        Path("src/ldm_project/v2/student/evaluator.py"),
+        Path("src/ldm_project/v2/application/research/shared/research_run_control.py"),
+        Path("src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py"),
+        Path("src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py"),
+        Path("src/ldm_project/v2/optics/d2nn.py"),
+        Path("src/ldm_project/v2/optics/propagation.py"),
+        Path("src/ldm_project/v2/evidence/__init__.py"),
+        Path("src/ldm_project/v2/evidence/io.py"),
+    ]
+
+
+def _source_manifest(root: Path, authorities: Mapping[str, Any], reference_info: Mapping[str, Any], prior_snapshot: Mapping[str, str]) -> dict[str, Any]:
+    config = {
+        "attempt_id": ATTEMPT_ID,
+        "preflight_path": PREFLIGHT_DIR.as_posix(),
+        "attempt_path": ATTEMPT_DIR.as_posix(),
+        "n3_contract_sha256": n3.CONTRACT_SHA256,
+        "n3_protocol_sha256": n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+        "rank2_endpoint_sha256": authorities["endpoint_sha256"],
+        "n3_final_report_sha256": authorities["n3_report_sha256"],
+        "n3_final_status_sha256": authorities["n3_status_sha256"],
+        "canonical_train_sha256": n3.TRAINING_SOURCE_SHA256,
+        "hard_reference_sha256": n3.STRUCTURAL_REFERENCE_SHA256,
+        "surrogate_normalization_sha256": n3.SURROGATE_NORMALIZATION_SHA256,
+        "diagnostic_indices_sha256": tensor_sha256(authorities["indices"]),
+        "rows_per_class": ROWS_PER_CLASS,
+        "hash_key": "SHA256(task_id\\ncontract_sha256\\nclass\\ncanonical_source_index)",
+        "reference_source_indices_sha256": reference_info["source_indices_sha256"],
+        "reference_disjoint_population_used": authorities["selection"]["reference_disjoint_population_used"],
+        "previous_attempt_snapshot_sha256": canonical_sha256(prior_snapshot),
+        "previous_precision_attempt_01_failure_sha256": authorities["previous_precision_attempt"]["failure_sha256"],
+        "fixed_diagnostic_indices_sha256": FROZEN_DIAGNOSTIC_INDICES_SHA256,
+        "forward_batch_size": LOGICAL_BATCH_SIZE,
+        "bootstrap": {"method": "class-stratified paired row bootstrap", "replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED},
+        "primary_gap_rule": {
+            "spearman_primary_le": GAP_MAX_SPEARMAN,
+            "strict_sign_concordance_le": GAP_MAX_SIGN_CONCORDANCE,
+            "conditional_hard_favorability_le": GAP_MAX_CONDITIONAL_HARD_FAVORABILITY,
+        },
+        "floor_dominance_rule": {"rank2_median_floor_fraction_gt": SCALE_FLOOR_DOMINANCE_MEDIAN},
+        "model_forward_order": [0, 2],
+        "persistent_updates": 0,
+        "checkpoint_writes": 0,
+        "semantic_evaluators_loaded": False,
+    }
+    return capture_execution_source_manifest(
+        root,
+        task_id=TASK_ID,
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        relevant_paths=_relevant_sources(),
+        config_identity=config,
+    ).to_dict()
+
+
+def _run_identity(manifest: Mapping[str, Any]) -> ResearchRunIdentity:
+    config = manifest["config_identity"]
+    return ResearchRunIdentity(
+        task_id=TASK_ID,
+        run_id="lightgen-2d-n3-surrogate-hard-transfer-precision-diagnostic-v1",
+        trajectory_id="fixed-1024-per-class-train-rank0-vs-rank2-inference-only-v1",
+        semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+        data_role="CANONICAL_TRAIN_FIXED_DIAGNOSTIC_1024_PER_CLASS",
+        config_identity=config,
+        model_identity={"rank0": n3.START_CHECKPOINT_SHA256, "rank2": config["rank2_endpoint_sha256"]},
+        optimizer_identity={"optimizer": None, "persistent_updates": 0},
+        sampler_identity={"rows_per_class": ROWS_PER_CLASS, "indices_sha256": config["diagnostic_indices_sha256"]},
+        execution_source_semantics_id=str(manifest["execution_source_semantics_id"]),
+        source_manifest_id=str(manifest["source_manifest_id"]),
+    )
+
+
+def _environment_probe(previous_peak_reserved_gb: float) -> dict[str, Any]:
+    _require(torch.cuda.is_available(), "CUDA is unavailable; this fixed optical diagnostic requires CUDA")
+    runtime = n3._prepare_cuda_runtime()
+    device = torch.device("cuda:0")
+    torch.cuda.synchronize(device)
+    properties = torch.cuda.get_device_properties(device)
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    minimum_free_bytes = math.ceil(previous_peak_reserved_gb * (1024**3) * 1.10)
+    _require(total_bytes > 0 and free_bytes >= minimum_free_bytes, f"CUDA free memory {free_bytes} is below prior measured peak plus 10% headroom {minimum_free_bytes}")
+    return {
+        "runtime": runtime,
+        "device": str(properties.name),
+        "device_capability": list(torch.cuda.get_device_capability(device)),
+        "total_memory_bytes": int(total_bytes),
+        "free_memory_bytes_at_preflight": int(free_bytes),
+        "minimum_free_memory_bytes": minimum_free_bytes,
+        "previous_peak_reserved_gb": previous_peak_reserved_gb,
+        "torch_version": torch.__version__,
+        "cuda_runtime": torch.version.cuda,
+    }
+
+
+def _minimum_output_free_bytes() -> int:
+    """Reserve a conservative bound for the paired tensor artifact and metadata."""
+    max_paired_tensor_bytes = DIAGNOSTIC_ROW_COUNT * (
+        4 * hard.SIGNATURE_DIMENSION + 2 * len(prior.feature_blocks()) + 64
+    ) * 8
+    return 2 * max_paired_tensor_bytes + 64 * 1024**2
+
+
+def _output_filesystem_probe(output_runs: Path) -> dict[str, Any]:
+    _require(output_runs.is_dir(), f"output filesystem target is not an existing directory: {output_runs}")
+    expected_payload_upper_bound = _minimum_output_free_bytes()
+    usage = shutil.disk_usage(output_runs)
+    _require(
+        usage.free >= expected_payload_upper_bound,
+        f"output filesystem free space {usage.free} is below required expected-artifact reserve {expected_payload_upper_bound}",
+    )
+    temporary_path: Path | None = None
+    probe_payload = b"n3-precision-output-write-probe-v1"
+    with tempfile.TemporaryDirectory(prefix=".n3pd-output-probe-", dir=output_runs) as temporary_directory:
+        temporary_path = Path(temporary_directory)
+        staged = temporary_path / "write-probe.tmp"
+        published = temporary_path / "write-probe.bin"
+        staged.write_bytes(probe_payload)
+        staged.replace(published)
+        _require(published.read_bytes() == probe_payload, "output filesystem write/read/rename probe differs")
+    return {
+        "output_runs_path": output_runs.resolve().as_posix(),
+        "expected_artifact_payload_upper_bound_bytes": expected_payload_upper_bound,
+        "minimum_required_free_bytes": expected_payload_upper_bound,
+        "free_bytes_at_preflight": int(usage.free),
+        "free_space_margin_bytes": int(usage.free - expected_payload_upper_bound),
+        "write_read_atomic_rename": True,
+        "temporary_probe_removed": temporary_path is not None and not temporary_path.exists(),
+    }
+
+
+def _instantiate_models(authorities: Mapping[str, Any], device: torch.device) -> tuple[torch.nn.Module, torch.nn.Module, dict[str, Any]]:
+    baseline = n3._new_model(0, authorities["checkpoint"], device).eval()
+    candidate = n3._new_model(2, authorities["checkpoint"], device).eval()
+    candidate.load_trainable_state({"n3_correction.A": authorities["endpoint"]["A"], "n3_correction.B": authorities["endpoint"]["B"]})
+    baseline_digest = n3._tensor_state_sha256(baseline.state_dict())
+    candidate_digest = n3._tensor_state_sha256(candidate.state_dict())
+    _require(baseline_digest != candidate_digest, "rank-2 endpoint did not alter the accepted rank-0 shared model")
+    _require(all(parameter.grad is None for model in (baseline, candidate) for parameter in model.parameters()), "model has stale gradients before inference")
+    _require(all(not parameter.requires_grad for model in (baseline, candidate) for parameter in model.runtime.parameters()), "frozen shared runtime became trainable")
+    return baseline, candidate, {"rank0_state_sha256_before": baseline_digest, "rank2_state_sha256_before": candidate_digest}
+
+
+def _preflight(
+    root: Path,
+    authorities: dict[str, Any],
+    prior_attempt_02: Mapping[str, Any],
+    prior_snapshot: Mapping[str, str],
+    *,
+    source_manifest_out: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], PreflightReceipt, ResearchRunControl, dict[str, Any]]:
+    for target in (PREFLIGHT_DIR, PREFLIGHT_FAILURE, ATTEMPT_DIR):
+        _require(not (root / target).exists(), f"precision diagnostic write-once path already exists: {target.as_posix()}")
+    rehearsal = _artifact_transaction_rehearsal()
+    reference_info = _reference_info(authorities)
+    previous_precision = authorities["previous_precision_attempt"]
+    indices = previous_precision["indices"].to(torch.long).cpu().contiguous()
+    saved_sample = _normalise_sample_population(previous_precision["sample_payload"])
+    labels = authorities["labels"].to(torch.long).cpu()
+    _require(tensor_sha256(indices) == FROZEN_DIAGNOSTIC_INDICES_SHA256 == saved_sample["indices_sha256"], "frozen diagnostic indices changed before preflight")
+    _require(indices.shape == (DIAGNOSTIC_ROW_COUNT,) and torch.unique(indices).numel() == indices.numel(), "frozen diagnostic index population is malformed")
+    _require(bool(torch.isin(indices, authorities["train_indices"]).all()), "frozen diagnostic population is not wholly canonical TRAIN")
+    _require(not bool(torch.isin(indices, torch.cat([*authorities["role_indices"].values(), authorities["historical_exclusions"], authorities["prior_diagnostic_indices"]])).any()), "frozen diagnostic population overlaps an excluded role or prior attribution rows")
+    selected_labels = labels.index_select(0, indices)
+    counts = torch.bincount(selected_labels, minlength=n3.CLASS_COUNT)
+    _require(torch.equal(counts, torch.full((n3.CLASS_COUNT,), ROWS_PER_CLASS)), "frozen diagnostic class balance changed")
+    overlap_rows = int(torch.isin(indices, reference_info["source_indices"]).sum())
+    selection = dict(saved_sample["reference_overlap_status"])
+    _require(selection.get("reference_overlap_rows") == overlap_rows, "frozen reference-overlap metadata differs from the fixed indices")
+    _require(selection.get("rows_per_class") == ROWS_PER_CLASS, "frozen reference-overlap class balance changed")
+    _require(selection.get("reference_disjoint_population_used") is False, "frozen diagnostic reference-overlap selection rule changed")
+    role_overlap_counts = {name: int(torch.isin(indices, rows).sum()) for name, rows in authorities["role_indices"].items()}
+    _require(role_overlap_counts == previous_precision["sample_payload"].get("role_overlap_counts"), "frozen diagnostic N3 role-overlap counts changed")
+    _require(int(torch.isin(indices, authorities["historical_exclusions"]).sum()) == previous_precision["sample_payload"].get("historical_exclusion_overlap_count") == 0, "frozen diagnostic history-exclusion identity changed")
+    _require(int(torch.isin(indices, authorities["prior_diagnostic_indices"]).sum()) == previous_precision["sample_payload"].get("prior_diagnostic_overlap_count") == 0, "frozen diagnostic prior-attribution identity changed")
+    authorities["indices"] = indices
+    authorities["selection"] = selection
+    authorities["reference_info"] = reference_info
+    manifest = _source_manifest(root, authorities, reference_info, prior_snapshot)
+    if source_manifest_out is not None:
+        source_manifest_out["manifest"] = manifest
+    evidence = previous_precision["source_identity_evidence"]
+    _require(evidence["ready_preflight_status"] == "READY", "attempt_01 prior preflight is not READY")
+    _require(evidence["ready_receipt_authorization_id"] == AUTHORIZATION_ID, "attempt_01 READY receipt authorization identity changed")
+    historical_identity = _normalise_execution_source_identity(
+        evidence["attempt_source_manifest"],
+        source_aliases=(("attempt_01 READY source manifest", evidence["ready_source_manifest"]),),
+        semantic_aliases=(
+            ("attempt_01 execution manifest", evidence["attempt_execution_source_semantics_id"]),
+            ("attempt_01 READY receipt", evidence["ready_receipt_source_semantics_id"]),
+        ),
+        nested_source_identity=evidence["nested_source_identity"],
+        expected_semantics_id=LEGACY_ATTEMPT_01_SOURCE_SEMANTICS_ID,
+        context="attempt_01 historical source identity",
+    )
+    previous_precision["source_identity"] = historical_identity
+    previous_precision["source_semantics_id"] = historical_identity["execution_source_semantics_id"]
+    source_identity = _normalise_execution_source_identity(
+        manifest,
+        semantic_aliases=(("current source manifest", manifest.get("execution_source_semantics_id")),),
+        nested_source_identity={key: manifest.get(key) for key in ("branch", "head", "dirty", "source_manifest_id", "execution_source_semantics_id", "dirty_patch_digest")},
+        context="current execution source identity",
+    )
+    _require(source_identity["execution_source_semantics_id"] != historical_identity["execution_source_semantics_id"], "current execution source semantics still match the invalid attempt_01 READY receipt")
+    output_filesystem = _output_filesystem_probe(root / RUNS_ROOT)
+    environment = _environment_probe(float(prior_attempt_02["peak_reserved_gb"]))
+    environment["output_filesystem"] = output_filesystem
+    baseline, candidate, model_identity = _instantiate_models(authorities, torch.device("cuda:0"))
+    environment["model_load_peak_allocated_gb"] = torch.cuda.max_memory_allocated(torch.device("cuda:0")) / (1024**3)
+    del baseline, candidate
+    torch.cuda.empty_cache()
+    roles = authorities["role_indices"]
+    _require(all(not bool(torch.isin(indices, value).any()) for value in roles.values()), "fixed precision sample overlaps a frozen N3 role")
+    _require(not bool(torch.isin(indices, authorities["historical_exclusions"]).any()), "fixed precision sample overlaps a historical contract exclusion")
+    check_groups = {
+        CORRECTNESS_INVARIANTS: {
+            "status": "PASS",
+            "invalid_attempt_01_preserved_sha256": authorities["previous_precision_attempt"]["failure_sha256"],
+            "attempt_01_source_identity_normalization": {
+                "status": "PASS",
+                "representation": "LEGACY_SOURCE_MANIFEST_PLUS_EXECUTION_SEMANTICS_AND_READY_RECEIPT",
+                "normalized_identity": historical_identity,
+                "independent_semantics_authorities_agree": True,
+                "legacy_nested_source_identity_absent": evidence["nested_source_identity"] is None,
+                "expected_historical_identity_checked_after_authority_equality": True,
+            },
+            "current_source_identity_normalization": {
+                "status": "PASS",
+                "normalized_identity": source_identity,
+            },
+            "n3_contract_protocol_and_rank_identities": True,
+            "completed_n3_valid_failed_history_preserved": True,
+            "old_attribution_attempt_01_and_attempt_02_immutable_snapshot_sha256": canonical_sha256(prior_snapshot),
+            "fixed_diagnostic_indices_sha256": tensor_sha256(indices),
+            "rows_per_class": ROWS_PER_CLASS,
+            "diagnostic_disjoint_from_n3_roles_contract_exclusions_and_prior_diagnostics": True,
+            "reference_source_identity_and_label_map_valid": reference_info["label_mapping_valid"],
+            "reference_overlap_selection": selection,
+            "artifact_transaction_rehearsal": rehearsal,
+            "feature_dimension_names_cover_337d": True,
+            "feature_blocks_cover_337d": True,
+            "surrogate_semantic_evaluator_loaded": False,
+            "optimizer_updates": 0,
+            "checkpoint_writes": 0,
+            "protected_test_sealed_reads": 0,
+        },
+        RESOURCE_ENVELOPE: {"status": "PASS", **environment},
+        IMPLEMENTATION_SELECTION: {
+            "status": "PASS",
+            "mode": "INFERENCE_ONLY_RANK0_VS_FINAL_RANK2",
+            "rank_domain": [0, 2],
+            "primary_classification_rule": "preregistered precision-vs-alignment-gap criteria",
+            "optimizer_created": False,
+            "candidate_selection": False,
+        },
+    }
+    resource = {
+        "execution_source_identity": source_identity,
+        "runtime_provenance": environment,
+        "diagnostic_rows": int(indices.numel()),
+        "rank0_state_sha256_before": model_identity["rank0_state_sha256_before"],
+        "rank2_state_sha256_before": model_identity["rank2_state_sha256_before"],
+        "prior_attempt_snapshot_sha256": canonical_sha256(prior_snapshot),
+        "previous_precision_attempt_01_failure_sha256": previous_precision["failure_sha256"],
+    }
+    receipt = PreflightReceipt(
+        source_semantics_id=str(manifest["execution_source_semantics_id"]),
+        authorization_id=AUTHORIZATION_ID,
+        checks=check_groups,
+        selected_engine="INFERENCE_ONLY_STRUCTURAL_PRECISION_DIAGNOSTIC",
+        resource=resource,
+    )
+    control = ResearchRunControl(_run_identity(manifest), AUTHORIZATION_ID, state=RUN_PREPARING)
+    control.mark_preflight_ready(receipt)
+    return {
+        "status": "READY",
+        "check_groups": check_groups,
+        "source_identity": source_identity,
+        "historical_source_identity": historical_identity,
+        "reference_info": {key: value for key, value in reference_info.items() if not isinstance(value, torch.Tensor)},
+        "selection": selection,
+        "indices_sha256": tensor_sha256(indices),
+        "model_identity": model_identity,
+        "runtime_provenance": environment,
+        "artifact_transaction_rehearsal": rehearsal,
+    }, receipt, control, manifest
+
+
+def _save_preflight_failure(root: Path, error: BaseException, stage: str, manifest: Mapping[str, Any] | None) -> None:
+    path = root / PREFLIGHT_FAILURE
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    matching_prior_failures = 0
+    for prior_failure_path in (
+        root / RUNS_ROOT / "preflight_failure_01.json",
+        root / RUNS_ROOT / "preflight_failure_02.json",
+        root / RUNS_ROOT / "preflight_failure_03.json",
+    ):
+        if prior_failure_path.is_file():
+            prior_failure = _mapping(json.loads(prior_failure_path.read_text(encoding="utf-8")), "prior precision preflight failure")
+            matching_prior_failures += int(prior_failure.get("stage") == stage and prior_failure.get("error_type") == type(error).__name__ and prior_failure.get("error") == str(error))
+    failure_count = matching_prior_failures + 1
+    atomic_write_new_json(
+        path,
+        {
+            "schema": "n3_surrogate_hard_transfer_precision_preflight_failure.v1",
+            "task_id": TASK_ID,
+            "authorization_id": AUTHORIZATION_ID,
+            "stage": stage,
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "failure_count_for_signature": failure_count,
+            "preflight_status": "ROOT_CAUSE_REVIEW_REQUIRED" if failure_count >= 2 else "BLOCKED",
+            "attempt_created": False,
+            "training_started": False,
+            "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+            "source_manifest": None if manifest is None else dict(manifest),
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        },
+        artifact_kind="N3 surrogate-hard precision diagnostic preflight failure",
+    )
+
+
+def _normalise_sample_population(sample_payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate sample identity and resolve overlap metadata at one boundary."""
+    sample = dict(_mapping(sample_payload, "fixed diagnostic sample payload"))
+    overlap_status = _mapping(sample.get("reference_overlap_status"), "fixed sample reference-overlap status")
+    overlap_rows = overlap_status.get("reference_overlap_rows")
+    _require(type(overlap_rows) is int and overlap_rows >= 0, "nested reference overlap row count is invalid")
+    top_level_overlap = sample.get("reference_overlap_rows")
+    _require(top_level_overlap is None or (type(top_level_overlap) is int and top_level_overlap == overlap_rows), "top-level and nested reference overlap row counts disagree")
+
+    row_count = sample.get("row_count")
+    rows_per_class = sample.get("rows_per_class")
+    index_sha256 = sample.get("indices_sha256")
+    class_counts = sample.get("class_counts")
+    _require(type(row_count) is int and row_count > 0, "fixed sample row count is invalid")
+    _require(type(rows_per_class) is int and rows_per_class > 0, "fixed sample per-class count is invalid")
+    _require(isinstance(index_sha256, str) and len(index_sha256) == 64, "fixed sample index SHA256 is invalid")
+    _require(isinstance(class_counts, list) and len(class_counts) == n3.CLASS_COUNT, "fixed sample class-count map is invalid")
+    _require(all(type(count) is int and count >= 0 for count in class_counts) and sum(class_counts) == row_count, "fixed sample class counts do not sum to row count")
+    _require(row_count == rows_per_class * n3.CLASS_COUNT and class_counts == [rows_per_class] * n3.CLASS_COUNT, "fixed sample is not class-balanced at its declared size")
+    _require(overlap_rows <= row_count, "reference overlap row count exceeds the fixed sample size")
+
+    indices = sample.get("indices")
+    if indices is not None:
+        frozen_indices = torch.as_tensor(indices, dtype=torch.long).cpu().contiguous()
+        _require(frozen_indices.shape == (row_count,), "fixed sample indices do not match their declared row count")
+        _require(tensor_sha256(frozen_indices) == index_sha256, "fixed sample indices do not match their SHA256")
+    sample["reference_overlap_rows"] = overlap_rows
+    sample["indices"] = None if indices is None else frozen_indices.tolist()
+    return {
+        "public": sample,
+        "indices_sha256": index_sha256,
+        "row_count": row_count,
+        "rows_per_class": rows_per_class,
+        "class_counts": list(class_counts),
+        "reference_overlap_rows": overlap_rows,
+        "reference_overlap_status": dict(overlap_status),
+    }
+
+
+def _snapshot_attempt(attempt: Path) -> dict[str, str]:
+    _require(attempt.is_dir(), f"prior diagnostic attempt is missing: {attempt.as_posix()}")
+    return {path.name: file_sha256(path) for path in sorted(attempt.iterdir()) if path.is_file()}
+
+
+def _validate_previous_precision_attempt(root: Path) -> dict[str, Any]:
+    """Accept only the known failed attempt and reuse its exact frozen rows."""
+    preflight_dir = root / PREVIOUS_PREFLIGHT_DIR
+    attempt = root / PREVIOUS_ATTEMPT_DIR
+    _require(preflight_dir.is_dir(), "attempt_01 READY preflight directory is missing")
+    _require({path.name for path in preflight_dir.iterdir()} == {"preflight.json"}, "attempt_01 preflight evidence set changed")
+    expected_attempt_files = {
+        "diagnostic_failure.json",
+        "execution_manifest.json",
+        "latest_status.json",
+        "progress.jsonl",
+        "sample_indices.json",
+        "source_manifest.json",
+        "status.json",
+    }
+    _require(set(_snapshot_attempt(attempt)) == expected_attempt_files, "attempt_01 contains unexpected or scientific result artifacts")
+    preflight_value = json.loads((preflight_dir / "preflight.json").read_text(encoding="utf-8"))
+    preflight = preflight_value if isinstance(preflight_value, Mapping) else {}
+    receipt_value = preflight.get("preflight_receipt")
+    receipt = receipt_value if isinstance(receipt_value, Mapping) else {}
+    prior_source = preflight.get("source_manifest")
+    execution = json.loads((attempt / "execution_manifest.json").read_text(encoding="utf-8"))
+    attempt_source = json.loads((attempt / "source_manifest.json").read_text(encoding="utf-8"))
+    sample_payload = _mapping(json.loads((attempt / "sample_indices.json").read_text(encoding="utf-8")), "attempt_01 fixed sample")
+    status = _mapping(json.loads((attempt / "status.json").read_text(encoding="utf-8")), "attempt_01 terminal status")
+    latest = _mapping(json.loads((attempt / "latest_status.json").read_text(encoding="utf-8")), "attempt_01 terminal heartbeat")
+    progress_lines = (attempt / "progress.jsonl").read_text(encoding="utf-8").splitlines()
+    _require(bool(progress_lines), "attempt_01 progress history is empty")
+    final_progress = _mapping(json.loads(progress_lines[-1]), "attempt_01 final progress record")
+    failure = _mapping(json.loads((attempt / "diagnostic_failure.json").read_text(encoding="utf-8")), "attempt_01 failure evidence")
+    sample = _normalise_sample_population(sample_payload)
+    _require(sample_payload.get("task_id") == TASK_ID and sample_payload.get("contract_sha256") == n3.CONTRACT_SHA256, "attempt_01 sample authority changed")
+    _require(sample["indices_sha256"] == FROZEN_DIAGNOSTIC_INDICES_SHA256, "attempt_01 frozen diagnostic population SHA changed")
+    _require(sample["row_count"] == DIAGNOSTIC_ROW_COUNT and sample["rows_per_class"] == ROWS_PER_CLASS, "attempt_01 frozen diagnostic population size changed")
+    _require(sample["class_counts"] == [ROWS_PER_CLASS] * n3.CLASS_COUNT, "attempt_01 frozen diagnostic class balance changed")
+    _require(status.get("state") == RUN_INVALID_HARNESS and status.get("phase") == RUN_INVALID_HARNESS and status.get("error_type") == "KeyError", "attempt_01 is not the expected invalid-harness state")
+    _require(latest.get("state") == RUN_INVALID_HARNESS and latest.get("phase") == RUN_INVALID_HARNESS, "attempt_01 latest heartbeat is not terminal invalid-harness")
+    _require(final_progress.get("state") == RUN_INVALID_HARNESS and final_progress.get("phase") == RUN_INVALID_HARNESS and final_progress.get("step") == 2 * DIAGNOSTIC_ROW_COUNT, "attempt_01 progress does not show its final invalid-harness boundary")
+    _require(failure.get("schema") == "n3_surrogate_hard_transfer_precision_failure.v1" and failure.get("attempt_id") == "lightgen-2d-n3-surrogate-hard-transfer-precision-diagnostic-v1:attempt_01", "attempt_01 failure identity changed")
+    _require(failure.get("error_type") == "KeyError" and failure.get("error") == "'reference_overlap_rows'" and failure.get("classification") is None, "attempt_01 is not the known artifact-field-path failure")
+    _require(failure.get("optimizer_updates") == failure.get("checkpoint_writes") == 0 and failure.get("protected_test_sealed_reads") == {"protected": 0, "test": 0, "sealed": 0}, "attempt_01 failure evidence reports forbidden effects")
+    for target in (PREFLIGHT_DIR, PREFLIGHT_FAILURE, ATTEMPT_DIR):
+        _require(not (root / target).exists(), f"attempt_02 write-once slot is already occupied: {target.as_posix()}")
+    return {
+        "attempt_id": failure["attempt_id"],
+        "indices": torch.tensor(sample_payload["indices"], dtype=torch.long),
+        "sample_payload": dict(sample_payload),
+        "sample_indices_sha256": sample["indices_sha256"],
+        "failure_sha256": file_sha256(attempt / "diagnostic_failure.json"),
+        "source_semantics_id": execution.get("execution_source_semantics_id") if isinstance(execution, Mapping) else None,
+        "source_identity_evidence": {
+            "attempt_execution_source_semantics_id": execution.get("execution_source_semantics_id") if isinstance(execution, Mapping) else None,
+            "attempt_source_manifest": attempt_source,
+            "ready_source_manifest": prior_source,
+            "ready_receipt_source_semantics_id": receipt.get("source_semantics_id"),
+            "ready_preflight_status": preflight.get("status"),
+            "ready_receipt_authorization_id": receipt.get("authorization_id"),
+            "nested_source_identity": execution.get("source_identity") if isinstance(execution, Mapping) else None,
+        },
+        "artifact_snapshot": _snapshot_attempt(attempt),
+    }
+
+
+def _mark_incomplete(attempt: Path, control: ResearchRunControl, error: BaseException, heartbeat: HeartbeatWriter | None = None) -> None:
+    heartbeat_error: str | None = None
+    if control.state == RUN_SCIENTIFIC_ACTIVE:
+        if heartbeat is not None:
+            heartbeat.stop_liveness()
+            try:
+                current = _mapping(json.loads(heartbeat.latest_status_path.read_text(encoding="utf-8")), "last diagnostic heartbeat")
+                heartbeat.update(
+                    state=RUN_INVALID_HARNESS,
+                    phase=RUN_INVALID_HARNESS,
+                    step=int(current["step"]),
+                    latest_losses={"diagnostic_state": RUN_INVALID_HARNESS, "error_type": type(error).__name__},
+                    force=True,
+                )
+            except Exception as state_error:
+                heartbeat_error = f"{type(state_error).__name__}: {state_error}"
+        control.invalid_harness()
+    failure_path = attempt / "diagnostic_failure.json"
+    if not failure_path.exists():
+        atomic_write_new_json(
+            failure_path,
+            {
+                "schema": "n3_surrogate_hard_transfer_precision_failure.v1",
+                "task_id": TASK_ID,
+                "attempt_id": ATTEMPT_ID,
+                "error_type": type(error).__name__,
+                "error": str(error),
+                "classification": None,
+                "optimizer_updates": 0,
+                "checkpoint_writes": 0,
+                "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+                "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+            artifact_kind="N3 surrogate-hard precision diagnostic invalid-harness evidence",
+        )
+    atomic_write_json(attempt / "status.json", {"state": RUN_INVALID_HARNESS, "phase": RUN_INVALID_HARNESS, "error_type": type(error).__name__, "heartbeat_terminal_write_error": heartbeat_error, "updated_at_utc": datetime.now(timezone.utc).isoformat()})
+
+
+def _normalise_artifact_context(
+    authorities: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+    sample_payload: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    timings: Mapping[str, float],
+    cuda_peak: Mapping[str, float],
+    *,
+    attempt_path: str,
+    rehearsal_only: bool = False,
+) -> dict[str, Any]:
+    """Resolve all cross-artifact identities and runtime fields once."""
+    sample = _normalise_sample_population(sample_payload)
+    source_identity = dict(_mapping(preflight.get("source_identity"), "current execution source identity"))
+    required_source_fields = ("branch", "head", "dirty", "source_manifest_id", "execution_source_semantics_id", "dirty_patch_digest")
+    _require(all(source_identity.get(key) not in (None, "") for key in required_source_fields), "current execution source identity is incomplete")
+    _require(type(source_identity["dirty"]) is bool, "current execution dirty-source marker is invalid")
+    _require(all(manifest.get(key) == source_identity.get(key) for key in required_source_fields), "current source manifest differs from the preflight source identity")
+    _require(sample["indices_sha256"] == preflight.get("indices_sha256") == manifest.get("config_identity", {}).get("diagnostic_indices_sha256"), "sample, preflight, and source manifest identities differ")
+
+    runtime = dict(_mapping(preflight.get("runtime_provenance"), "preflight runtime provenance"))
+    required_environment = ("device", "device_capability", "total_memory_bytes", "free_memory_bytes_at_preflight", "minimum_free_memory_bytes", "torch_version", "cuda_runtime")
+    _require(all(key in runtime for key in required_environment), "preflight runtime provenance is incomplete")
+    _require(isinstance(runtime["device"], str) and bool(runtime["device"]), "preflight CUDA device identity is empty")
+    _require(isinstance(runtime["device_capability"], (list, tuple)) and len(runtime["device_capability"]) == 2, "preflight CUDA capability identity is invalid")
+    for field in ("total_memory_bytes", "free_memory_bytes_at_preflight", "minimum_free_memory_bytes"):
+        _require(type(runtime[field]) is int and runtime[field] >= 0, f"preflight CUDA memory field is invalid: {field}")
+    _require(runtime["total_memory_bytes"] > 0 and runtime["free_memory_bytes_at_preflight"] >= runtime["minimum_free_memory_bytes"], "preflight CUDA resource envelope is invalid")
+    _require(isinstance(runtime["torch_version"], str) and bool(runtime["torch_version"]), "preflight torch version is missing")
+    required_timings = ("rank0_forward_seconds", "rank2_forward_seconds", "hard_feature_and_distance_seconds", "total_measurement_seconds")
+    required_peak = ("allocated_gb", "peak_allocated_gb", "reserved_gb", "peak_reserved_gb")
+    _require(all(key in timings for key in required_timings), "measurement timing fields are incomplete")
+    _require(all(key in cuda_peak for key in required_peak), "CUDA memory telemetry fields are incomplete")
+    for value in (*[timings[key] for key in required_timings], *[cuda_peak[key] for key in required_peak]):
+        _require(isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) >= 0.0, "runtime or CUDA telemetry contains an invalid value")
+    runtime_context = {
+        "environment": runtime,
+        "timings_seconds": {key: float(timings[key]) for key in required_timings},
+        "cuda_peak_gb": {key: float(cuda_peak[key]) for key in required_peak},
+    }
+
+    reference_info = _mapping(authorities.get("reference_info"), "current frozen reference identity")
+    reference = _mapping(authorities.get("reference"), "current frozen reference artifact")
+    support = _mapping(reference.get("support_distance"), "frozen q95 authority")
+    q95 = torch.as_tensor(support.get("q95_by_class"), dtype=torch.float64).cpu()
+    _require(q95.shape == (n3.CLASS_COUNT,) and bool(torch.isfinite(q95).all() and (q95 > 0.0).all()), "frozen q95 authority is incomplete")
+    _require(reference_info.get("label_mapping_valid") is True, "frozen reference source identity map is not valid")
+    _require(reference_info.get("source_indices_sha256"), "frozen reference source index identity is missing")
+    reference_context = {
+        "artifact_sha256": n3.STRUCTURAL_REFERENCE_SHA256,
+        "schema": reference.get("schema"),
+        "rows": int(reference_info["rows"]),
+        "source_indices_sha256": reference_info["source_indices_sha256"],
+        "source_index_label_mapping_valid": True,
+        "canonical_train_overlap_rows": int(reference_info["canonical_train_overlap"]),
+        "diagnostic_reference_overlap_rows": sample["reference_overlap_rows"],
+        "independence_limitation": preflight["selection"]["reference_overlap_limitation"],
+        "q95_by_class": q95.tolist(),
+    }
+    _require(reference_context["diagnostic_reference_overlap_rows"] == preflight["selection"]["reference_overlap_rows"], "normalized reference overlap differs from preflight selection evidence")
+    model_identity = _mapping(preflight.get("model_identity"), "preflight endpoint model identity")
+    rank_identity = {
+        "rank0_state_sha256": model_identity.get("rank0_state_sha256_before"),
+        "rank2_state_sha256": model_identity.get("rank2_state_sha256_before"),
+        "rank2_endpoint_sha256": authorities.get("endpoint_sha256"),
+    }
+    _require(all(isinstance(value, str) and len(value) == 64 for value in rank_identity.values()), "rank0/rank2 endpoint identities are incomplete")
+    return {
+        "sample": sample,
+        "reference_library": reference_context,
+        "source_identity": source_identity,
+        "source_manifest": dict(manifest),
+        "runtime": runtime_context,
+        "rank_identity": rank_identity,
+        "n3_authorities": {
+            "contract_sha256": n3.CONTRACT_SHA256,
+            "protocol_sha256": n3.PROTOCOL_SHA256,
+            "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+            "rank2_endpoint_sha256": authorities["endpoint_sha256"],
+            "original_n3_report_sha256": authorities["n3_report_sha256"],
+            "original_n3_status_sha256": authorities["n3_status_sha256"],
+        },
+        "role_index_rows": {key: int(value.numel()) for key, value in authorities["role_indices"].items()},
+        "historical_exclusion_rows": int(authorities["historical_exclusions"].numel()),
+        "prior_diagnostic_index_rows": int(authorities["prior_diagnostic_indices"].numel()),
+        "previous_precision_attempt": dict(authorities.get("previous_precision_attempt", {})),
+        "attempt_path": attempt_path,
+        "rehearsal_only": rehearsal_only,
+    }
+
+
+def _read_ledger(context: Mapping[str, Any], prior_attempt_02: Mapping[str, Any]) -> dict[str, Any]:
+    sample = context["sample"]
+    reference = context["reference_library"]
+    count = int(sample["row_count"])
+    rehearsal_only = bool(context["rehearsal_only"])
+    reads = {
+        "canonical_train_backing_store": {"path": n3.TRAINING_SOURCE.as_posix(), "sha256": n3.TRAINING_SOURCE_SHA256, "rows_mapped": 0 if rehearsal_only else 60_000, "split_labels_inspected": 0 if rehearsal_only else 60_000},
+        "n3_contract_role_index_rows_read": {key: 0 for key in context["role_index_rows"]} if rehearsal_only else context["role_index_rows"],
+        "historical_exclusion_rows_read": 0 if rehearsal_only else context["historical_exclusion_rows"],
+        "prior_diagnostic_index_rows_read": 0 if rehearsal_only else context["prior_diagnostic_index_rows"],
+        "diagnostic_population": {"unique_rows_materialized": 0 if rehearsal_only else count, "synthetic_payload_rows": count if rehearsal_only else 0, "rows_per_class": int(sample["rows_per_class"]), "forward_rows_by_rank": {"0": 0 if rehearsal_only else count, "2": 0 if rehearsal_only else count}, "total_forward_rows": 0 if rehearsal_only else 2 * count},
+        "frozen_reference": {"path": n3.STRUCTURAL_REFERENCE.as_posix(), "sha256": reference["artifact_sha256"], "rows_loaded": 0 if rehearsal_only else reference["rows"], "source_identity_map_available": reference["source_index_label_mapping_valid"], "source_indices_sha256": reference["source_indices_sha256"], "diagnostic_reference_overlap_rows": 0 if rehearsal_only else sample["reference_overlap_rows"]},
+        "prior_attribution_attempt_02": prior_attempt_02,
+        "N3_FIT_image_rows_materialized": 0,
+        "N3_SELECT_image_rows_materialized": 0,
+        "N3_CONFIRM_image_rows_materialized": 0,
+        "N3_FIT_forward_rows": 0,
+        "N3_SELECT_forward_rows": 0,
+        "N3_CONFIRM_forward_rows": 0,
+        "new_semantic_evaluations": 0,
+        "semantic_evaluators_loaded": 0,
+        "DEV_rows_materialized_or_read": 0,
+        "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+    }
+    return {
+        "schema": "n3_surrogate_hard_transfer_precision_read_ledger.v1",
+        "task_id": TASK_ID,
+        "authorization_id": AUTHORIZATION_ID,
+        "diagnostic_indices_sha256": sample["indices_sha256"],
+        "rehearsal_only": rehearsal_only,
+        "previous_invalid_precision_attempt": {
+            "attempt_id": context["previous_precision_attempt"].get("attempt_id"),
+            "failure_sha256": context["previous_precision_attempt"].get("failure_sha256"),
+            "source_semantics_id": context["previous_precision_attempt"].get("source_semantics_id"),
+            "sample_indices_sha256": context["previous_precision_attempt"].get("sample_indices_sha256"),
+        },
+        "reads": reads,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _runtime_telemetry_payload(context: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": "n3_surrogate_hard_transfer_precision_runtime_telemetry.v1",
+        "task_id": TASK_ID,
+        "authorization_id": AUTHORIZATION_ID,
+        "attempt_id": ATTEMPT_ID,
+        "sample_indices_sha256": context["sample"]["indices_sha256"],
+        "source_identity": context["source_identity"],
+        "environment": context["runtime"]["environment"],
+        "runtime_seconds": context["runtime"]["timings_seconds"],
+        "cuda_peak_gb": context["runtime"]["cuda_peak_gb"],
+    }
+
+
+def _reference_switch_payload(context: Mapping[str, Any], summaries: Mapping[str, Any]) -> dict[str, Any]:
+    decomposition = _mapping(summaries.get("reference_switch_decomposition"), "reference-switch summary")
+    checks = decomposition.get("arithmetic_and_actual_distance_checks")
+    _require(isinstance(checks, Mapping) and all(_mapping(value, "reference distance check").get("passed") is True for value in checks.values()), "reference-switch distance checks are incomplete")
+    return {
+        "schema": "n3_surrogate_hard_transfer_precision_reference_switch_decomposition.v1",
+        "task_id": TASK_ID,
+        "sample_indices_sha256": context["sample"]["indices_sha256"],
+        "summary": dict(decomposition),
+        "checks": dict(checks),
+    }
+
+
+def _scale_floor_payload(context: Mapping[str, Any], summaries: Mapping[str, Any]) -> dict[str, Any]:
+    summary = _mapping(summaries.get("scale_floor_conditioning"), "scale-floor summary")
+    _require(all(name in summary for name in ("rank0", "rank2", "criteria")), "scale-floor summary is incomplete")
+    return {
+        "schema": "n3_surrogate_hard_transfer_precision_scale_floor_summary.v1",
+        "task_id": TASK_ID,
+        "sample_indices_sha256": context["sample"]["indices_sha256"],
+        "summary": dict(summary),
+    }
+
+
+def _walk_tensors(value: Any):
+    if isinstance(value, torch.Tensor):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _walk_tensors(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _walk_tensors(item)
+
+
+def _write_measurement_artifacts(
+    root: Path,
+    attempt: Path,
+    context: Mapping[str, Any],
+    *,
+    preflight_receipt_path: Path,
+    sample_payload: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    execution_manifest: Mapping[str, Any],
+    read_ledger: Mapping[str, Any],
+    arrays: Mapping[str, Any],
+    summaries: Mapping[str, Any],
+) -> dict[str, dict[str, str]]:
+    """Commit and read back the complete pre-report evidence bundle once."""
+    attempt.mkdir(parents=True, exist_ok=True)
+    sample_path = attempt / "sample_indices.json"
+    source_path = attempt / "source_manifest.json"
+    execution_path = attempt / "execution_manifest.json"
+    ledger_path = attempt / "read_ledger.json"
+    values_path = attempt / "per_sample_values.pt"
+    switch_path = attempt / "reference_switch_decomposition.json"
+    floor_path = attempt / "scale_floor_summary.json"
+    runtime_path = attempt / "runtime_telemetry.json"
+    _require(preflight_receipt_path.is_file(), "READY preflight receipt is missing before evidence commit")
+    preflight_payload = _mapping(json.loads(preflight_receipt_path.read_text(encoding="utf-8")), "persisted READY preflight")
+    receipt = _mapping(preflight_payload.get("preflight_receipt"), "persisted READY receipt")
+    _require(preflight_payload.get("status") == "READY" and receipt.get("authorization_id") == AUTHORIZATION_ID, "persisted preflight is not the authorized READY receipt")
+    _require(receipt.get("source_semantics_id") == context["source_identity"]["execution_source_semantics_id"], "persisted READY receipt source semantics changed")
+
+    for path, payload, kind in (
+        (sample_path, sample_payload, "N3 precision diagnostic frozen TRAIN identities"),
+        (source_path, manifest, "N3 precision diagnostic source manifest"),
+        (execution_path, execution_manifest, "N3 precision diagnostic execution manifest"),
+        (ledger_path, read_ledger, "N3 precision diagnostic data read ledger"),
+        (switch_path, _reference_switch_payload(context, summaries), "N3 precision diagnostic fixed-reference decomposition"),
+        (floor_path, _scale_floor_payload(context, summaries), "N3 precision diagnostic scale-floor summary"),
+        (runtime_path, _runtime_telemetry_payload(context), "N3 precision diagnostic runtime telemetry"),
+    ):
+        if path.exists():
+            existing = _mapping(json.loads(path.read_text(encoding="utf-8")), path.name)
+            _require(canonical_sha256(existing) == canonical_sha256(payload), f"write-once artifact differs from the current evidence: {path.name}")
+        else:
+            atomic_write_new_json(path, payload, artifact_kind=kind)
+
+    persisted_arrays = dict(arrays)
+    persisted_arrays["schema"] = "n3_surrogate_hard_transfer_precision_per_sample.v1"
+    if values_path.exists():
+        raise PrecisionDiagnosticError("per-sample values artifact already exists; refusing to overwrite")
+    atomic_torch_save_new(values_path, persisted_arrays, artifact_kind="N3 precision diagnostic compact paired values")
+
+    artifacts = {
+        "preflight_receipt": preflight_receipt_path,
+        "sample_indices": sample_path,
+        "source_manifest": source_path,
+        "execution_manifest": execution_path,
+        "read_ledger": ledger_path,
+        "per_sample_values": values_path,
+        "reference_switch_decomposition": switch_path,
+        "scale_floor_summary": floor_path,
+        "runtime_telemetry": runtime_path,
+    }
+    refs = {
+        name: {"path": path.relative_to(root).as_posix(), "sha256": file_sha256(path)}
+        for name, path in artifacts.items()
+    }
+
+    saved_sample = _normalise_sample_population(_mapping(json.loads(sample_path.read_text(encoding="utf-8")), "saved sample indices"))
+    _require(saved_sample["indices_sha256"] == context["sample"]["indices_sha256"] and saved_sample["row_count"] == context["sample"]["row_count"], "saved sample artifact identity changed")
+    saved_sample_payload = _mapping(json.loads(sample_path.read_text(encoding="utf-8")), "saved sample artifact")
+    _require(canonical_sha256(saved_sample_payload) == canonical_sha256(sample_payload), "saved sample metadata differs from the validated payload")
+    saved_manifest = _mapping(json.loads(source_path.read_text(encoding="utf-8")), "saved source manifest")
+    _require(saved_manifest.get("source_manifest_id") == context["source_identity"]["source_manifest_id"] and saved_manifest.get("execution_source_semantics_id") == context["source_identity"]["execution_source_semantics_id"], "saved source manifest identity changed")
+    _require(canonical_sha256(saved_manifest) == canonical_sha256(manifest), "saved source manifest provenance differs from the validated payload")
+    saved_execution = _mapping(json.loads(execution_path.read_text(encoding="utf-8")), "saved execution manifest")
+    _require(saved_execution.get("authorization_id") == AUTHORIZATION_ID and saved_execution.get("attempt_id") == ATTEMPT_ID, "saved execution manifest authority changed")
+    _require(saved_execution.get("sample_indices_sha256") == context["sample"]["indices_sha256"] and saved_execution.get("execution_source_semantics_id") == context["source_identity"]["execution_source_semantics_id"], "saved execution manifest source/sample identity changed")
+    _require(saved_execution.get("source_identity") == context["source_identity"], "saved execution manifest consumer source provenance changed")
+    _require(canonical_sha256(saved_execution) == canonical_sha256(execution_manifest), "saved execution manifest differs from the validated payload")
+    saved_ledger = _mapping(json.loads(ledger_path.read_text(encoding="utf-8")), "saved read ledger")
+    ledger_reads = _mapping(saved_ledger.get("reads"), "saved read ledger counters")
+    _require(saved_ledger.get("diagnostic_indices_sha256") == context["sample"]["indices_sha256"], "saved read ledger sample identity changed")
+    _require(canonical_sha256(saved_ledger) == canonical_sha256(read_ledger), "saved read ledger differs from the validated payload")
+    _require(ledger_reads.get("protected_test_sealed_reads") == {"protected": 0, "test": 0, "sealed": 0} and ledger_reads.get("DEV_rows_materialized_or_read") == 0, "saved read ledger violates the data firewall")
+    expected_reference_overlap = 0 if context["rehearsal_only"] else context["sample"]["reference_overlap_rows"]
+    _require(ledger_reads.get("frozen_reference", {}).get("diagnostic_reference_overlap_rows") == expected_reference_overlap, "saved read ledger reference overlap differs")
+    loaded_values = _mapping(safe_torch_load(values_path, map_location="cpu"), "saved paired per-sample values")
+    _require(loaded_values.get("schema") == "n3_surrogate_hard_transfer_precision_per_sample.v1", "saved per-sample schema changed")
+    indices = loaded_values.get("source_indices")
+    labels = loaded_values.get("labels")
+    _require(isinstance(indices, torch.Tensor) and indices.shape == (context["sample"]["row_count"],), "saved per-sample source index shape changed")
+    _require(tensor_sha256(indices.to(torch.long).cpu()) == context["sample"]["indices_sha256"], "saved per-sample source indices differ from the frozen population")
+    _require(isinstance(labels, torch.Tensor) and labels.shape == indices.shape and torch.equal(torch.bincount(labels.to(torch.long).cpu(), minlength=n3.CLASS_COUNT), torch.tensor(context["sample"]["class_counts"], dtype=torch.long)), "saved per-sample labels differ from the fixed class population")
+    for tensor in _walk_tensors(loaded_values):
+        if tensor.is_floating_point():
+            _require(bool(torch.isfinite(tensor).all()), "saved per-sample values contain nonfinite measurements")
+        _require(tensor.ndim == 0 or tensor.shape[0] == context["sample"]["row_count"], "saved per-sample tensor has an unexpected leading dimension")
+    for key, expected_schema in (
+        ("reference_switch_decomposition", "n3_surrogate_hard_transfer_precision_reference_switch_decomposition.v1"),
+        ("scale_floor_summary", "n3_surrogate_hard_transfer_precision_scale_floor_summary.v1"),
+        ("runtime_telemetry", "n3_surrogate_hard_transfer_precision_runtime_telemetry.v1"),
+    ):
+        payload = _mapping(json.loads((root / refs[key]["path"]).read_text(encoding="utf-8")), key)
+        _require(payload.get("schema") == expected_schema and payload.get("sample_indices_sha256") == context["sample"]["indices_sha256"], f"saved {key} schema or sample binding changed")
+    for name, reference in refs.items():
+        _require(file_sha256(root / reference["path"]) == reference["sha256"], f"saved artifact digest failed read-back: {name}")
+    return refs
+
+
+def _build_report_payload(
+    context: Mapping[str, Any],
+    *,
+    control: ResearchRunControl,
+    prior_attribution: Mapping[str, Any],
+    summaries: Mapping[str, Any],
+    read_ledger: Mapping[str, Any],
+    artifact_refs: Mapping[str, Mapping[str, str]],
+    authorities: Mapping[str, Any],
+    floor_dimensions: list[dict[str, Any]],
+    prior_snapshot: Mapping[str, str],
+    previous_precision_unchanged: bool,
+) -> dict[str, Any]:
+    sample = context["sample"]
+    report = {
+        "schema": "n3_surrogate_hard_transfer_precision_report.v1",
+        "result": "SYNTHETIC_REHEARSAL_ONLY" if context["rehearsal_only"] else "VALID_COMPLETED_DIAGNOSTIC",
+        "classification": None if context["rehearsal_only"] else summaries["classification"]["classification"],
+        "task_id": TASK_ID,
+        "authorization_id": AUTHORIZATION_ID,
+        "outer_gate": None,
+        "previous_invalid_attempt": {
+            "attempt_id": context["previous_precision_attempt"].get("attempt_id"),
+            "failure_sha256": context["previous_precision_attempt"].get("failure_sha256"),
+            "source_semantics_id": context["previous_precision_attempt"].get("source_semantics_id"),
+        },
+        "attempt": {"attempt_id": ATTEMPT_ID, "path": context["attempt_path"]},
+        "n3_scientific_status_preserved": {"status": "VALID_FAILED", "selected_rank": 2, "rank_reselection": False, "continuation": False},
+        "n3_authorities": context["n3_authorities"],
+        "prior_attribution": dict(prior_attribution),
+        "execution_source_identity": context["source_identity"],
+        "run_identity": control.identity.to_dict(),
+        "sample_population": sample["public"] | {"indices": None},
+        "reference_library_identity": context["reference_library"],
+        "feature_identity": {
+            "surrogate_dimension": surrogate.STRUCTURAL_DIMENSION,
+            "surrogate_normalization_sha256": n3.SURROGATE_NORMALIZATION_SHA256,
+            "hard_dimension": hard.SIGNATURE_DIMENSION,
+            "hard_reference_sha256": n3.STRUCTURAL_REFERENCE_SHA256,
+            "hard_thresholds": list(hard.THRESHOLDS),
+            "hard_blocks": {name: [block.start, block.stop] for name, block in prior.feature_blocks().items()},
+            "scale_floor_dimensions": floor_dimensions,
+            "q95_by_class": context["reference_library"]["q95_by_class"],
+        },
+        "metric_results": dict(summaries),
+        "negative_controls": {
+            "rank0_self_comparison_exact_zero": True,
+            "hard_feature_blocks_reconstruct_frozen_distances": True,
+            "raw_to_standardized_reference_reconstruction": True,
+            "fixed_reference_component_arithmetic_reconstructs_total": True,
+            "protected_test_sealed_reads_zero": True,
+        },
+        "data_firewall": read_ledger["reads"],
+        "optimizer_updates": 0,
+        "rank_selection": None,
+        "checkpoint_writes": 0,
+        "training_started": False,
+        "artifacts": {key: dict(value) for key, value in artifact_refs.items()},
+        "read_ledger": dict(artifact_refs["read_ledger"]),
+        "per_sample_values": dict(artifact_refs["per_sample_values"]),
+        "reference_switch_decomposition": dict(artifact_refs["reference_switch_decomposition"]),
+        "scale_floor_summary": dict(artifact_refs["scale_floor_summary"]),
+        "runtime_telemetry": dict(artifact_refs["runtime_telemetry"]),
+        "previous_attempt_artifacts_unchanged": {"passed": True, "snapshot_sha256": canonical_sha256(prior_snapshot), "file_count": len(prior_snapshot)},
+        "previous_precision_attempt_01_unchanged": {
+            "passed": previous_precision_unchanged,
+            "artifact_snapshot_sha256": canonical_sha256(context["previous_precision_attempt"].get("artifact_snapshot", {})),
+        },
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if context["rehearsal_only"]:
+        report["metric_results"]["classification"] = {"classification": None, "status": "NOT_ISSUED_FOR_SYNTHETIC_REHEARSAL"}
+        report["metric_results"]["secondary_mechanism_flags"] = []
+    _require(report["result"] == "SYNTHETIC_REHEARSAL_ONLY" or report["classification"] in {
+        "N3_SURROGATE_TO_HARD_TRANSFER_SUPPORTED",
+        "N3_SURROGATE_HARD_ALIGNMENT_GAP_SUPPORTED",
+        "N3_SURROGATE_HARD_TRANSFER_PRECISION_UNRESOLVED",
+    }, "final report classification is not preregistered")
+    _require(report["n3_scientific_status_preserved"] == {"status": "VALID_FAILED", "selected_rank": 2, "rank_reselection": False, "continuation": False}, "final report changed original N3 scientific status")
+    _require(report["optimizer_updates"] == report["checkpoint_writes"] == 0 and report["rank_selection"] is None, "precision diagnostic report includes forbidden scientific actions")
+    _require(canonical_sha256(report), "report payload cannot be serialized canonically")
+    return report
+
+
+def _artifact_transaction_rehearsal() -> dict[str, Any]:
+    """Exercise the production writers and closeout with synthetic values only."""
+    temporary_root: Path | None = None
+    validated_names: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="n3pd-") as temporary_directory:
+        root = Path(temporary_directory)
+        temporary_root = root
+        atomic_write_new_json(root / "REHEARSAL_ONLY.json", {"scientific_attempt": False, "scientific_data_reads": 0}, artifact_kind="non-scientific N3 precision transaction rehearsal marker")
+        labels = torch.arange(n3.CLASS_COUNT, dtype=torch.long).repeat_interleave(2)
+        indices = torch.arange(labels.numel(), dtype=torch.long)
+        index_sha = tensor_sha256(indices)
+        overlap_status = {
+            "reference_overlap_rows": 5,
+            "reference_overlap_fraction": 0.25,
+            "reference_disjoint_population_used": False,
+            "reference_overlap_limitation": "synthetic rehearsal only",
+            "rows_per_class": 2,
+        }
+        sample_payload = {
+            "schema": "n3_surrogate_hard_transfer_precision_fixed_train_indices.v1",
+            "task_id": TASK_ID,
+            "contract_sha256": n3.CONTRACT_SHA256,
+            "row_count": int(indices.numel()),
+            "rows_per_class": 2,
+            "class_counts": [2] * n3.CLASS_COUNT,
+            "indices_sha256": index_sha,
+            "indices": indices.tolist(),
+            "reference_overlap_rows": None,
+            "reference_overlap_status": overlap_status,
+        }
+        reference_info = {
+            "rows": int(indices.numel()),
+            "source_indices_sha256": "6" * 64,
+            "label_mapping_valid": True,
+            "canonical_train_overlap": int(indices.numel()),
+        }
+        reference = {"support_distance": {"q95_by_class": torch.ones(n3.CLASS_COUNT, dtype=torch.float64)}, "schema": "synthetic-rehearsal-reference.v1"}
+        floor_dimensions = [{"index": 0, "block": "synthetic", "feature": "placeholder"}]
+        summaries = {
+            "classification": {"classification": "NOT_ISSUED"},
+            "secondary_mechanism_flags": [],
+            "sample_count": int(indices.numel()),
+            "surrogate": {"synthetic": True},
+            "hard_structural": {"synthetic": True},
+            "proxy_hard_coupling": {"synthetic": True},
+            "reference_switch_decomposition": {
+                "synthetic": True,
+                "arithmetic_and_actual_distance_checks": {"placeholder": {"passed": True}},
+            },
+            "scale_floor_conditioning": {"rank0": {"synthetic": True}, "rank2": {"synthetic": True}, "criteria": {"synthetic": True}},
+        }
+        arrays = {
+            "source_indices": indices,
+            "labels": labels,
+            "reference_switch_decomposition": {"D00": torch.zeros(indices.numel(), dtype=torch.float64)},
+            "scale_floor": {"rank0_fraction": torch.zeros(indices.numel(), dtype=torch.float64)},
+        }
+        source_identity = {
+            "branch": "synthetic-rehearsal",
+            "head": "a" * 40,
+            "dirty": True,
+            "source_manifest_id": "b" * 64,
+            "execution_source_semantics_id": "c" * 64,
+            "dirty_patch_digest": "d" * 64,
+        }
+        manifest = source_identity | {
+            "config_identity": {"diagnostic_indices_sha256": index_sha, "rank2_endpoint_sha256": "e" * 64},
+        }
+        runtime = {
+            "device": "synthetic-no-device",
+            "device_capability": [0, 0],
+            "total_memory_bytes": 1,
+            "free_memory_bytes_at_preflight": 1,
+            "minimum_free_memory_bytes": 0,
+            "torch_version": torch.__version__,
+            "cuda_runtime": None,
+        }
+        authorities = {
+            "reference_info": reference_info,
+            "reference": reference,
+            "endpoint_sha256": "e" * 64,
+            "n3_report_sha256": "f" * 64,
+            "n3_status_sha256": "1" * 64,
+            "role_indices": {name: torch.empty(0, dtype=torch.long) for name in ("N3_FIT", "N3_SELECT", "N3_CONFIRM")},
+            "historical_exclusions": torch.empty(0, dtype=torch.long),
+            "prior_diagnostic_indices": torch.empty(0, dtype=torch.long),
+            "previous_precision_attempt": {"attempt_id": "synthetic-attempt-01", "failure_sha256": "2" * 64, "source_semantics_id": "3" * 64},
+        }
+        preflight = {
+            "indices_sha256": index_sha,
+            "source_identity": source_identity,
+            "runtime_provenance": runtime,
+            "selection": overlap_status,
+            "model_identity": {"rank0_state_sha256_before": "4" * 64, "rank2_state_sha256_before": "5" * 64},
+        }
+        context = _normalise_artifact_context(
+            authorities,
+            preflight,
+            sample_payload,
+            manifest,
+            {"rank0_forward_seconds": 0.1, "rank2_forward_seconds": 0.1, "hard_feature_and_distance_seconds": 0.1, "total_measurement_seconds": 0.3},
+            {"allocated_gb": 0.01, "peak_allocated_gb": 0.02, "reserved_gb": 0.03, "peak_reserved_gb": 0.04},
+            attempt_path="TEMPORARY_REHEARSAL_ONLY/attempt_02",
+            rehearsal_only=True,
+        )
+        previous_snapshot: dict[str, str] = {}
+        ledger = _read_ledger(context, {"attempt_id": "synthetic-prior-attribution"})
+        checks = {name: {"status": "PASS"} for name in (CORRECTNESS_INVARIANTS, RESOURCE_ENVELOPE, IMPLEMENTATION_SELECTION)}
+        receipt = PreflightReceipt(
+            source_semantics_id=str(source_identity["execution_source_semantics_id"]),
+            authorization_id=AUTHORIZATION_ID,
+            checks=checks,
+            selected_engine="SYNTHETIC_ARTIFACT_REHEARSAL_ONLY",
+        )
+        preflight_receipt_path = root / "preflight_03" / "preflight.json"
+        preflight_receipt_path.parent.mkdir(parents=True, exist_ok=False)
+        atomic_write_new_json(
+            preflight_receipt_path,
+            {"status": "READY", "preflight_receipt": receipt.to_dict(), "source_manifest": manifest, "rehearsal_only": True},
+            artifact_kind="synthetic N3 precision READY receipt rehearsal",
+        )
+        control = ResearchRunControl(_run_identity(manifest), AUTHORIZATION_ID, state=RUN_PREPARING)
+        control.mark_preflight_ready(receipt)
+        attempt = root / "REHEARSAL_ONLY" / "attempt_02"
+        control.open_scientific_attempt(attempt, ATTEMPT_ID, receipt)
+        heartbeat = HeartbeatWriter(attempt, control.identity.run_id, total_steps=2 * int(indices.numel()), interval_seconds=0.0)
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="STATISTICS", step=0, latest_losses={"rehearsal_only": True}, force=True)
+        execution_manifest = {
+            "schema": "n3_surrogate_hard_transfer_precision_execution_manifest.v1",
+            "task_id": TASK_ID,
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": ATTEMPT_ID,
+            "sample_indices_sha256": index_sha,
+            "execution_source_semantics_id": source_identity["execution_source_semantics_id"],
+            "source_identity": source_identity,
+        }
+        ledger["rehearsal_only"] = True
+        artifact_refs = _write_measurement_artifacts(
+            root,
+            attempt,
+            context,
+            preflight_receipt_path=preflight_receipt_path,
+            sample_payload=sample_payload,
+            manifest=manifest,
+            execution_manifest=execution_manifest,
+            read_ledger=ledger,
+            arrays=arrays,
+            summaries=summaries,
+        )
+        report = _build_report_payload(
+            context,
+            control=control,
+            prior_attribution={"attempt_id": "synthetic-prior-attribution"},
+            summaries=summaries,
+            read_ledger=ledger,
+            artifact_refs=artifact_refs,
+            authorities=authorities,
+            floor_dimensions=floor_dimensions,
+            prior_snapshot=previous_snapshot,
+            previous_precision_unchanged=True,
+        )
+        report_path = attempt / "report.json"
+        atomic_write_new_json(report_path, report, artifact_kind="synthetic N3 precision diagnostic report rehearsal")
+        saved_report = _mapping(json.loads(report_path.read_text(encoding="utf-8")), "synthetic final report")
+        _require(saved_report.get("result") == "SYNTHETIC_REHEARSAL_ONLY" and saved_report.get("classification") is None, "synthetic rehearsal issued a scientific classification")
+        _require(saved_report.get("sample_population", {}).get("indices_sha256") == index_sha, "synthetic report sample identity changed")
+        _require(saved_report.get("execution_source_identity", {}).get("execution_source_semantics_id") == source_identity["execution_source_semantics_id"], "synthetic report source identity changed")
+        report_sha = file_sha256(report_path)
+        prior._close_completed_report(attempt, control, heartbeat, final_step=2 * int(indices.numel()), classification="NOT_ISSUED", result="SYNTHETIC_REHEARSAL_ONLY")
+        latest_sha_after_close = file_sha256(heartbeat.latest_status_path)
+        status = _mapping(json.loads((attempt / "status.json").read_text(encoding="utf-8")), "synthetic completed status")
+        progress = [json.loads(line) for line in heartbeat.progress_path.read_text(encoding="utf-8").splitlines()]
+        _require(status.get("state") == RUN_COMPLETED and status.get("report_sha256") == report_sha, "synthetic report/status closeout is not ordered or complete")
+        _require(sum(record.get("state") == RUN_COMPLETED for record in progress) == 1 and progress[-1].get("state") == RUN_COMPLETED, "synthetic terminal heartbeat was not written exactly once")
+        _require(file_sha256(heartbeat.latest_status_path) == latest_sha_after_close, "heartbeat changed after synthetic terminal closeout")
+        _require(control.state == RUN_COMPLETED, "synthetic run-control lifecycle did not complete")
+        validated_names = [Path(item["path"]).name for item in artifact_refs.values()]
+        validated_names.extend(["report.json", "latest_status.json", "progress.jsonl", "status.json"])
+    temporary_removed = temporary_root is not None and not temporary_root.exists()
+    _require(temporary_removed, "synthetic artifact rehearsal namespace was not removed")
+    return {
+        "status": "PASS",
+        "scientific_data_reads": 0,
+        "optimizer_updates": 0,
+        "checkpoint_writes": 0,
+        "classification_issued": False,
+        "terminal_completed_closeout_once": True,
+        "no_heartbeat_after_terminal_closeout": True,
+        "temporary_namespace_removed": True,
+        "artifacts_validated": validated_names,
+    }
+
+
+def execute(*, repo_root: Path | None = None) -> dict[str, Any]:
+    root = Path.cwd() if repo_root is None else Path(repo_root)
+    root = root.resolve()
+    started = time.perf_counter()
+    manifest: dict[str, Any] | None = None
+    stage = "AUTHORITY_AND_FIXED_POPULATION_PREFLIGHT"
+    heartbeat: HeartbeatWriter | None = None
+    control: ResearchRunControl | None = None
+    attempt_opened = False
+    report_published = False
+    heartbeat_closed = False
+    prior_snapshot: dict[str, str] = {}
+    previous_precision: dict[str, Any] = {}
+    source_manifest_out: dict[str, Any] = {}
+    try:
+        previous_precision = _validate_previous_precision_attempt(root)
+        prior_snapshot = prior._snapshot_prior_attempt_artifacts(root / OLD_RUNS_ROOT)
+        prior01_index_sha = prior._validate_prior_attempt_01(root, require_repair_slot_free=False)
+        prior02 = _validate_prior_attempt_02(root, prior01_index_sha)
+        prior02_report = _mapping(json.loads((root / OLD_ATTEMPT_02 / "report.json").read_text(encoding="utf-8")), "prior attribution report")
+        prior02_peak = _mapping(prior02_report.get("metrics", {}).get("cuda_peak_gb"), "prior attribution CUDA envelope")
+        prior02["peak_reserved_gb"] = float(prior02_peak["peak_reserved_gb"])
+        authorities = prior._validate_n3_inputs(root)
+        prior_indices = torch.tensor(json.loads((root / OLD_ATTEMPT_02 / "sample_indices.json").read_text(encoding="utf-8"))["indices"], dtype=torch.long)
+        _require(tensor_sha256(prior_indices) == prior01_index_sha == prior02["sample_indices_sha256"], "previous diagnostic sample identities do not reconcile")
+        authorities["prior_diagnostic_indices"] = prior_indices
+        authorities["previous_precision_attempt"] = previous_precision
+        preflight, receipt, control, manifest = _preflight(
+            root,
+            authorities,
+            prior02,
+            prior_snapshot,
+            source_manifest_out=source_manifest_out,
+        )
+    except Exception as error:
+        _save_preflight_failure(root, error, stage, source_manifest_out.get("manifest", manifest))
+        raise
+
+    preflight_dir = root / PREFLIGHT_DIR
+    preflight_dir.mkdir(parents=True, exist_ok=False)
+    atomic_write_new_json(preflight_dir / "preflight.json", {**preflight, "preflight_receipt": receipt.to_dict(), "source_manifest": manifest}, artifact_kind="N3 surrogate-hard precision READY receipt")
+    attempt = root / ATTEMPT_DIR
+    control.open_scientific_attempt(attempt, ATTEMPT_ID, receipt)
+    attempt_opened = True
+    try:
+        atomic_write_json(attempt / "status.json", {"state": RUN_SCIENTIFIC_ACTIVE, "phase": "STATISTICS", "authorization_id": AUTHORIZATION_ID, "updated_at_utc": datetime.now(timezone.utc).isoformat()})
+        heartbeat = HeartbeatWriter(attempt, control.identity.run_id, total_steps=2 * DIAGNOSTIC_ROW_COUNT, interval_seconds=60.0)
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="STATISTICS", step=0, latest_losses={"diagnostic_rows": DIAGNOSTIC_ROW_COUNT}, force=True)
+        heartbeat.start_liveness(interval_seconds=60.0)
+        indices = authorities["indices"]
+        labels = authorities["labels"].index_select(0, indices).cpu()
+        sample_payload = {
+            "schema": "n3_surrogate_hard_transfer_precision_fixed_train_indices.v1",
+            "task_id": TASK_ID,
+            "contract_sha256": n3.CONTRACT_SHA256,
+            "data_role": "canonical TRAIN; disjoint from N3_FIT/N3_SELECT/N3_CONFIRM, contract history exclusions, and prior attribution rows",
+            "selection_rule": "within each class choose the 1024 lowest SHA256(task_id\\ncontract_sha256\\nclass\\ncanonical_source_index), then sort source indices; concatenate classes 0..9",
+            "reference_overlap_status": preflight["selection"],
+            "row_count": int(indices.numel()),
+            "rows_per_class": ROWS_PER_CLASS,
+            "reference_overlap_rows": preflight["selection"]["reference_overlap_rows"],
+            "class_counts": torch.bincount(labels, minlength=n3.CLASS_COUNT).tolist(),
+            "indices_sha256": tensor_sha256(indices),
+            "indices": indices.tolist(),
+            "role_overlap_counts": {name: int(torch.isin(indices, rows).sum()) for name, rows in authorities["role_indices"].items()},
+            "historical_exclusion_overlap_count": int(torch.isin(indices, authorities["historical_exclusions"]).sum()),
+            "prior_diagnostic_overlap_count": int(torch.isin(indices, authorities["prior_diagnostic_indices"]).sum()),
+            "created_before_model_forward": True,
+        }
+        atomic_write_new_json(attempt / "sample_indices.json", sample_payload, artifact_kind="N3 precision diagnostic frozen TRAIN identities")
+        saved_sample = _mapping(json.loads((attempt / "sample_indices.json").read_text(encoding="utf-8")), "persisted precision sample identities")
+        _require(saved_sample.get("indices_sha256") == preflight["indices_sha256"] and saved_sample.get("indices") == indices.tolist(), "persisted diagnostic rows differ from the READY sample")
+        atomic_write_new_json(attempt / "source_manifest.json", manifest, artifact_kind="N3 precision diagnostic source manifest")
+        execution_manifest = {
+            "schema": "n3_surrogate_hard_transfer_precision_execution_manifest.v1",
+            "task_id": TASK_ID,
+            "authorization_id": AUTHORIZATION_ID,
+            "attempt_id": ATTEMPT_ID,
+            "run_identity": control.identity.to_dict(),
+            "outer_gate": None,
+            "previous_invalid_attempt": {
+                "attempt_id": previous_precision["attempt_id"],
+                "failure_sha256": previous_precision["failure_sha256"],
+                "source_semantics_id": previous_precision["source_semantics_id"],
+                "fixed_sample_indices_sha256": previous_precision["sample_indices_sha256"],
+            },
+            "contract_sha256": n3.CONTRACT_SHA256,
+            "protocol_sha256": n3.PROTOCOL_SHA256,
+            "accepted_step9000_sha256": n3.START_CHECKPOINT_SHA256,
+            "rank2_endpoint_sha256": authorities["endpoint_sha256"],
+            "n3_final_report_sha256": authorities["n3_report_sha256"],
+            "sample_indices_sha256": sample_payload["indices_sha256"],
+            "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+            "source_identity": preflight["source_identity"],
+            "model_forward_order": [0, 2],
+            "inference_only": True,
+            "optimizer_created": False,
+            "optimizer_updates": 0,
+            "checkpoint_writes": 0,
+            "rank_selection": None,
+            "semantic_evaluators_loaded": False,
+        }
+        atomic_write_new_json(attempt / "execution_manifest.json", execution_manifest, artifact_kind="N3 precision diagnostic execution manifest")
+        device = torch.device("cuda:0")
+        baseline = n3._new_model(0, authorities["checkpoint"], device).eval()
+        candidate = n3._new_model(2, authorities["checkpoint"], device).eval()
+        candidate.load_trainable_state({"n3_correction.A": authorities["endpoint"]["A"], "n3_correction.B": authorities["endpoint"]["B"]})
+        _require(n3._tensor_state_sha256(baseline.state_dict()) == preflight["model_identity"]["rank0_state_sha256_before"], "rank0 model state changed between preflight and execution")
+        _require(n3._tensor_state_sha256(candidate.state_dict()) == preflight["model_identity"]["rank2_state_sha256_before"], "rank2 model state changed between preflight and execution")
+        torch.cuda.reset_peak_memory_stats(device)
+        mean, scale = authorities["mean"].to(device), authorities["scale"].to(device)
+        start0 = time.perf_counter()
+        rank0 = prior._inference_sweep(baseline, authorities["raw_images"], authorities["labels"], indices, mean, scale, device, rank=0, heartbeat=heartbeat, step_offset=0)
+        torch.cuda.synchronize(device)
+        elapsed0 = time.perf_counter() - start0
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="STATISTICS", step=int(indices.numel()), latest_losses={"completed_rank": 0}, force=True)
+        clear_cache = getattr(n3, "clear_production_transfer_cache", None)
+        if clear_cache is not None:
+            clear_cache()
+        start2 = time.perf_counter()
+        rank2 = prior._inference_sweep(candidate, authorities["raw_images"], authorities["labels"], indices, mean, scale, device, rank=2, heartbeat=heartbeat, step_offset=int(indices.numel()))
+        torch.cuda.synchronize(device)
+        elapsed2 = time.perf_counter() - start2
+        heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="STATISTICS", step=2 * int(indices.numel()), latest_losses={"completed_rank": 2}, force=True)
+        labels = authorities["labels"].index_select(0, indices).cpu()
+        hard_meaning0 = _hard_measurement(rank0["raw_views"], labels, authorities["reference"], device)
+        hard_meaning2 = _hard_measurement(rank2["raw_views"], labels, authorities["reference"], device)
+        for item in (rank0, rank2):
+            _require(item["raw_cmos"]["finite"] and item["raw_cmos"]["nonconstant_fraction"] == 1.0 and item["raw_cmos"]["zero_image_count"] == 0, f"rank {item['rank']} optical validity failed")
+            _require(item["parameter_updates"] == item["optimizer_updates"] == 0, f"rank {item['rank']} inference unexpectedly updated parameters")
+        _require(n3._tensor_state_sha256(baseline.state_dict()) == preflight["model_identity"]["rank0_state_sha256_before"], "rank0 model changed during inference")
+        _require(n3._tensor_state_sha256(candidate.state_dict()) == preflight["model_identity"]["rank2_state_sha256_before"], "rank2 model changed during inference")
+        _require(all(parameter.grad is None for model in (baseline, candidate) for parameter in model.parameters()), "inference left model gradients")
+        reference_info = authorities["reference_info"]
+        floor_dimensions = _floor_dimension_table(reference_info)
+        floor_indices = torch.tensor([item["index"] for item in floor_dimensions], dtype=torch.long)
+        floor0 = _floor_contributions(hard_meaning0, hard_meaning0["nearest_reference_index"], reference_info, floor_indices)
+        floor2 = _floor_contributions(hard_meaning2, hard_meaning2["nearest_reference_index"], reference_info, floor_indices)
+        decomposition = _distance_decomposition(hard_meaning0, hard_meaning2, reference_info)
+        timings = {
+            "rank0_forward_seconds": elapsed0,
+            "rank2_forward_seconds": elapsed2,
+            "hard_feature_and_distance_seconds": 0.0,
+            "total_measurement_seconds": 0.0,
+        }
+        diagnostics_started = time.perf_counter()
+        summaries, arrays = _aggregate(labels, rank0, rank2, hard_meaning0, hard_meaning2, reference_info, decomposition, floor0, floor2, floor_dimensions, timings, {})
+        timings["hard_feature_and_distance_seconds"] = time.perf_counter() - diagnostics_started
+        timings["total_measurement_seconds"] = time.perf_counter() - started
+        torch.cuda.synchronize(device)
+        peak = {
+            "allocated_gb": torch.cuda.memory_allocated(device) / (1024**3),
+            "peak_allocated_gb": torch.cuda.max_memory_allocated(device) / (1024**3),
+            "reserved_gb": torch.cuda.memory_reserved(device) / (1024**3),
+            "peak_reserved_gb": torch.cuda.max_memory_reserved(device) / (1024**3),
+        }
+        summaries["runtime_seconds"] = dict(timings)
+        summaries["cuda_peak_gb"] = dict(peak)
+        arrays["source_indices"] = indices.clone()
+        arrays["labels"] = labels
+        current_old_snapshot = prior._snapshot_prior_attempt_artifacts(root / OLD_RUNS_ROOT)
+        _require(current_old_snapshot == prior_snapshot, "prior attempt_01/attempt_02 files changed during the precision diagnostic")
+        current_precision_snapshot = _snapshot_attempt(root / PREVIOUS_ATTEMPT_DIR)
+        previous_precision_unchanged = current_precision_snapshot == previous_precision["artifact_snapshot"]
+        _require(previous_precision_unchanged, "invalid attempt_01 artifacts changed during the precision diagnostic")
+        context = _normalise_artifact_context(
+            authorities,
+            preflight,
+            sample_payload,
+            manifest,
+            timings,
+            peak,
+            attempt_path=ATTEMPT_DIR.as_posix(),
+        )
+        read_ledger = _read_ledger(context, prior02)
+        read_ledger["prior_attempts_unchanged"] = {
+            "passed": True,
+            "file_count": len(prior_snapshot),
+            "snapshot_sha256": canonical_sha256(prior_snapshot),
+        }
+        read_ledger["previous_precision_attempt_01_unchanged"] = {
+            "passed": True,
+            "failure_sha256": previous_precision["failure_sha256"],
+            "artifact_snapshot_sha256": canonical_sha256(previous_precision["artifact_snapshot"]),
+        }
+        artifact_refs = _write_measurement_artifacts(
+            root,
+            attempt,
+            context,
+            preflight_receipt_path=root / PREFLIGHT_DIR / "preflight.json",
+            sample_payload=sample_payload,
+            manifest=manifest,
+            execution_manifest=execution_manifest,
+            read_ledger=read_ledger,
+            arrays=arrays,
+            summaries=summaries,
+        )
+        _require(_snapshot_attempt(root / PREVIOUS_ATTEMPT_DIR) == previous_precision["artifact_snapshot"], "invalid attempt_01 artifacts changed before report classification")
+        report = _build_report_payload(
+            context,
+            control=control,
+            prior_attribution=prior02,
+            summaries=summaries,
+            read_ledger=read_ledger,
+            artifact_refs=artifact_refs,
+            authorities=authorities,
+            floor_dimensions=floor_dimensions,
+            prior_snapshot=prior_snapshot,
+            previous_precision_unchanged=previous_precision_unchanged,
+        )
+        report_path = attempt / "report.json"
+        _require(not report_path.exists(), "report write-once path already exists")
+        _require(canonical_sha256(report), "final report failed canonical serialization preflight")
+        atomic_write_new_json(report_path, report, artifact_kind="N3 surrogate-hard precision attribution report")
+        persisted_report = _mapping(json.loads(report_path.read_text(encoding="utf-8")), "persisted final diagnostic report")
+        _require(canonical_sha256(persisted_report) == canonical_sha256(report), "persisted report differs from the validated report payload")
+        report_published = True
+        report_sha = prior._close_completed_report(
+            attempt,
+            control,
+            heartbeat,
+            final_step=2 * int(indices.numel()),
+            classification=str(report["classification"]),
+            result=str(report["result"]),
+        )
+        heartbeat_closed = True
+        report["report_sha256"] = report_sha
+        return report
+    except BaseException as error:
+        if report_published:
+            warning = attempt / "post_report_status_error.json"
+            if not warning.exists():
+                atomic_write_new_json(warning, {"schema": "n3_surrogate_hard_transfer_precision_post_report_warning.v1", "error_type": type(error).__name__, "error": str(error), "report_sha256": file_sha256(attempt / "report.json"), "created_at_utc": datetime.now(timezone.utc).isoformat()}, artifact_kind="N3 precision diagnostic post-report operational warning")
+            raise
+        if attempt_opened and control is not None:
+            _mark_incomplete(attempt, control, error, heartbeat)
+        raise
+    finally:
+        if heartbeat is not None and not heartbeat_closed:
+            heartbeat.stop_liveness()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    args = parser.parse_args(argv)
+    report = execute(repo_root=args.repo_root)
+    print(json.dumps({"result": report["result"], "classification": report["classification"], "attempt": report["attempt"]["path"], "report_sha256": report["report_sha256"]}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

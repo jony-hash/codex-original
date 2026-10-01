@@ -1,0 +1,924 @@
+"""Define one higher-expressivity q-conditioned complex-phasor phase contract.
+
+This is a definition-only consumer.  It binds the validated V2, project
+complex-OLS, selected-producer, prior complex-joint, and completed minimal
+q-conditioned phase-donor authorities, then freezes exactly one multivariate
+complex-phasor linear mean plus complete-vector residual bootstrap candidate.
+It does not load q/complex/sealed values, execute heldout evaluation, train, or
+mutate machine governance.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+from scripts.research.lightgen.n3 import define_n3_minimal_q_conditioned_phase_coupling_contract_v1 as prior_contract
+
+
+TASK_ID = "DEFINE_ONE_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_q_conditioned_complex_phasor_linear_residual_bootstrap_contract.v1"
+READY_CLASSIFICATION = "DEFINE_ONE_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1_READY"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+OUTPUT_DIR = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_q_conditioned_complex_phasor_linear_residual_bootstrap_contract_v1_attempt_01"
+)
+CONTRACT_NAME = "n3_q_conditioned_complex_phasor_linear_residual_bootstrap_contract.v1.json"
+
+CANDIDATE_ID = "Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1"
+CLASS_COUNT = 10
+DIMENSION = 100
+DEVELOPMENT_ROWS = 5000
+DEVELOPMENT_ROWS_PER_CLASS = 500
+FOLD_COUNT = 5
+FIT_ROWS_PER_FOLD = 4000
+FIT_ROWS_PER_CLASS_PER_FOLD = 400
+HELDOUT_ROWS_PER_FOLD = 1000
+HELDOUT_ROWS_PER_CLASS_PER_FOLD = 100
+DESIGN_FEATURES = DIMENSION + 1
+MODEL_BANK_COUNT = 4
+MODEL_BANK_SIZE = 200
+CALIBRATION_TRIAL_COUNT = 999
+FAMILY_ALPHA = 0.05
+PER_FOLD_ALPHA = 0.01
+PRIMARY_METRIC = "energy_distance"
+OLS_RCOND = 1.0e-12
+PHASOR_PROJECTION_EPSILON = 1.0e-12
+RNG_NAMESPACE = "N3_COMPLEX_OLS_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1_CPU"
+MAX_SIGNED_63 = (1 << 63) - 1
+
+MINIMAL_CONTRACT_PATH = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_minimal_q_conditioned_phase_coupling_contract_v1_attempt_01/"
+    "n3_minimal_q_conditioned_phase_coupling_contract.v1.json"
+)
+MINIMAL_CONTRACT_SHA256 = "14f4f3cd5d1046eb648b3410593d778910f8b8d33262528f9e0f12ba94250434"
+MINIMAL_REPORT_PATH = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_q_conditioned_nearest_phase_donor_v1_attempt_01/"
+    "n3_q_conditioned_nearest_phase_donor_report.v1.json"
+)
+MINIMAL_REPORT_SHA256 = "d17a472558349b043da07bc51310e7a350263608c059f37361237b1000318bcb"
+MINIMAL_LINEAGE_PATH = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_q_conditioned_nearest_phase_donor_v1_attempt_01/"
+    "n3_q_conditioned_nearest_phase_donor_lineage.v1.json"
+)
+MINIMAL_LINEAGE_SHA256 = "735fc652d334b2c4cc2a7b70a57c100d242149a17f72bb9d82a2de5b92f79c67"
+MINIMAL_DEFINITION_ID = "DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1"
+MINIMAL_EXECUTION_ID = "EXECUTE_N3_Q_CONDITIONED_NEAREST_PHASE_DONOR_V1"
+CURRENT_PLANNING_ACTION = TASK_ID
+NEXT_ACTION = "EXECUTE_N3_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1"
+
+GOVERNANCE_STATE_PATH = prior_contract.GOVERNANCE_STATE_PATH
+CURRENT_STATUS_PATH = prior_contract.CURRENT_STATUS_PATH
+CURRENT_HANDOFF_PATH = prior_contract.CURRENT_HANDOFF_PATH
+
+InvalidHarnessError = prior_contract.InvalidHarnessError
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise InvalidHarnessError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json(
+    repo_root: Path,
+    path: Path,
+    name: str,
+    expected_sha256: str | None = None,
+) -> dict[str, Any]:
+    return prior_contract._read_json(repo_root, path, name, expected_sha256)
+
+
+def _ref(
+    repo_root: Path,
+    path: Path,
+    role: str,
+    expected_sha256: str | None = None,
+) -> dict[str, Any]:
+    return prior_contract._ref(repo_root, path, role, expected_sha256)
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    def _run(*args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    status_result = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    status = status_result.stdout.splitlines()
+    return {
+        "branch": _run("branch", "--show-current"),
+        "head": _run("rev-parse", "HEAD"),
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _validate_current_boundary(repo_root: Path) -> dict[str, Any]:
+    """Validate the planning boundary without changing machine governance."""
+
+    current = prior_contract._validate_current_state(repo_root)
+    governance = _read_json(
+        repo_root,
+        GOVERNANCE_STATE_PATH,
+        "current governance state",
+        current["governance"]["sha256"],
+    )
+    aliases = _mapping(governance.get("evidence_aliases"), "governance evidence aliases")
+    for forbidden_alias in (TASK_ID, CANDIDATE_ID, "N3_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1"):
+        _require(forbidden_alias not in aliases, f"higher-expressivity contract already has alias: {forbidden_alias}")
+
+    for path, name in ((CURRENT_STATUS_PATH, "CURRENT_STATUS"), (CURRENT_HANDOFF_PATH, "current handoff")):
+        text = (repo_root / path).read_text(encoding="utf-8")
+        _require(CURRENT_PLANNING_ACTION in text, f"{name} does not name the current higher-expressivity contract action")
+        _require("training_authorized=false" in text, f"{name} changed training authorization")
+        _require("formal_promotion=false" in text, f"{name} changed formal promotion")
+        _require("generation_readiness=not_ready" in text, f"{name} changed generation readiness")
+
+    return current
+
+
+def _validate_minimal_phase_execution(repo_root: Path) -> dict[str, Any]:
+    contract = _read_json(
+        repo_root,
+        MINIMAL_CONTRACT_PATH,
+        "minimal q-conditioned phase-donor contract",
+        MINIMAL_CONTRACT_SHA256,
+    )
+    _require(
+        contract.get("schema") == "n3_minimal_q_conditioned_phase_coupling_contract.v1"
+        and contract.get("task_id") == MINIMAL_DEFINITION_ID
+        and contract.get("status") == "valid_completed"
+        and contract.get("result") == "READY"
+        and contract.get("classification") == "DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1_READY"
+        and contract.get("definition_only") is True
+        and contract.get("next_action") == MINIMAL_EXECUTION_ID,
+        "minimal q-conditioned phase-donor contract is not the frozen READY authority",
+    )
+    candidate_contract = _mapping(contract.get("candidate"), "minimal candidate contract")
+    _require(
+        candidate_contract.get("id") == "Q_CONDITIONED_NEAREST_PHASE_DONOR_V1"
+        and candidate_contract.get("model_order", {}).get("K") == 1
+        and candidate_contract.get("model_order", {}).get("search") is False,
+        "minimal contract candidate semantics changed",
+    )
+
+    report = _read_json(repo_root, MINIMAL_REPORT_PATH, "minimal phase-donor report", MINIMAL_REPORT_SHA256)
+    _require(
+        report.get("schema") == "n3_q_conditioned_nearest_phase_donor_report.v1"
+        and report.get("task_id") == MINIMAL_EXECUTION_ID
+        and report.get("gate") == MINIMAL_EXECUTION_ID
+        and report.get("status") == "valid_completed"
+        and report.get("result") == "VALID_COMPLETED"
+        and report.get("classification") == "N3_COMPLEX_OLS_Q_CONDITIONED_NEAREST_PHASE_DONOR_NOT_SUPPORTED"
+        and report.get("next_action") == "DEFINE_ONE_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1",
+        "minimal phase-donor report is not the completed 0/5 authority",
+    )
+    report_contract = _mapping(report.get("contract"), "minimal report contract binding")
+    _require(
+        report_contract.get("sha256") == MINIMAL_CONTRACT_SHA256
+        and report_contract.get("result") == "READY",
+        "minimal report contract binding changed",
+    )
+    candidate = _mapping(report.get("candidate"), "minimal report candidate")
+    candidate_aggregate = _mapping(candidate.get("aggregate"), "minimal candidate aggregate")
+    _require(
+        candidate_aggregate.get("fold_count") == FOLD_COUNT
+        and candidate_aggregate.get("passed_fold_count") == 0
+        and candidate_aggregate.get("fold_pass_pattern") == [False] * FOLD_COUNT
+        and candidate_aggregate.get("primary_metric") == PRIMARY_METRIC
+        and candidate_aggregate.get("per_fold_alpha") == PER_FOLD_ALPHA,
+        "minimal phase-donor candidate is not 0/5 under the current evaluator",
+    )
+    control = _mapping(report.get("control"), "minimal report control")
+    control_aggregate = _mapping(control.get("aggregate"), "minimal control aggregate")
+    _require(
+        control_aggregate.get("fold_count") == FOLD_COUNT
+        and control_aggregate.get("passed_fold_count") == FOLD_COUNT
+        and control_aggregate.get("fold_pass_pattern") == [True] * FOLD_COUNT
+        and control_aggregate.get("primary_metric") == PRIMARY_METRIC
+        and control_aggregate.get("per_fold_alpha") == PER_FOLD_ALPHA
+        and control_aggregate.get("strict_five_of_five") is True,
+        "minimal report does not preserve the 5/5 control authority",
+    )
+    sealed = _mapping(report.get("sealed_confirmation"), "minimal sealed boundary")
+    _require(
+        sealed.get("consumed") is True
+        and sealed.get("values_loaded") is False
+        and sealed.get("reused") is False
+        and sealed.get("new_sealed_authority") is False,
+        "minimal report reopened or reused sealed data",
+    )
+    governance = _mapping(report.get("governance"), "minimal report governance")
+    _require(
+        governance.get("selected_producer_unchanged") == "EMPIRICAL_GAUSSIAN_COPULA"
+        and governance.get("training_authorized") is False
+        and governance.get("formal_promotion") is False
+        and governance.get("generation_readiness") == "not_ready"
+        and governance.get("state_mutated") is False,
+        "minimal phase-donor execution opened a downstream boundary",
+    )
+
+    lineage = _read_json(repo_root, MINIMAL_LINEAGE_PATH, "minimal phase-donor lineage", MINIMAL_LINEAGE_SHA256)
+    _require(
+        lineage.get("schema") == "n3_q_conditioned_nearest_phase_donor_lineage.v1"
+        and lineage.get("task_id") == MINIMAL_EXECUTION_ID
+        and lineage.get("gate") == MINIMAL_EXECUTION_ID
+        and lineage.get("status") == "valid_completed"
+        and lineage.get("result") == "VALID_COMPLETED"
+        and lineage.get("classification") == report["classification"]
+        and lineage.get("next_action") == report["next_action"],
+        "minimal phase-donor lineage is not the completed authority",
+    )
+    lineage_contract = _mapping(lineage.get("contract"), "minimal lineage contract binding")
+    _require(lineage_contract.get("sha256") == MINIMAL_CONTRACT_SHA256, "minimal lineage contract binding changed")
+    lineage_candidate = _mapping(lineage.get("candidate"), "minimal lineage candidate")
+    lineage_candidate_aggregate = _mapping(lineage_candidate.get("aggregate"), "minimal lineage candidate aggregate")
+    _require(lineage_candidate_aggregate.get("passed_fold_count") == 0, "minimal lineage candidate is not 0/5")
+    lineage_control = _mapping(lineage.get("control"), "minimal lineage control")
+    lineage_control_aggregate = _mapping(lineage_control.get("aggregate"), "minimal lineage control aggregate")
+    _require(lineage_control_aggregate.get("passed_fold_count") == FOLD_COUNT, "minimal lineage control is not 5/5")
+
+    return {
+        "contract": _ref(repo_root, MINIMAL_CONTRACT_PATH, "minimal q-conditioned phase-donor contract", MINIMAL_CONTRACT_SHA256),
+        "report": _ref(repo_root, MINIMAL_REPORT_PATH, "minimal q-conditioned phase-donor report", MINIMAL_REPORT_SHA256),
+        "lineage": _ref(repo_root, MINIMAL_LINEAGE_PATH, "minimal q-conditioned phase-donor lineage", MINIMAL_LINEAGE_SHA256),
+        "candidate_id": "Q_CONDITIONED_NEAREST_PHASE_DONOR_V1",
+        "candidate_result": "0/5",
+        "classification": report["classification"],
+        "control": {
+            "id": "FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL",
+            "result": "5/5",
+            "reused_without_rerun": True,
+            "primary_metric": PRIMARY_METRIC,
+            "per_fold_alpha": PER_FOLD_ALPHA,
+        },
+        "sealed": {
+            "consumed": True,
+            "values_loaded": False,
+            "reused": False,
+        },
+    }
+
+
+def _validate_authorities(repo_root: Path) -> dict[str, Any]:
+    base = prior_contract._validate_authorities(repo_root)
+    current = _validate_current_boundary(repo_root)
+    minimal = _validate_minimal_phase_execution(repo_root)
+    return {
+        "current": current,
+        "previous_joint": base["previous_joint"],
+        "prior": base["prior"],
+        "v2": base["v2"],
+        "complex_ols": base["complex_ols"],
+        "metrics": base["metrics"],
+        "minimal_phase_execution": minimal,
+    }
+
+
+def _validate_float_matrix(value: Any, name: str) -> torch.Tensor:
+    _require(torch.is_tensor(value), f"{name} must be a tensor")
+    _require(value.ndim == 2 and value.shape[1] == DIMENSION, f"{name} must have shape [N,{DIMENSION}]")
+    view = value.detach().to(device="cpu", dtype=torch.float64).contiguous()
+    _require(torch.isfinite(view).all().item(), f"{name} is nonfinite")
+    return view
+
+
+def _validate_complex_matrix(value: Any, name: str) -> torch.Tensor:
+    _require(torch.is_tensor(value), f"{name} must be a tensor")
+    _require(value.ndim == 2 and value.shape[1] == DIMENSION, f"{name} must have shape [N,{DIMENSION}]")
+    view = value.detach().to(device="cpu", dtype=torch.complex128).contiguous()
+    _require(torch.isfinite(view.real).all().item() and torch.isfinite(view.imag).all().item(), f"{name} is nonfinite")
+    return view
+
+
+def _fit_complex_phasor_linear_ols(x: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, int]:
+    """Frozen future fitting rule, exercised only with synthetic probes here."""
+
+    x_view = _validate_float_matrix(x, "Gaussianized q coordinates")
+    target_view = _validate_complex_matrix(target, "complex unit-phasor target")
+    _require(x_view.shape[0] == target_view.shape[0] and x_view.shape[0] >= DESIGN_FEATURES, "fit rows are insufficient")
+    ones = torch.ones((x_view.shape[0], 1), dtype=torch.float64, device="cpu")
+    design = torch.cat((ones, x_view), dim=1).contiguous()
+    _require(design.shape[1] == DESIGN_FEATURES, "conditional design width changed")
+
+    left, singular_values, right_transpose = torch.linalg.svd(design, full_matrices=False)
+    _require(
+        torch.isfinite(left).all().item()
+        and torch.isfinite(singular_values).all().item()
+        and torch.isfinite(right_transpose).all().item(),
+        "OLS SVD returned nonfinite values",
+    )
+    _require(singular_values.numel() == DESIGN_FEATURES and singular_values[0] > 0.0, "OLS SVD has no positive leading singular value")
+    cutoff = OLS_RCOND * singular_values[0]
+    rank = int((singular_values > cutoff).sum().item())
+    _require(rank == DESIGN_FEATURES, "HARD_STOP: frozen OLS design is rank-deficient")
+
+    projected_target = left.conj().transpose(-2, -1).to(torch.complex128).matmul(target_view)
+    coefficients = right_transpose.conj().transpose(-2, -1).to(torch.complex128).matmul(
+        projected_target / singular_values.to(torch.complex128).unsqueeze(-1)
+    )
+    prediction = design.to(torch.complex128).matmul(coefficients)
+    _require(torch.isfinite(coefficients.real).all().item() and torch.isfinite(coefficients.imag).all().item(), "OLS coefficients are nonfinite")
+    _require(torch.isfinite(prediction.real).all().item() and torch.isfinite(prediction.imag).all().item(), "OLS prediction is nonfinite")
+    return coefficients.contiguous(), prediction.contiguous(), rank
+
+
+def _project_unit_phasors(value: torch.Tensor) -> torch.Tensor:
+    value_view = _validate_complex_matrix(value, "pre-projection complex phasors")
+    magnitude = value_view.abs()
+    _require(
+        torch.isfinite(magnitude).all().item() and bool((magnitude > PHASOR_PROJECTION_EPSILON).all()),
+        "INVALID_HARNESS: generated phasor coordinate is nonfinite or below projection epsilon",
+    )
+    projected = value_view / magnitude
+    _require(
+        torch.isfinite(projected.real).all().item() and torch.isfinite(projected.imag).all().item(),
+        "unit-phasor projection returned nonfinite values",
+    )
+    return projected.contiguous()
+
+
+def derive_seed(role: str, fold: int, trial: int | None, bank: int | None) -> int:
+    _require(role in {
+        "CANDIDATE_Q_SAMPLE",
+        "CANDIDATE_COMPLETE_RESIDUAL_SAMPLE",
+        "CANDIDATE_MODEL_BANK",
+        "CANDIDATE_PSEUDO_DATA",
+    }, "unknown candidate RNG role")
+    _require(0 <= fold < FOLD_COUNT, "seed fold is invalid")
+    token_trial = "none" if trial is None else str(trial)
+    token_bank = "none" if bank is None else str(bank)
+    material = f"{RNG_NAMESPACE}|role={role}|fold={fold}|trial={token_trial}|bank={token_bank}"
+    return int.from_bytes(hashlib.sha256(material.encode("utf-8")).digest()[:8], "big") & MAX_SIGNED_63
+
+
+def _contract_totality_checks() -> dict[str, Any]:
+    _require(DIMENSION == 100 and DESIGN_FEATURES == 101 and FOLD_COUNT == 5, "contract dimensions changed")
+    _require(FIT_ROWS_PER_FOLD == 4000 and HELDOUT_ROWS_PER_FOLD == 1000, "fold row counts changed")
+    _require(MODEL_BANK_COUNT == 4 and MODEL_BANK_SIZE == 200, "model-bank dimensions changed")
+    _require(CALIBRATION_TRIAL_COUNT == 999, "calibration trials changed")
+    _require(FAMILY_ALPHA == 0.05 and PER_FOLD_ALPHA == 0.01, "alpha values changed")
+    _require(OLS_RCOND == 1.0e-12 and PHASOR_PROJECTION_EPSILON == 1.0e-12, "numerical thresholds changed")
+
+    sorted_values = torch.linspace(0.1, 1.0, DIMENSION, dtype=torch.float64).reshape(1, -1).repeat(4, 1)
+    sorted_values[1, 5] = sorted_values[0, 5]
+    sorted_values[2, 5] = sorted_values[0, 5]
+    sorted_values[:, 6:] = torch.maximum(sorted_values[:, 6:], sorted_values[:, 5:6] + 0.1)
+    query = sorted_values[0:1].clone()
+    query[0, 0] = 0.0
+    query[0, 1] = 2.0
+    query[0, 2] = (sorted_values[0, 2] + sorted_values[3, 2]) / 2.0
+    coordinates = prior_contract._gaussianized_q_coordinates(query, sorted_values)
+    _require(coordinates.shape == (1, DIMENSION) and coordinates.dtype == torch.float64, "Gaussianized q probe changed")
+
+    x_probe = torch.zeros((DESIGN_FEATURES, DIMENSION), dtype=torch.float64)
+    x_probe[1:, :] = torch.eye(DIMENSION, dtype=torch.float64)
+    target_probe = torch.ones((DESIGN_FEATURES, DIMENSION), dtype=torch.complex128)
+    coefficients, prediction, rank = _fit_complex_phasor_linear_ols(x_probe, target_probe)
+    _require(coefficients.shape == (DESIGN_FEATURES, DIMENSION), "linear coefficient shape changed")
+    _require(prediction.shape == target_probe.shape and rank == DESIGN_FEATURES, "linear OLS probe changed")
+
+    unit_probe = _project_unit_phasors(torch.ones((1, DIMENSION), dtype=torch.complex128))
+    _require(unit_probe.shape == (1, DIMENSION), "unit-phasor projection shape changed")
+    try:
+        _project_unit_phasors(torch.zeros((1, DIMENSION), dtype=torch.complex128))
+    except InvalidHarnessError:
+        zero_projection_rejection = True
+    else:
+        zero_projection_rejection = False
+    _require(zero_projection_rejection, "zero phasor projection is not fail-closed")
+    try:
+        _fit_complex_phasor_linear_ols(
+            torch.zeros((DESIGN_FEATURES, DIMENSION), dtype=torch.float64),
+            target_probe,
+        )
+    except InvalidHarnessError:
+        rank_deficiency_rejection = True
+    else:
+        rank_deficiency_rejection = False
+    _require(rank_deficiency_rejection, "rank-deficient OLS design is not a hard stop")
+
+    seed_values = {
+        derive_seed(role, fold, trial, bank)
+        for fold in range(FOLD_COUNT)
+        for role, trial, bank in (
+            ("CANDIDATE_Q_SAMPLE", None, 0),
+            ("CANDIDATE_COMPLETE_RESIDUAL_SAMPLE", 0, None),
+            ("CANDIDATE_MODEL_BANK", None, 0),
+            ("CANDIDATE_PSEUDO_DATA", 0, None),
+        )
+    }
+    _require(len(seed_values) == FOLD_COUNT * 4, "candidate RNG namespaces are not disjoint")
+    _require(all(0 <= seed <= MAX_SIGNED_63 for seed in seed_values), "candidate RNG seed is outside signed 63-bit range")
+
+    return {
+        "status": "passed",
+        "candidate_id": CANDIDATE_ID,
+        "conditional_mean_probe": "passed",
+        "solver": "CPU float64 thin SVD pseudoinverse with explicit rcond",
+        "rank_deficiency_probe": "passed",
+        "zero_or_below_epsilon_projection_probe": "passed",
+        "q_values_loaded": False,
+        "complex_ols_values_loaded": False,
+        "sealed_values_loaded": False,
+        "scientific_evaluation_executed": False,
+        "training_executed": False,
+        "cuda_used": False,
+        "governance_mutated": False,
+    }
+
+
+def _build_payload(
+    repo_root: Path,
+    git: Mapping[str, Any],
+    authorities: Mapping[str, Any],
+    totality: Mapping[str, Any],
+) -> dict[str, Any]:
+    definition_ref = _ref(
+        repo_root,
+        Path(__file__).resolve().relative_to(repo_root.resolve()),
+        "higher-expressivity q-conditioned phase contract definition consumer",
+    )
+    previous_joint = _mapping(authorities["previous_joint"], "previous complex-joint authority")
+    prior = _mapping(authorities["prior"], "selected-producer authority")
+    v2 = _mapping(authorities["v2"], "V2 authority")
+    minimal = _mapping(authorities["minimal_phase_execution"], "minimal phase-donor authority")
+    metrics = _mapping(authorities["metrics"], "evaluator authority")
+    return {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "definition_only": True,
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "git": dict(git),
+        "semantic_authority": "N3_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_CONTRACT_V1",
+        "authorities": {
+            "current_state": dict(authorities["current"]),
+            "project_complex_ols": dict(authorities["complex_ols"]),
+            "n3_development_v2": dict(v2),
+            "selected_producer_and_prior_confirmation": dict(prior),
+            "previous_complex_joint_control_and_evaluator": dict(previous_joint),
+            "previous_minimal_q_conditioned_phase_donor": dict(minimal),
+            "metric_and_evaluator": dict(metrics),
+            "definition_implementation": definition_ref,
+        },
+        "model_assumption": {
+            "kind": "MODEL_ASSUMPTION",
+            "id": CANDIDATE_ID,
+            "statement": "the rejected complete-vector nearest donor may be insufficient because relative phase varies continuously with q; a linear conditional phasor mean plus a complete correlated residual may capture the minimum additional structure",
+            "falsifiable": True,
+            "status": "project_model_assumption_only",
+            "not_a_fact": True,
+            "not_a_chen_lightgen_mechanism_claim": True,
+        },
+        "candidate": {
+            "id": CANDIDATE_ID,
+            "family_count": 1,
+            "only_candidate_family": True,
+            "selection_scope": "DEVELOPMENT_ONLY",
+            "model_order": {
+                "conditional_mean": "one intercept plus one full 100-D linear map",
+                "polynomial_degree": 1,
+                "search": False,
+                "choice_type": "DESIGN_DECISION",
+                "optimality_claim": False,
+            },
+            "q_input": {
+                "source": "same fold's fitting q rows and generated q from unchanged selected producer",
+                "representation": "FIT_EMPIRICAL_GAUSSIANIZED_Q_EUCLIDEAN_V1",
+                "formula": "x_j=Phi^{-1}(u_j)",
+                "fit_only": True,
+                "empirical_cdf": {
+                    "fit_sort": "ascending value with stable original fitting-row order for ties",
+                    "equal_value_rule": "average the frozen p_i=(i+0.5)/n_fit positions across the complete equal-value block",
+                    "between_distinct_values": "piecewise-linear interpolation between adjacent distinct fit values and their p positions",
+                    "lower_endpoint": "q<=q_(1) returns p_1",
+                    "upper_endpoint": "q>=q_(n_fit) returns p_n",
+                    "outside_support_extrapolation": False,
+                    "epsilon_clamp": False,
+                    "strict_interior_u": True,
+                },
+                "additional_centering_or_scaling": False,
+                "labels_as_inputs": False,
+            },
+            "phasor_target": {
+                "source": "exact frozen gauge-canonical relative-phase vector phi_i from each fitting R3_COMPLEX row",
+                "formula": "U_i,j=exp(i*phi_i,j)",
+                "shape": ["N_fit", DIMENSION],
+                "dtype": "torch.complex128",
+                "unit_modulus": True,
+                "wrapped_angle_regression": False,
+                "coordinatewise_target_regression": False,
+            },
+            "conditional_mean": {
+                "formula": "U_i ~= X_i B, X_i=[1,x_i] and B=X^+U",
+                "intercept": "exactly one leading column of ones; no target or feature centering",
+                "design_shape": ["N_fit", DESIGN_FEATURES],
+                "coefficient_shape": [DESIGN_FEATURES, DIMENSION],
+                "matrix_orientation": "rows are fitting samples; columns are intercept then q features; B rows are coefficients and B columns are phasor coordinates",
+                "ordinary_least_squares_only": True,
+                "regularization": "none",
+                "ridge_parameter": None,
+                "rank_selection": False,
+                "phase_basis_selection": False,
+                "dtype": "design torch.float64 CPU; target torch.complex128 CPU; coefficient torch.complex128 CPU",
+                "solver": {
+                    "algorithm": "torch.linalg.svd(design, full_matrices=False) followed by the explicit Moore-Penrose product",
+                    "pseudoinverse_formula": "X^+=Vh^H diag(1/S) Uh^H",
+                    "svd_shape": "thin SVD with U:[N_fit,101], S:[101], Vh:[101,101]",
+                    "rcond": OLS_RCOND,
+                    "rank_rule": "rank=count(S > rcond*S_max)",
+                    "required_rank": DESIGN_FEATURES,
+                    "rank_deficiency": "HARD_STOP; no truncated pseudoinverse and no regularization repair",
+                    "nonfinite_input_or_solver_output": "INVALID_HARNESS",
+                    "determinism": "CPU float64 contiguous inputs, fixed row/column order, no randomized solver",
+                },
+            },
+            "complete_residual_model": {
+                "prediction": "U_hat=X B",
+                "residual_formula": "R_i=U_i-U_hat_i",
+                "pool": "R_fit={R_i}, one complete 100-D complex residual vector per fitting row",
+                "atomic_sampling_unit": "complete 100-D complex residual vector",
+                "sampling": "sample exactly one residual uniformly from R_fit with replacement",
+                "generated_phasor_before_projection": "V_new=mu_new+R_d, mu_new=[1,x_new]B",
+                "coordinatewise_resampling": False,
+                "coordinatewise_residual_fit": False,
+                "heldout_residuals": False,
+                "heldout_conditioning": False,
+                "q_dependent_residual_covariance": False,
+            },
+            "unit_phasor_projection": {
+                "formula": "U_new,j=V_new,j/abs(V_new,j)",
+                "epsilon": PHASOR_PROJECTION_EPSILON,
+                "epsilon_dtype": "float64",
+                "invalid_if": "any coordinate has nonfinite real/imag/magnitude or abs(V_new,j)<=epsilon",
+                "invalid_action": "INVALID_HARNESS; no retry, clamp, donor fallback, zero-phase substitution, or perturbation",
+                "post_projection": "apply only the existing PROJECT_COMPLEX_OLS_V1 global-phase canonicalization after z reconstruction",
+            },
+            "q_producer": {
+                "family_id": "EMPIRICAL_GAUSSIAN_COPULA",
+                "candidate_id": "EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1",
+                "semantic_authority_id": "N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1",
+                "fit_scope": "each fold's 4000 fitting q rows only",
+                "semantics_unchanged": True,
+                "amplitude_mapping": "A_j(q)=q_j exactly",
+                "new_amplitude_family": False,
+            },
+            "complex_construction": {
+                "formula": "z_new,j=q_new,j*U_new,j",
+                "amplitude": "A(q)=q exactly; no amplitude modification",
+                "input_q_dtype": "torch.float64",
+                "phasor_dtype": "torch.complex128",
+                "canonical_complex_dtype": "torch.complex128",
+                "gauge": "existing PROJECT_COMPLEX_OLS_V1 global-phase canonicalization only",
+                "q_complex_correspondence": "q_j=abs(R3_COMPLEX_j) is the exact validated q-to-complex-row correspondence",
+                "generic_complex_resize": False,
+            },
+        },
+        "distinct_from_donor_models": {
+            "independent_phase_inheritance": "phase is sampled independently of generated q",
+            "nearest_phase_donor": "one complete phase vector is copied from one locally nearby fitting q",
+            "current_candidate": "the complex phasor location has an explicit fitted linear function of q, while stochastic dependence is retained by one complete 100-D residual vector",
+            "genuine_conditional_phase_model": True,
+            "chen_lightgen_phase_mechanism_claim": False,
+        },
+        "development_isolation": {
+            "authority": "N3_DEVELOPMENT_BANK_V2",
+            "fold_count": FOLD_COUNT,
+            "fit_rows_per_fold": FIT_ROWS_PER_FOLD,
+            "fit_rows_per_class_per_fold": FIT_ROWS_PER_CLASS_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_ROWS_PER_FOLD,
+            "heldout_rows_per_class_per_fold": HELDOUT_ROWS_PER_CLASS_PER_FOLD,
+            "phase_target_rows": "current fold fitting R3_COMPLEX rows only",
+            "residual_pool_rows": "current fold fitting rows only",
+            "heldout_phase_or_residual_rows": False,
+            "cross_fold_rows": False,
+            "consumed_sealed_rows": False,
+            "labels_as_inputs": False,
+            "heldout_dependent_choice": False,
+            "runtime_reselection": False,
+            "runtime_resplit": False,
+        },
+        "control": {
+            "id": "FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL",
+            "status": "historical_input_authority",
+            "prior_result": "5/5",
+            "prior_report": previous_joint["report"],
+            "prior_lineage": previous_joint["lineage"],
+            "rerun_in_this_definition": False,
+            "reused_without_duplication": True,
+            "semantic_equivalence_required": True,
+            "equivalence": {
+                "representation": "gauge-canonical complex z -> contiguous CPU torch.float64 [Re(z), Im(z)]",
+                "primary_metric": PRIMARY_METRIC,
+                "model_bank_count": MODEL_BANK_COUNT,
+                "model_bank_size": MODEL_BANK_SIZE,
+                "data_rows_per_fold": HELDOUT_ROWS_PER_FOLD,
+                "model_self_calibration_trials": CALIBRATION_TRIAL_COUNT,
+                "per_fold_alpha": PER_FOLD_ALPHA,
+                "strict_aggregate": "5/5",
+                "secondary_diagnostics": "DESCRIPTIVE_ONLY",
+            },
+            "mismatch_action": "HARD_STOP; do not treat the historical control as equivalent",
+        },
+        "future_evaluation": {
+            "candidate_only": True,
+            "order": "reuse control authority first; evaluate candidate only if control remains semantically equivalent",
+            "candidate_generation": [
+                "fit the unchanged selected Gaussian copula on the current fold fitting q rows",
+                "fit the single fixed complex-phasor linear OLS map on the same fold's fitting rows",
+                "sample q_new from the fold-local producer",
+                "sample one complete fitting residual vector with replacement",
+                "form and unit-project the conditional phasor",
+                "construct z_new=q_new*U_new and apply the existing gauge canonicalization",
+            ],
+            "representation": "gauge-canonical complex z -> contiguous CPU torch.float64 [Re(z), Im(z)]",
+            "hard_statistic": PRIMARY_METRIC,
+            "secondary_diagnostics": {
+                "role": "DESCRIPTIVE_ONLY",
+                "may_change_decision": False,
+                "items": [
+                    "complex OLS fit residual norm",
+                    "phase-phasor prediction error",
+                    "conditional-mean magnitude distribution",
+                    "residual norm distribution",
+                    "residual donor reuse",
+                    "unit-projection pre-normalization magnitude",
+                    "q-phase dependence summaries",
+                    "amplitude discrepancy",
+                    "phase discrepancy",
+                    "existing complex secondary diagnostics",
+                ],
+            },
+            "data_rows_per_fold": HELDOUT_ROWS_PER_FOLD,
+            "model_bank_count": MODEL_BANK_COUNT,
+            "model_bank_size": MODEL_BANK_SIZE,
+            "calibration_trials": CALIBRATION_TRIAL_COUNT,
+            "per_fold_alpha": PER_FOLD_ALPHA,
+            "strict_aggregate": "5/5",
+            "metric_or_threshold_change": False,
+            "control_rerun": False,
+        },
+        "model_self_calibration": {
+            "required_before_heldout": True,
+            "candidate_specific": True,
+            "same_candidate_for_pseudo_and_model": True,
+            "pseudo_data_rows": HELDOUT_ROWS_PER_FOLD,
+            "model_bank_count": MODEL_BANK_COUNT,
+            "model_bank_size": MODEL_BANK_SIZE,
+            "trials": CALIBRATION_TRIAL_COUNT,
+            "statistic": "T=mean_k energy_distance(embedding(data), embedding(model_bank_k))",
+            "p_value": "p_MC=(1+count(T_b>=T_obs))/(B+1)",
+            "tie_convention": ">= ties included in exceedance count",
+            "rng": {
+                "namespace": RNG_NAMESPACE,
+                "device": "cpu",
+                "dtype": "q torch.float64; phase target/residual/complex state torch.complex128",
+                "seed_rule": "sha256(namespace|role=<role>|fold=<0..4>|trial=<index_or_none>|bank=<index_or_none>) first 64 bits masked to signed 63-bit",
+                "roles": [
+                    "CANDIDATE_Q_SAMPLE",
+                    "CANDIDATE_COMPLETE_RESIDUAL_SAMPLE",
+                    "CANDIDATE_MODEL_BANK",
+                    "CANDIDATE_PSEUDO_DATA",
+                ],
+                "independent_streams": "explicit torch.Generator(device='cpu') per role/fold/trial/bank stream",
+                "no_global_rng": True,
+                "no_retry": True,
+                "no_early_stop": True,
+                "best_of_n": False,
+            },
+        },
+        "evaluation": {
+            "gauge_step": "canonicalize generated and observed complete complex rows under existing PROJECT_COMPLEX_OLS_V1 quotient before embedding",
+            "real_embedding": {
+                "formula": "concat(real(z^canonical), imag(z^canonical), dim=1)",
+                "shape": ["N", 2 * DIMENSION],
+                "dtype": "torch.float64",
+                "phase_unwrapped_euclidean": False,
+                "raw_complex_euclidean_primary": False,
+            },
+            "primary": {
+                "name": PRIMARY_METRIC,
+                "role": "HARD_PRIMARY",
+                "implementation": dict(metrics["energy_distance"]),
+            },
+            "secondary": {
+                "role": "DESCRIPTIVE_ONLY",
+                "may_change_decision": False,
+                "no_multi_guardrail_veto": True,
+            },
+        },
+        "decision": {
+            "family_alpha": FAMILY_ALPHA,
+            "per_fold_alpha": PER_FOLD_ALPHA,
+            "multiple_testing": "Bonferroni across five folds; strict five-fold aggregate",
+            "p_value": "p_MC=(1+count(T_b>=T_obs))/(B+1)",
+            "inequality": "greater-than-or-equal, including ties",
+            "B": CALIBRATION_TRIAL_COUNT,
+            "fold_pass": "p_MC>=0.01",
+            "aggregate_pass": "all five folds pass (5/5)",
+            "outcomes": {
+                "supported": "N3_COMPLEX_OLS_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_SUPPORTED",
+                "not_supported": "N3_COMPLEX_OLS_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_NOT_SUPPORTED",
+                "invalid_measurement_or_authority": "INVALID_HARNESS",
+            },
+            "four_of_five_is_supported": False,
+            "no_automatic_repair": True,
+            "no_best_of_n": True,
+        },
+        "claim_boundary": {
+            "if_supported": "a fitting-derived linear conditional complex-phasor mean plus complete-vector empirical residual bootstrap is sufficient to produce complex OLS states compatible with heldout development states under the frozen joint evaluator",
+            "if_not_supported": "this particular linear conditional-phasor/complete-residual model is insufficient under the frozen joint evaluator",
+            "not_established": [
+                "the true p(phi|q)",
+                "novel physical phase synthesis",
+                "Chen/LightGen phase mechanism",
+                "phase-SLM realizability",
+                "semantic generation",
+                "generator-input alignment",
+                "optical generation readiness",
+                "training authorization",
+                "formal promotion",
+            ],
+        },
+        "forbidden": {
+            "knn_or_k_search": True,
+            "nearest_donor_fallback": True,
+            "ridge_or_lambda_search": True,
+            "polynomial_degree_search": True,
+            "low_rank_or_pca_selection": True,
+            "phase_neural_network": True,
+            "conditional_flow": True,
+            "phase_mixture": True,
+            "class_conditioning": True,
+            "q_dependent_residual_covariance": True,
+            "wrapped_angle_regression": True,
+            "coordinatewise_residual_resampling": True,
+            "heldout_tuning": True,
+            "consumed_sealed_reuse": True,
+            "amplitude_producer_modification": True,
+            "new_amplitude_producer": True,
+            "evaluator_redesign": True,
+            "lightgen_generator_input_execution": True,
+            "semantic_selector": True,
+            "image_evaluation": True,
+            "optical_forward": True,
+            "cuda": True,
+            "gradient_training": True,
+        },
+        "hard_stop_conditions": [
+            "exact q-to-complex-row correspondence unresolved",
+            "fit-only Gaussianized q representation unresolved",
+            "phase phasor or global-phase semantics unresolved",
+            "frozen OLS design has rank below 101 under rcond=1e-12",
+            "OLS inputs, solver outputs, residuals, or projected phasors are nonfinite",
+            "complete residual vector atomic sampling semantics unresolved",
+            "unit-phasor zero/nonfinite handling unresolved",
+            "previous 5/5 control authority is not semantically reusable",
+            "future B=999 evaluator cannot follow current authority",
+            "consumed sealed information would be required",
+        ],
+        "firewalls": {
+            "q_values_loaded_by_definition": False,
+            "complex_ols_values_loaded_by_definition": False,
+            "sealed_values_loaded_by_definition": False,
+            "scientific_evaluation_executed": False,
+            "training": False,
+            "cuda": False,
+            "governance_mutated": False,
+            "selected_producer_modified": False,
+            "new_amplitude_family": False,
+            "heldout_dependent_choice": False,
+            "nearest_donor_fallback": False,
+            "wrapped_angle_regression": False,
+            "coordinatewise_residual_sampling": False,
+        },
+        "governance": {
+            "state_mutation": False,
+            "state_sha256_before": authorities["current"]["governance"]["sha256"],
+            "state_sha256_must_remain_unchanged": True,
+            "selected_producer_confirmation": "PASSED",
+            "independent_phase_inheritance": "NOT_SUPPORTED_0_OF_5",
+            "q_conditioned_nearest_phase_donor": "NOT_SUPPORTED_0_OF_5",
+            "sealed_consumed": True,
+            "sealed_reused": False,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "next_action": NEXT_ACTION,
+        },
+        "contract_totality": dict(totality),
+        "next_action": NEXT_ACTION,
+    }
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    _require(not output_dir.exists(), f"refusing to reuse write-once contract output: {output_dir}")
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "current committed HEAD is not the frozen authority base")
+    authorities = _validate_authorities(repo_root)
+    totality = _contract_totality_checks()
+    governance_before = file_sha256(repo_root / GOVERNANCE_STATE_PATH)
+    _require(governance_before == authorities["current"]["governance"]["sha256"], "governance changed during preflight")
+    payload = _build_payload(repo_root, git, authorities, totality)
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(
+            temporary / CONTRACT_NAME,
+            payload,
+            artifact_kind="N3 higher-expressivity q-conditioned phase contract",
+        )
+        if output_dir.exists():
+            raise FileExistsError(f"contract output appeared during definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+    git_after = _git_state(repo_root)
+    governance_after = file_sha256(repo_root / GOVERNANCE_STATE_PATH)
+    _require(git_after["branch"] == git["branch"] and git_after["head"] == git["head"], "branch or committed HEAD changed")
+    _require(governance_after == governance_before, "governance changed during definition")
+    contract_path = output_dir / CONTRACT_NAME
+    return {
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "semantic_authority": "N3_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_CONTRACT_V1",
+        "candidate_id": CANDIDATE_ID,
+        "contract": _relative(repo_root, contract_path),
+        "contract_sha256": file_sha256(contract_path),
+        "previous_control": "FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL=5/5 reused",
+        "minimal_phase_donor": "Q_CONDITIONED_NEAREST_PHASE_DONOR_V1=0/5",
+        "q_values_loaded": False,
+        "complex_ols_values_loaded": False,
+        "sealed_values_loaded": False,
+        "scientific_evaluation_executed": False,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "governance_unchanged": True,
+        "next_action": NEXT_ACTION,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = args.repo_root.resolve()
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    try:
+        print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+        return 0
+    except (InvalidHarnessError, prior_contract.InvalidHarnessError) as exc:
+        print(json.dumps({"status": "invalid", "result": "INVALID_HARNESS", "reason": str(exc)}, indent=2, sort_keys=True))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,130 @@
+schema: lightgen_scaled_chen_controller_to_ols_writability_audit_v1
+task_id: H-LOMA-GEN-S3-COWA
+hypothesis: H-LOMA-GEN-S3-COWA
+
+controller_authority:
+  authority: outputs/20260906_v2/runs/lightgen_controller_state_authority_v1_attempt_01/controller_state_authority.json
+  authority_sha256: 57942dcd4a425960b637bff99299dd6e1260198a22456fa5ef1ca133600302a8
+  authority_self_hash: 82a7d7d843f0928daf4f172c632ed3fe5fb79f4cadcc452dd4ebf8a2584f2f0d
+  migrated_checkpoint: outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/conditional_optical_generator_current_lineage_migrated.pt
+  migrated_checkpoint_sha256: 572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2
+  state_content_hash: d36165ee1d5e9c2a66734ffdea0f8291cb8699e86df667e6a66ac169cd75e2fc
+  state_signature: 88d31ec03d88a7e471d651b49c6eb20770e0fd6db5afb71798486499f62068fa
+  class: IdentityAnchoredConditionalAmplitudeGenerator
+  architecture: conditional_identity_logit_amplitude_v2
+  code_dim: 8
+  hidden_dim: 64
+  command_gain: 0.5
+
+optical_authority:
+  formal_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+  checkpoint: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+  checkpoint_sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+  checkpoint_step: 5000
+  mode_bank_sha256: 75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9
+  calibration: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/repaired_calibration.pt
+  calibration_sha256: ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07
+  calibration_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/calibration_manifest.json
+  calibration_manifest_sha256: 0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6
+  prefix: slm_to_front_to_encoder_to_pre_ols_to_complex_coefficients
+  decoder_entered: false
+
+s1_reference:
+  config: configs/research/scaled_chen/lightgen_scaled_chen_ols_semantic_representation_audit_v1.yaml
+  config_sha256: 60d57cd134a567c17602775ec16f11fff05f56ffe900ac730774abde3432c521
+  config_canonical_sha256: 719526b8d6e82da20bdc9040314084b1192ce376d413eecdf0db07420ad2ab13
+  output_directory: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01
+  semantic_manifest_sha256: b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
+  identity_manifest_sha256: 522ff5b00770ee34fe7b61b1f414775abe3310f398cc0fdf55049b30be2925e2
+  contract_sha256: f99c2ced713005fe3f4a5a0fa91a2cd7648f5647e2360f122bc68e77f225f10d
+  embeddings_sha256: 9375b08597f03fee3798e05798779556c3e7534db6a9d39033232f7278d32279
+  dataset_manifest_sha256: 520f7743bb317fabf891734ad899c84f2cec7639dbe02f65642670a8a1e64ebb
+  representation: R1_POWER
+  minimal_representation: S1_POWER_SEMANTICS_SUPPORTED
+  phase_attribution: PHASE_SEMANTIC_INCREMENT_SUPPORTED
+
+panel:
+  seed: 1234
+  distribution: uniform[-1,1]^8
+  base_code_count: 100
+  states_per_class: 100
+  selection_per_class: 50
+  confirmation_per_class: 50
+  same_base_codes_across_labels: true
+  order: label_major
+
+null_control:
+  kind: fixed_intended_label_permutation
+  seed: 2053
+  states_unchanged: true
+
+observer:
+  representation: R1_POWER
+  formula: z_j=abs(c_j)^2/s_j
+  complex_state_preserved: true
+  s1_geometry: euclidean
+  primary_k: 1
+
+targeting:
+  target: min_distance_to_intended_class_reference
+  other: min_distance_to_non_intended_class_reference
+  margin: d_other_minus_d_target
+  bootstrap_replicates: 2000
+  bootstrap_seed: 1236
+  require_per_class_direction: true
+
+reachability:
+  reference: S1_confirmation_heldout_real_semantic_neighborhood
+  quantiles: [0.50, 0.95]
+  delta: controller_minus_real
+  hard_criterion: all_classes_upper95_q50_and_q95_le_zero
+  selection_direction_consistent: true
+  bootstrap_replicates: 2000
+  bootstrap_seed: 1236
+
+code_effect:
+  fixed_label: true
+  metrics: [within_label_pairwise_R1_distance, code_effect_variance, per_dimension_sensitivity, duplicate_collision]
+  same_code_cross_label: true
+  collapse_rule: exact_state_duplicate_or_zero_effect_is_not_nondegenerate
+
+jacobian:
+  method: deterministic_autograd
+  quantity: J_power=dz_du
+  shape: [100, 8]
+  effective_rank_threshold: 1.0e-6
+  parameter_update: false
+  full_rank_required_for_s3: false
+
+phase:
+  kind: descriptive_relative_complex_phase
+  reference: max_mean_magnitude_port_per_class
+  authoritative_for_gate: false
+
+execution:
+  device: cuda
+  batch_size: 10
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  require_cublas_workspace_config: ':4096:8'
+
+authorization:
+  diagnostic_only: true
+  training_authorized: false
+  formal_promotion: false
+  optimizer_created: false
+  backward_called: false
+  checkpoint_created: false
+  decoder_entered: false
+  evaluator_called: false
+  prohibited: [decoder, relay, camera, OSERA, S2_rerun, training, optimizer, backward, checkpoint_update, prior_generation, new_objective, new_representation, formal_promotion]
+
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  reconstruction_manifold_supported: false
+  generative_manifold_supported: false
+  generation_readiness: not_ready
+  training_authorized: false
+  formal_promotion: false

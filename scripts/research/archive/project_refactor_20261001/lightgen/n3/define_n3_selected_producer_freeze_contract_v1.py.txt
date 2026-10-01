@@ -1,0 +1,1087 @@
+"""Define the N3 selected-producer freeze contract.
+
+This is a definition-only consumer.  It verifies the frozen V2 and V3
+authorities, publishes one write-once contract, and records the exact future
+full-development fit, state-serialization, and standalone-sampling
+semantics.  It never loads q values, fits a producer, samples a producer, or
+reads sealed confirmation values.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import subprocess
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from ldm_project.v2.evidence import atomic_write_new_json, canonical_sha256, file_sha256
+
+
+TASK_ID = "DEFINE_N3_SELECTED_PRODUCER_FREEZE_CONTRACT_V1"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_selected_producer_freeze_contract.v1"
+READY_CLASSIFICATION = "DEFINE_N3_SELECTED_PRODUCER_FREEZE_CONTRACT_V1_READY"
+CLAIM_CLASSIFICATION = "N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_CANDIDATE_DEFINED"
+
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+OUTPUT_DIR = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_selected_producer_freeze_contract_v1_attempt_01"
+)
+CONTRACT_NAME = "n3_selected_producer_freeze_contract.v1.json"
+
+V2_SOURCE_MANIFEST_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_source_manifest_v1_attempt_01/"
+    "n3_development_bank_v2_source_manifest.v1.json"
+)
+V2_SOURCE_MANIFEST_SHA256 = "4bc251af91b3a6cd0235fe113117443d871a564bd05634fa9e61b5ab0b36f812"
+V2_Q_MANIFEST_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_q_materialization_v1_attempt_01/"
+    "n3_development_bank_v2_q_materialization_manifest.v1.json"
+)
+V2_Q_MANIFEST_SHA256 = "422d8c65b78bc459197ed46504399cb9c87ba8f7184eb2405e0faa85353995d8"
+V2_Q_ARTIFACT_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_q_materialization_v1_attempt_01/"
+    "n3_development_bank_v2_q.v1.pt"
+)
+V2_Q_ARTIFACT_SHA256 = "fe48c8fdb9bb2bf732076fabdf475288baa6f7d628ca10039a83bbda54fcfcbf"
+V2_Q_TENSOR_SHA256 = "d660fd8dc449725edab081d00c8f553f151029cddef9210360a7a6fad4281209"
+V2_FOLD_MANIFEST_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_five_fold_protocol_v1_attempt_01/"
+    "n3_development_bank_v2_fold_manifest.v1.json"
+)
+V2_FOLD_MANIFEST_SHA256 = "4898a0e477d583b9a9e60c83238e6d8524d43967efe24277a952089e8adc447e"
+V2_ASSIGNMENT_SHA256 = "43ee0ce28e143fffdf2bcac98394625ccd766166ea717f23db66ed8770ef18a9"
+V2_CEILING_REPORT_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_empirical_ceiling_v1_attempt_01/"
+    "n3_development_bank_v2_empirical_ceiling_report.v1.json"
+)
+V2_CEILING_REPORT_SHA256 = "731cf826dc081e7cc5629790ba2fb74946f7cc41f1a7f0035bf3a3ca96a31826"
+
+N4_REGISTRY_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_candidate_registry_v1_attempt_02/"
+    "n4_q_producer_candidate_registry.v1.json"
+)
+N4_REGISTRY_SHA256 = "0329b23675a7d306c88f26c80a4757ce83d39c8c68b718bf7a1d966f53f4f27b"
+N4_COMPARISON_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_comparison_report.v1.json"
+)
+N4_COMPARISON_SHA256 = "393d84617ec7b1e6c60b8c654b859dc3afe822f5dee207ca93816e232fea78be"
+N4_FIT_MANIFEST_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_fit_manifest.v1.json"
+)
+N4_FIT_MANIFEST_SHA256 = "9c8aae1781787d7744f846d519ac4c3c59abf07b562201a2c6e102eb45fdc1a3"
+GAUSSIAN_IMPLEMENTATION_PATH = Path(
+    "scripts/research/lightgen/n3/execute_n3_empirical_marginal_gaussian_copula_producer_v1.py"
+)
+GAUSSIAN_IMPLEMENTATION_SHA256 = "5f1fa3fa6be35e96f345c3b7f7c6cce5ca0b45fe4619b1ead4455e86dcae538a"
+GAUSSIAN_HISTORICAL_CONTRACT_PATH = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract.v1.json"
+)
+GAUSSIAN_HISTORICAL_CONTRACT_SHA256 = "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4"
+GAUSSIAN_HISTORICAL_REPORT_PATH = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_report.v1.json"
+)
+GAUSSIAN_HISTORICAL_REPORT_SHA256 = "78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d"
+
+V3_CALIBRATION_CONTRACT_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_compatibility_guardrail_gate_contract_v1_attempt_01/"
+    "n3_q_compatibility_guardrail_gate_contract.v1.json"
+)
+V3_CALIBRATION_CONTRACT_SHA256 = "a87979f9689159eee6d769f10eb6b7e30bcdc9803c4b72b108225a6ea22935b4"
+V3_CALIBRATION_REPORT_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_compatibility_guardrail_gate_v1_attempt_01/"
+    "n3_q_compatibility_guardrail_calibration_report.v1.json"
+)
+V3_CALIBRATION_REPORT_SHA256 = "7135b07fd532ee5dd2dba7900ad6028c9a6d558924691e4d65eac56330367789"
+V3_EVALUATOR_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_compatibility_guardrail_gate_v1_attempt_01/"
+    "n3_q_compatibility_evaluator_v3.v1.json"
+)
+V3_EVALUATOR_SHA256 = "4fbc831e383897802134ea2ce1aaef6446629130a7c799630254a86b8dcff3cc"
+V3_REPLAY_REPORT_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_v1_attempt_01/"
+    "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_report.v1.json"
+)
+V3_REPLAY_REPORT_SHA256 = "cf6e6d62e6d2a7b35822d2d3727d08e5cbd59d51778bf794ec30ce297ffd0195"
+V3_REPLAY_LINEAGE_PATH = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_v1_attempt_01/"
+    "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_lineage.v1.json"
+)
+V3_REPLAY_LINEAGE_SHA256 = "d49800c12ce5f7e4931aca301410d5f0c47ca301350324fdfae3a73526d19ee4"
+
+GOVERNANCE_STATE_PATH = Path("docs/status/research_governance_state.json")
+CURRENT_STATUS_PATH = Path("docs/CURRENT_STATUS.md")
+CURRENT_HANDOFF_PATH = Path("docs/status/current_handoff.md")
+
+GAUSSIAN_CANDIDATE_ID = "EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1"
+STUDENT_CANDIDATE_ID = "EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1"
+SELECTED_DEVELOPMENT_CANDIDATE = "EMPIRICAL_GAUSSIAN_COPULA"
+PRODUCER_FAMILY_ID = "EMPIRICAL_GAUSSIAN_COPULA"
+PRODUCER_STATE_SEMANTIC_ID = "N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1"
+PRODUCER_STATE_SCHEMA = "n3_selected_empirical_gaussian_copula_producer_state.v1"
+SAMPLING_INTERFACE_SCHEMA = "n3_selected_empirical_gaussian_copula_sampling_interface.v1"
+RNG_NAMESPACE = "N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1_CPU"
+
+CLASS_COUNT = 10
+ROWS_PER_CLASS = 500
+FULL_FIT_ROWS = 5000
+DIMENSION = 100
+FOLD_COUNT = 5
+HISTORICAL_FIT_ROWS = 4000
+MODEL_SAMPLE_COUNT = 200
+DIAGONAL_ATOL = 5.684341886080801e-14
+
+
+class InvalidHarnessError(RuntimeError):
+    """A frozen authority or output-boundary invariant failed."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise InvalidHarnessError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(
+    repo_root: Path,
+    path: Path,
+    expected_sha256: str,
+    name: str,
+) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    try:
+        value = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise InvalidHarnessError(f"{name} cannot be read as JSON: {target}") from exc
+    return dict(_mapping(value, name))
+
+
+def _ref(
+    repo_root: Path,
+    path: Path,
+    expected_sha256: str,
+    role: str,
+    schema: str,
+) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{role} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{role} hash changed: {target}")
+    return {
+        "path": _relative(repo_root, target),
+        "sha256": expected_sha256,
+        "role": role,
+        "schema": schema,
+    }
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def midrank_plotting_positions(values: Sequence[float]) -> list[float]:
+    """Apply the selected candidate's stable average-rank convention."""
+
+    n = len(values)
+    _require(n >= 2, "synthetic marginal table must contain at least two rows")
+    ordered = sorted(range(n), key=lambda index: (float(values[index]), index))
+    positions = [0.0] * n
+    cursor = 0
+    while cursor < n:
+        end = cursor + 1
+        value = float(values[ordered[cursor]])
+        while end < n and float(values[ordered[end]]) == value:
+            end += 1
+        average_rank = ((cursor + 1) + end) / 2.0
+        plotting_position = (average_rank - 0.5) / float(n)
+        for offset in range(cursor, end):
+            positions[ordered[offset]] = plotting_position
+        cursor = end
+    _require(all(0.0 < value < 1.0 for value in positions), "plotting positions are not interior")
+    return positions
+
+
+def piecewise_linear_empirical_quantile(
+    sorted_values: Sequence[float], probability: float
+) -> float:
+    """Apply endpoint-tail and linear interpolation semantics on synthetic data."""
+
+    n = len(sorted_values)
+    _require(n >= 2, "synthetic quantile table must contain at least two rows")
+    values = [float(value) for value in sorted_values]
+    _require(values == sorted(values), "quantile table must be sorted")
+    p = float(probability)
+    first_position = (1.0 - 0.5) / float(n)
+    last_position = (float(n) - 0.5) / float(n)
+    if p <= first_position:
+        return values[0]
+    if p >= last_position:
+        return values[-1]
+    upper = next(
+        index
+        for index in range(1, n)
+        if p <= (float(index + 1) - 0.5) / float(n)
+    )
+    lower = upper - 1
+    lower_position = (float(lower + 1) - 0.5) / float(n)
+    upper_position = (float(upper + 1) - 0.5) / float(n)
+    fraction = (p - lower_position) / (upper_position - lower_position)
+    return values[lower] + fraction * (values[upper] - values[lower])
+
+
+def _contract_totality_checks() -> dict[str, Any]:
+    """Check the definition's pure rank/quantile and schema-totality invariants."""
+
+    positions = midrank_plotting_positions([2.0, 1.0, 1.0, 3.0])
+    _require(positions == [0.625, 0.25, 0.25, 0.875], "stable midrank convention changed")
+    _require(piecewise_linear_empirical_quantile([0.0, 10.0, 20.0, 30.0], 0.125) == 0.0, "lower endpoint tail changed")
+    _require(piecewise_linear_empirical_quantile([0.0, 10.0, 20.0, 30.0], 0.25) == 5.0, "quantile interpolation changed")
+    _require(piecewise_linear_empirical_quantile([0.0, 10.0, 20.0, 30.0], 0.875) == 30.0, "upper endpoint tail changed")
+    _require(FULL_FIT_ROWS == CLASS_COUNT * ROWS_PER_CLASS, "full-fit balance is not total")
+    _require(FOLD_COUNT == 5 and HISTORICAL_FIT_ROWS == 4000, "historical fold authority changed")
+    _require(DIMENSION == 100 and DIAGONAL_ATOL == 5.684341886080801e-14, "numerical dimension/tolerance changed")
+    _require(PRODUCER_STATE_SCHEMA.endswith(".v1"), "producer state schema is not versioned")
+    _require(SAMPLING_INTERFACE_SCHEMA.endswith(".v1"), "sampling interface schema is not versioned")
+    return {
+        "status": "passed",
+        "checks": [
+            "stable average-rank plotting positions",
+            "piecewise-linear empirical quantile endpoint tails",
+            "all-development balance and dimension",
+            "historical five-fold boundary retained for selection only",
+            "versioned producer-state and sampling schemas",
+        ],
+        "q_values_loaded": False,
+        "sealed_values_loaded": False,
+        "fit_executed": False,
+        "sampling_executed": False,
+    }
+
+
+def _validate_v2_authorities(
+    repo_root: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    source = _read_json_exact(
+        repo_root, V2_SOURCE_MANIFEST_PATH, V2_SOURCE_MANIFEST_SHA256, "V2 source manifest"
+    )
+    q_manifest = _read_json_exact(
+        repo_root, V2_Q_MANIFEST_PATH, V2_Q_MANIFEST_SHA256, "V2 q materialization manifest"
+    )
+    fold = _read_json_exact(
+        repo_root, V2_FOLD_MANIFEST_PATH, V2_FOLD_MANIFEST_SHA256, "V2 fold manifest"
+    )
+    ceiling = _read_json_exact(
+        repo_root, V2_CEILING_REPORT_PATH, V2_CEILING_REPORT_SHA256, "V2 empirical ceiling report"
+    )
+
+    _require(source.get("schema") == "n3_development_bank_v2_source_manifest.v1", "V2 source schema changed")
+    _require(source.get("semantic_authority_id") == "N3_DEVELOPMENT_BANK_V2", "V2 source authority changed")
+    selection = _mapping(source.get("selection"), "V2 source selection")
+    _require(selection.get("pool_count") == FULL_FIT_ROWS, "V2 source row count changed")
+    _require(selection.get("rows_per_class") == ROWS_PER_CLASS, "V2 source class balance changed")
+    _require(selection.get("q_values_used") is False, "V2 source selection used q values")
+    _require(len(source.get("rows", [])) == FULL_FIT_ROWS, "V2 source row manifest is incomplete")
+
+    q_artifact = _mapping(q_manifest.get("q_artifact"), "V2 q artifact metadata")
+    _require(q_artifact.get("sha256") == V2_Q_ARTIFACT_SHA256, "V2 q artifact identity changed")
+    _require(q_artifact.get("q_tensor_sha256") == V2_Q_TENSOR_SHA256, "V2 q tensor identity changed")
+    _require(q_artifact.get("shape") == [FULL_FIT_ROWS, DIMENSION], "V2 q shape changed")
+    _require(q_artifact.get("dtype") == "torch.float64", "V2 q dtype changed")
+    execution = _mapping(q_manifest.get("execution"), "V2 q execution boundary")
+    _require(execution.get("sealed_confirmation_values_loaded") is False, "V2 q manifest loaded sealed values")
+    _require(q_manifest.get("sealed_confirmation_consumed") is False, "V2 q manifest consumed sealed confirmation")
+    _require(file_sha256(repo_root / V2_Q_ARTIFACT_PATH) == V2_Q_ARTIFACT_SHA256, "V2 q artifact bytes changed")
+
+    protocol = _mapping(fold.get("protocol"), "V2 fold protocol")
+    _require(protocol.get("pool_count") == FULL_FIT_ROWS, "V2 fold pool count changed")
+    _require(protocol.get("rows_per_class") == ROWS_PER_CLASS, "V2 fold class balance changed")
+    _require(protocol.get("fold_count") == FOLD_COUNT, "V2 fold count changed")
+    _require(protocol.get("assignment_sha256") == V2_ASSIGNMENT_SHA256, "V2 fold assignment changed")
+    _require(protocol.get("q_values_used") is False and protocol.get("rng_used") is False, "V2 fold protocol used mutable inputs")
+    _require(_mapping(fold.get("governance"), "V2 fold governance").get("sealed_confirmation_consumed") is False, "V2 fold consumed sealed")
+
+    _require(ceiling.get("schema") == "n3_development_bank_v2_empirical_ceiling_report.v1", "V2 ceiling schema changed")
+    _require(ceiling.get("classification") == "N3_DEVELOPMENT_BANK_V2_VALIDATED", "V2 ceiling is not validated")
+    _require(ceiling.get("result") == "VALID_COMPLETED", "V2 ceiling result changed")
+    sealed = _mapping(ceiling.get("sealed_confirmation"), "V2 ceiling sealed boundary")
+    _require(sealed.get("status") == "RESERVED_NOT_MATERIALIZED", "V2 sealed status changed")
+    _require(sealed.get("consumed") is False and sealed.get("values_loaded") is False, "V2 ceiling accessed sealed")
+    return source, q_manifest, fold, ceiling
+
+
+def _validate_v3_selection(
+    repo_root: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    replay = _read_json_exact(
+        repo_root, V3_REPLAY_REPORT_PATH, V3_REPLAY_REPORT_SHA256, "V3 replay report"
+    )
+    lineage = _read_json_exact(
+        repo_root, V3_REPLAY_LINEAGE_PATH, V3_REPLAY_LINEAGE_SHA256, "V3 replay lineage"
+    )
+    evaluator = _read_json_exact(
+        repo_root, V3_EVALUATOR_PATH, V3_EVALUATOR_SHA256, "V3 evaluator"
+    )
+    calibration_contract = _read_json_exact(
+        repo_root,
+        V3_CALIBRATION_CONTRACT_PATH,
+        V3_CALIBRATION_CONTRACT_SHA256,
+        "V3 calibration contract",
+    )
+    calibration_report = _read_json_exact(
+        repo_root,
+        V3_CALIBRATION_REPORT_PATH,
+        V3_CALIBRATION_REPORT_SHA256,
+        "V3 calibration report",
+    )
+
+    _require(replay.get("schema") == "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_report.v1", "V3 replay schema changed")
+    _require(replay.get("status") == "valid_completed", "V3 replay is not valid_completed")
+    _require(replay.get("result") == "VALID_COMPLETED", "V3 replay result changed")
+    _require(replay.get("classification") == "N3_Q_COMPATIBILITY_EVALUATOR_V3_FROZEN_CANDIDATE_REPLAY_COMPLETE", "V3 replay classification changed")
+    _require(replay.get("development_supported_candidates") == [GAUSSIAN_CANDIDATE_ID], "V3 supported-candidate set changed")
+
+    candidates = {item.get("candidate_id"): item for item in replay.get("candidates", [])}
+    _require(set(candidates) == {GAUSSIAN_CANDIDATE_ID, STUDENT_CANDIDATE_ID}, "V3 candidate set changed")
+    gaussian = candidates[GAUSSIAN_CANDIDATE_ID]
+    student = candidates[STUDENT_CANDIDATE_ID]
+    _require(gaussian.get("classification") == "N3_EMPIRICAL_GAUSSIAN_COPULA_V3_DEVELOPMENT_SUPPORTED", "Gaussian V3 support changed")
+    _require(gaussian.get("fold_pattern") == [True, True, True, True, True], "Gaussian V3 fold pattern changed")
+    _require(gaussian.get("supported_fold_count") == FOLD_COUNT, "Gaussian V3 support count changed")
+    _require(gaussian.get("historical_v2_classification") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "Gaussian historical V2 classification changed")
+    _require(gaussian.get("historical_v2_unchanged") is True, "Gaussian historical immutability flag changed")
+    _require(student.get("classification") == "N3_FIXED_R_STUDENT_T_COPULA_V3_NOT_SUPPORTED", "Student-t V3 classification changed")
+    _require(student.get("fold_pattern") == [True, True, False, True, True], "Student-t V3 fold pattern changed")
+    _require(student.get("supported_fold_count") == 4, "Student-t V3 support count changed")
+    _require(student.get("historical_v2_classification") == "N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED", "Student-t historical V2 classification changed")
+    _require(student.get("historical_v2_unchanged") is True, "Student-t historical immutability flag changed")
+
+    selection = _mapping(replay.get("selection"), "V3 replay selection")
+    _require(selection.get("development_supported_candidate") == GAUSSIAN_CANDIDATE_ID, "V3 selection candidate changed")
+    _require(selection.get("selected_producer") is None, "V3 replay selected a project producer")
+    _require(selection.get("posthoc_selection") is False, "V3 replay used posthoc selection")
+    _require(selection.get("producer_freeze_performed") is False, "V3 replay froze producer state")
+    _require("producer-selection/freeze contract" in str(selection.get("next_action")), "V3 next boundary changed")
+
+    replay_governance = _mapping(replay.get("governance"), "V3 replay governance")
+    _require(replay_governance.get("selected_producer") is None, "V3 governance selected a producer")
+    _require(replay_governance.get("training_authorized") is False, "V3 training flag changed")
+    _require(replay_governance.get("formal_promotion") is False, "V3 promotion flag changed")
+    _require(replay_governance.get("generation_readiness") == "not_ready", "V3 readiness flag changed")
+    _require(replay_governance.get("sealed_confirmation_consumed") is False, "V3 governance consumed sealed")
+    _require(replay.get("sealed_confirmation") == {
+        "status": "RESERVED_NOT_MATERIALIZED",
+        "consumed": False,
+        "values_loaded": False,
+        "input_to_this_consumer": False,
+    }, "V3 sealed boundary changed")
+    claim_boundary = _mapping(replay.get("claim_boundary"), "V3 claim boundary")
+    for key in ("not_complex_ols_phase_semantic_image_or_optical", "not_heldout_confirmation", "not_stationarity_or_ood", "not_training_or_generation"):
+        _require(claim_boundary.get(key) is True, f"V3 claim boundary changed: {key}")
+
+    _require(lineage.get("schema") == "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_lineage.v1", "V3 lineage schema changed")
+    _require(lineage.get("status") == "valid_completed", "V3 lineage is not valid_completed")
+    evaluation = _mapping(lineage.get("evaluation"), "V3 lineage evaluation")
+    _require(evaluation.get("new_sampling") is False and evaluation.get("refitting") is False, "V3 lineage performed new producer work")
+    _require(evaluation.get("sealed_input") is False, "V3 lineage consumed sealed")
+
+    _require(evaluator.get("schema") == "n3_q_compatibility_evaluator_v3.v1", "V3 evaluator schema changed")
+    _require(calibration_contract.get("status") == "valid_completed", "V3 calibration contract status changed")
+    _require(calibration_contract.get("result") == "READY", "V3 calibration contract result changed")
+    _require(calibration_report.get("classification") == "N3_Q_COMPATIBILITY_GUARDRAIL_CALIBRATION_READY", "V3 calibration authority changed")
+    return replay, lineage, evaluator, {"contract": calibration_contract, "report": calibration_report}
+
+
+def _validate_current_governance(repo_root: Path) -> tuple[dict[str, Any], dict[str, str]]:
+    governance = _read_json_exact(
+        repo_root,
+        GOVERNANCE_STATE_PATH,
+        file_sha256(repo_root / GOVERNANCE_STATE_PATH),
+        "current governance state",
+    )
+    _require(governance.get("active_objective") == "N3_Q_PRODUCER_V3_DEVELOPMENT_SUPPORTED", "current governance objective changed before freeze contract")
+    _require(governance.get("hard_blocker") == "N3_Q_PRODUCER_SELECTION_FREEZE_REQUIRED", "current governance blocker changed before freeze contract")
+    alias = _mapping(
+        _mapping(governance.get("evidence_aliases"), "governance evidence aliases").get(
+            "N3_Q_COMPATIBILITY_V3_FROZEN_CANDIDATE_REPLAY_V1"
+        ),
+        "V3 replay governance alias",
+    )
+    _require(alias.get("sha256") == V3_REPLAY_REPORT_SHA256, "governance V3 replay report binding changed")
+    _require(alias.get("lineage_manifest_sha256") == V3_REPLAY_LINEAGE_SHA256, "governance V3 replay lineage binding changed")
+    _require(alias.get("supported_candidates") == [GAUSSIAN_CANDIDATE_ID], "governance V3 supported candidate changed")
+    _require(alias.get("selected_producer") is None, "governance selected a project producer")
+    _require(alias.get("training_authorized") is False, "governance training flag changed")
+    _require(alias.get("formal_promotion") is False, "governance promotion flag changed")
+    _require(alias.get("generation_readiness") == "not_ready", "governance readiness flag changed")
+    _require(alias.get("sealed_confirmation_consumed") is False, "governance consumed sealed")
+
+    snapshots = {}
+    for path, name in ((CURRENT_STATUS_PATH, "current status"), (CURRENT_HANDOFF_PATH, "current handoff")):
+        target = repo_root / path
+        _require(target.is_file(), f"{name} is missing: {target}")
+        text = target.read_text(encoding="utf-8")
+        _require("N3_Q_PRODUCER_V3_DEVELOPMENT_SUPPORTED" in text, f"{name} does not expose current V3 state")
+        _require("N3_Q_PRODUCER_SELECTION_FREEZE_REQUIRED" in text, f"{name} does not expose current freeze boundary")
+        snapshots[name.replace(" ", "_")] = file_sha256(target)
+    snapshots["governance_state"] = file_sha256(repo_root / GOVERNANCE_STATE_PATH)
+    return governance, snapshots
+
+
+def _validate_n4_and_gaussian(
+    repo_root: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    registry = _read_json_exact(repo_root, N4_REGISTRY_PATH, N4_REGISTRY_SHA256, "N4 candidate registry")
+    comparison = _read_json_exact(repo_root, N4_COMPARISON_PATH, N4_COMPARISON_SHA256, "N4 comparison report")
+    old_contract = _read_json_exact(
+        repo_root,
+        GAUSSIAN_HISTORICAL_CONTRACT_PATH,
+        GAUSSIAN_HISTORICAL_CONTRACT_SHA256,
+        "historical Gaussian contract",
+    )
+    old_report = _read_json_exact(
+        repo_root,
+        GAUSSIAN_HISTORICAL_REPORT_PATH,
+        GAUSSIAN_HISTORICAL_REPORT_SHA256,
+        "historical Gaussian report",
+    )
+    _ref(
+        repo_root,
+        GAUSSIAN_IMPLEMENTATION_PATH,
+        GAUSSIAN_IMPLEMENTATION_SHA256,
+        "Gaussian implementation",
+        "python",
+    )
+
+    gaussian_candidates = [
+        candidate
+        for candidate in registry.get("candidates", [])
+        if candidate.get("candidate_id") == GAUSSIAN_CANDIDATE_ID
+    ]
+    _require(len(gaussian_candidates) == 1, "N4 Gaussian candidate registry is not unique")
+    candidate = dict(_mapping(gaussian_candidates[0], "N4 Gaussian candidate"))
+    expected_fixed = {
+        "dependence_denominator": "n_fit-1",
+        "epsilon_clamp": False,
+        "fit_rows": HISTORICAL_FIT_ROWS,
+        "plotting_positions": "(rank-0.5)/n_fit",
+        "quantile_interpolation": "piecewise-linear with observed endpoint tails",
+        "standardization_denominator": "n_fit-1",
+        "tie_rule": "average rank with stable value-then-original-row order",
+        "unit_diagonal_renormalization": False,
+    }
+    _require(candidate.get("candidate_version") == "v1", "Gaussian candidate version changed")
+    _require(candidate.get("input_q_dimensionality") == DIMENSION and candidate.get("output_q_dimensionality") == DIMENSION, "Gaussian q dimensionality changed")
+    _require(candidate.get("fixed_hyperparameters") == expected_fixed, "Gaussian fixed fitting semantics changed")
+    _require(candidate.get("fitting_algorithm") == "existing _fit_fold -> stable midrank empirical marginals, Phi^-1 Gaussianization, analytic R_shrunk", "Gaussian fitting algorithm changed")
+    _require(candidate.get("initialization_rule") == "none; closed-form rank transform", "Gaussian initialization semantics changed")
+    _require(candidate.get("analytical_fitting") is True and candidate.get("gradient_training") is False, "Gaussian fitting mode changed")
+    _require(candidate.get("fallback_behavior") == "no clipping, epsilon repair, positivity rejection, retry, or adaptive sampling", "Gaussian failure behavior changed")
+    _require(candidate.get("serialization_format") == "torch.save mapping with sorted empirical marginals, cholesky, and frozen metadata", "Gaussian serialization semantics changed")
+    _require(candidate.get("v2_binding") == "the existing fit-count assertion is bound to 4000 before fitting; algorithm and sampling semantics are unchanged", "Gaussian V2 binding changed")
+    _require(candidate.get("sampling_contract", {}).get("law") == "z~Normal(0,R_shrunk); u=Phi(z); q_j=Q_j(u_j)", "Gaussian sampling law changed")
+    _require(candidate.get("sampling_contract", {}).get("samplewise_normalization") is False, "Gaussian sample normalization changed")
+    _require(candidate.get("sampling_contract", {}).get("rejection_is_fixed_support_filter") is False, "Gaussian rejection semantics changed")
+
+    _require(comparison.get("classification") == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "historical N4 comparison classification changed")
+    summary = next(
+        item for item in comparison.get("candidate_summaries", [])
+        if item.get("candidate_id") == GAUSSIAN_CANDIDATE_ID
+    )
+    _require(summary.get("fold_pass_pattern") == [True, True, True, True, False], "historical Gaussian fold pattern changed")
+    _require(summary.get("compatible_fold_count") == 4 and summary.get("development_supported") is False, "historical Gaussian support changed")
+    _require(old_contract.get("schema") == "n3_empirical_marginal_gaussian_copula_producer_contract.v1", "historical Gaussian contract schema changed")
+    _require(old_contract.get("classification") == "DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY", "historical Gaussian contract status changed")
+    _require(old_report.get("classification") == "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED", "historical Gaussian producer report changed")
+    return registry, comparison, candidate, {"contract": old_contract, "report": old_report}
+
+
+def _authority_bundle(
+    repo_root: Path,
+    governance_snapshot: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "v2_source_manifest": _ref(repo_root, V2_SOURCE_MANIFEST_PATH, V2_SOURCE_MANIFEST_SHA256, "V2 development source manifest", "n3_development_bank_v2_source_manifest.v1"),
+        "v2_q_materialization_manifest": _ref(repo_root, V2_Q_MANIFEST_PATH, V2_Q_MANIFEST_SHA256, "V2 q materialization manifest", "n3_development_bank_v2_q_materialization_manifest.v1"),
+        "v2_q_artifact": _ref(repo_root, V2_Q_ARTIFACT_PATH, V2_Q_ARTIFACT_SHA256, "V2 development q artifact", "n3_development_bank_v2_q.v1"),
+        "v2_fold_manifest": _ref(repo_root, V2_FOLD_MANIFEST_PATH, V2_FOLD_MANIFEST_SHA256, "V2 five-fold manifest", "n3_development_bank_v2_fold_manifest.v1"),
+        "v2_empirical_ceiling_report": _ref(repo_root, V2_CEILING_REPORT_PATH, V2_CEILING_REPORT_SHA256, "V2 empirical ceiling report", "n3_development_bank_v2_empirical_ceiling_report.v1"),
+        "n4_candidate_registry": _ref(repo_root, N4_REGISTRY_PATH, N4_REGISTRY_SHA256, "N4 q-producer candidate registry", "n4_q_producer_candidate_registry.v1"),
+        "n4_comparison_report": _ref(repo_root, N4_COMPARISON_PATH, N4_COMPARISON_SHA256, "N4 historical comparison report", "n4_q_producer_comparison_report.v1"),
+        "n4_fit_manifest": _ref(repo_root, N4_FIT_MANIFEST_PATH, N4_FIT_MANIFEST_SHA256, "N4 historical fit manifest", "n4_q_producer_fit_manifest.v1"),
+        "gaussian_implementation": _ref(repo_root, GAUSSIAN_IMPLEMENTATION_PATH, GAUSSIAN_IMPLEMENTATION_SHA256, "selected Gaussian implementation", "python"),
+        "gaussian_historical_contract": _ref(repo_root, GAUSSIAN_HISTORICAL_CONTRACT_PATH, GAUSSIAN_HISTORICAL_CONTRACT_SHA256, "historical Gaussian contract", "n3_empirical_marginal_gaussian_copula_producer_contract.v1"),
+        "gaussian_historical_report": _ref(repo_root, GAUSSIAN_HISTORICAL_REPORT_PATH, GAUSSIAN_HISTORICAL_REPORT_SHA256, "historical Gaussian producer report", "n3_empirical_marginal_gaussian_copula_producer_report.v1"),
+        "v3_calibration_contract": _ref(repo_root, V3_CALIBRATION_CONTRACT_PATH, V3_CALIBRATION_CONTRACT_SHA256, "V3 guardrail calibration contract", "n3_q_compatibility_guardrail_gate_contract.v1"),
+        "v3_calibration_report": _ref(repo_root, V3_CALIBRATION_REPORT_PATH, V3_CALIBRATION_REPORT_SHA256, "V3 guardrail calibration report", "n3_q_compatibility_guardrail_calibration_report.v1"),
+        "v3_evaluator": _ref(repo_root, V3_EVALUATOR_PATH, V3_EVALUATOR_SHA256, "frozen V3 evaluator", "n3_q_compatibility_evaluator_v3.v1"),
+        "v3_replay_report": _ref(repo_root, V3_REPLAY_REPORT_PATH, V3_REPLAY_REPORT_SHA256, "V3 frozen-candidate replay report", "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_report.v1"),
+        "v3_replay_lineage": _ref(repo_root, V3_REPLAY_LINEAGE_PATH, V3_REPLAY_LINEAGE_SHA256, "V3 frozen-candidate replay lineage", "n3_q_compatibility_evaluator_v3_frozen_candidate_replay_lineage.v1"),
+        "governance_state_before_contract": {
+            "path": _relative(repo_root, repo_root / GOVERNANCE_STATE_PATH),
+            "sha256": governance_snapshot["governance_state"],
+            "role": "current governance pre-contract snapshot",
+            "schema": "research_governance_state.json",
+        },
+        "current_status_before_contract": {
+            "path": _relative(repo_root, repo_root / CURRENT_STATUS_PATH),
+            "sha256": governance_snapshot["current_status"],
+            "role": "current status pre-contract snapshot",
+            "schema": "markdown",
+        },
+        "current_handoff_before_contract": {
+            "path": _relative(repo_root, repo_root / CURRENT_HANDOFF_PATH),
+            "sha256": governance_snapshot["current_handoff"],
+            "role": "current handoff pre-contract snapshot",
+            "schema": "markdown",
+        },
+    }
+
+
+def _v2_authority_summary(
+    source: Mapping[str, Any], q_manifest: Mapping[str, Any], fold: Mapping[str, Any], ceiling: Mapping[str, Any]
+) -> dict[str, Any]:
+    source_identity = _mapping(source.get("identity"), "V2 source identity")
+    q_identity = _mapping(q_manifest.get("source_identity"), "V2 q source identity")
+    q_artifact = _mapping(q_manifest.get("q_artifact"), "V2 q artifact")
+    protocol = _mapping(fold.get("protocol"), "V2 fold protocol")
+    return {
+        "semantic_authority_id": "N3_DEVELOPMENT_BANK_V2",
+        "bank_semantic_sha256": source.get("bank_semantic_sha256"),
+        "coordinate": "R2_AMPLITUDE",
+        "q_definition": "q=abs(c/sqrt(s))=abs(R3_COMPLEX)",
+        "dimension": DIMENSION,
+        "row_count": FULL_FIT_ROWS,
+        "per_class": ROWS_PER_CLASS,
+        "class_counts": source_identity.get("class_counts"),
+        "source_indices_sha256": q_identity.get("source_indices_sha256"),
+        "labels_sha256": q_identity.get("labels_sha256"),
+        "source_row_identity_sha256": q_identity.get("source_row_identity_sha256"),
+        "q_tensor_sha256": q_artifact.get("q_tensor_sha256"),
+        "q_artifact_sha256": q_artifact.get("sha256"),
+        "fold_count": protocol.get("fold_count"),
+        "fold_assignment_sha256": protocol.get("assignment_sha256"),
+        "fold_evidence_role": "selection_only; not a full-fit subset",
+        "ceiling_classification": ceiling.get("classification"),
+        "q_values_loaded_by_this_definition_consumer": False,
+        "sealed_values_loaded_by_this_definition_consumer": False,
+    }
+
+
+def _selected_family_contract(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "family_id": PRODUCER_FAMILY_ID,
+        "candidate_id": GAUSSIAN_CANDIDATE_ID,
+        "candidate_version": "v1",
+        "coordinate": "R2_AMPLITUDE",
+        "input_q_dimensionality": DIMENSION,
+        "output_q_dimensionality": DIMENSION,
+        "model_family": candidate["model_family"],
+        "labels_as_inputs": False,
+        "fitting_only_empirical_marginals": True,
+        "dependence_model": "regularized Gaussianized-score correlation R_shrunk",
+        "initialization": candidate["initialization_rule"],
+        "analytical_fitting": True,
+        "gradient_training": False,
+        "no_mixture_or_local_components": True,
+        "no_model_order_or_rank_selection": True,
+        "no_new_model_or_hyperparameter_choice": True,
+        "support": "finite q_j>=0 for every coordinate",
+        "implementation_identity": {
+            "path": str(GAUSSIAN_IMPLEMENTATION_PATH).replace("\\", "/"),
+            "sha256": GAUSSIAN_IMPLEMENTATION_SHA256,
+            "semantic_source": "N4 registered Gaussian candidate; implementation is not executed by this definition",
+        },
+        "candidate_entry_sha256": canonical_sha256(candidate),
+        "unchanged_candidate_semantics": {
+            "q_representation": "R2_AMPLITUDE = abs(c/sqrt(s)) = abs(R3_COMPLEX)",
+            "marginal_cdf": "stable empirical marginal from all fit rows",
+            "tie_handling": "stable value-then-original-row order; average one-based rank",
+            "gaussianization": "torch.special.ndtri((average_rank-0.5)/n_fit)",
+            "dependence": "analytic R_emp then alpha-shrunk R_shrunk",
+            "positivity": "require finite q>=0; no clipping, abs, relu, or softplus during sampling",
+            "numeric_dtype": "CPU torch.float64",
+            "rng_and_sampling": "explicit CPU torch.Generator; Gaussian law followed by empirical inverse quantile",
+            "samplewise_normalization": False,
+            "best_of_n": False,
+            "rejection": False,
+            "retry": False,
+        },
+    }
+
+
+def _full_fit_contract() -> dict[str, Any]:
+    return {
+        "authorized_future_consumer": "EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1",
+        "fit_scope": {
+            "authority_id": "N3_DEVELOPMENT_BANK_V2",
+            "coordinate": "R2_AMPLITUDE",
+            "row_count": FULL_FIT_ROWS,
+            "rows_per_class": ROWS_PER_CLASS,
+            "all_development_rows": True,
+            "heldout_rows_used": False,
+            "folds_used_for_fit": False,
+            "fold_evidence_role": "prior model selection only",
+            "labels_as_inputs": False,
+            "device": "cpu",
+            "dtype": "torch.float64",
+            "fit_execution_count": 1,
+        },
+        "fixed_input_semantics": {
+            "q_definition": "q=abs(c/sqrt(s))=abs(R3_COMPLEX)",
+            "q_shape": [FULL_FIT_ROWS, DIMENSION],
+            "q_finite_and_nonnegative_required": True,
+            "q_normalization": False,
+            "q_clipping": False,
+            "labels_condition_producer": False,
+        },
+        "empirical_marginal_algorithm": {
+            "per_coordinate": True,
+            "fit_rows": FULL_FIT_ROWS,
+            "stable_sort": "torch.argsort(column, stable=True): value ascending; ties preserve original fit-row order",
+            "tie_rule": "average one-based ranks L..U as (L+U)/2",
+            "plotting_position": "(average_rank-0.5)/n_fit",
+            "plotting_position_domain": "strictly (0,1); no epsilon clamp",
+            "gaussianized_score": "z=torch.special.ndtri(u)",
+            "quantile_table_positions": "(i+0.5)/n_fit for i=0,...,n_fit-1",
+            "quantile_interpolation": "piecewise-linear between adjacent table positions",
+            "lower_tail": "u <= first table position returns first observed sorted value",
+            "upper_tail": "u >= last table position returns last observed sorted value",
+            "extrapolation": False,
+        },
+        "dependence_algorithm": {
+            "mean": "z_mean=z.mean(dim=0)",
+            "center": "z_centered=z-z_mean",
+            "standard_deviation": "sqrt(sum(z_centered**2)/(n_fit-1))",
+            "standardization": "y=z_centered/standard_deviation",
+            "R_emp": "y.T @ y/(n_fit-1)",
+            "tau": "trace(R_emp)/dimension",
+            "target": "tau*I",
+            "quadratic": "(y @ R_emp * y).sum(dim=1)",
+            "beta": "(sum(||y_i||^4)-2*sum(y_i.T@R_emp@y_i)+n_fit*||R_emp||_F^2)/(n_fit*n_fit), then clamp_min(0)",
+            "delta": "||R_emp-target||_F^2",
+            "alpha": "0 when delta==0; otherwise clamp(beta/delta,0,1)",
+            "R_shrunk": "symmetrize(((1-alpha)*R_emp+alpha*target))",
+            "cholesky": "torch.linalg.cholesky_ex(R_shrunk) must return info=0",
+            "eigenvalues": "torch.linalg.eigvalsh(R_shrunk) must be finite and strictly positive",
+            "unit_diagonal": "max(abs(diagonal(R_shrunk)-1)) <= float64_eps*256",
+            "diagonal_atol": DIAGONAL_ATOL,
+            "renormalization": False,
+        },
+        "no_new_choice": {
+            "model_family_change": False,
+            "shrinkage_parameter_tuning": False,
+            "model_order_selection": False,
+            "heldout_or_sealed_tuning": False,
+            "marginal_interpolation_change": False,
+            "gaussianization_change": False,
+            "q_representation_change": False,
+            "secondary_metric_selection": False,
+        },
+        "failure_semantics": {
+            "classification": "INVALID_HARNESS",
+            "stop_on": [
+                "wrong shape, dtype, device, finite, or nonnegative q input",
+                "zero or nonfinite marginal standard deviation",
+                "nonfinite Gaussianized scores or dependence statistics",
+                "failed Cholesky or non-positive eigenvalue",
+                "unit-diagonal invariant outside frozen tolerance",
+                "incomplete or non-atomically serialized producer state",
+            ],
+            "repair": False,
+            "clipping": False,
+            "epsilon_repair": False,
+            "positivity_retry": False,
+            "adaptive_retry": False,
+            "state_authority_on_failure": False,
+        },
+    }
+
+
+def _producer_state_contract() -> dict[str, Any]:
+    return {
+        "semantic_authority_id": PRODUCER_STATE_SEMANTIC_ID,
+        "schema": PRODUCER_STATE_SCHEMA,
+        "state_exists_now": False,
+        "frozen_producer_state": None,
+        "state_becomes_authoritative": "only after one valid all-5000 fit, complete state serialization, and published artifact SHA",
+        "serialization": {
+            "format": "torch.save mapping",
+            "safe_load_contract": "torch.load(weights_only=True, map_location='cpu')",
+            "device": "cpu",
+            "tensor_dtype": "torch.float64",
+            "custom_classes": False,
+            "atomic_publication": True,
+            "write_once": True,
+            "planned_filename": "n3_selected_empirical_gaussian_copula_producer_state.v1.pt",
+            "no_raw_development_q_rows": True,
+            "no_sealed_information": True,
+        },
+        "required_metadata_fields": {
+            "schema": PRODUCER_STATE_SCHEMA,
+            "version": 1,
+            "semantic_authority_id": PRODUCER_STATE_SEMANTIC_ID,
+            "family_id": PRODUCER_FAMILY_ID,
+            "candidate_id": GAUSSIAN_CANDIDATE_ID,
+            "candidate_version": "v1",
+            "coordinate": "R2_AMPLITUDE",
+            "dimension": DIMENSION,
+            "dtype": "torch.float64",
+            "development_authority_id": "N3_DEVELOPMENT_BANK_V2",
+            "fit_row_count": FULL_FIT_ROWS,
+            "fit_rows_per_class": ROWS_PER_CLASS,
+            "folds_used_for_fit": False,
+            "labels_as_inputs": False,
+            "rng_namespace": RNG_NAMESPACE,
+            "implementation_identity": "selected family implementation path plus SHA-256",
+        },
+        "required_sampling_tensors": {
+            "sorted_values": {"shape": [FULL_FIT_ROWS, DIMENSION], "dtype": "torch.float64", "role": "sorted empirical marginal value table"},
+            "quantile_table_positions": {"shape": [FULL_FIT_ROWS], "dtype": "torch.float64", "role": "(i+0.5)/n_fit positions"},
+            "cholesky": {"shape": [DIMENSION, DIMENSION], "dtype": "torch.float64", "role": "lower-triangular factor of R_shrunk"},
+        },
+        "required_audit_tensors": {
+            "plotting_positions": {"shape": [FULL_FIT_ROWS, DIMENSION], "dtype": "torch.float64"},
+            "z_mean": {"shape": [DIMENSION], "dtype": "torch.float64"},
+            "standard_deviation": {"shape": [DIMENSION], "dtype": "torch.float64"},
+            "R_emp": {"shape": [DIMENSION, DIMENSION], "dtype": "torch.float64"},
+            "R_shrunk": {"shape": [DIMENSION, DIMENSION], "dtype": "torch.float64"},
+            "eigenvalues": {"shape": [DIMENSION], "dtype": "torch.float64"},
+            "diagonal": {"shape": [DIMENSION], "dtype": "torch.float64"},
+        },
+        "required_audit_scalars": ["tau", "beta", "delta", "alpha", "diagonal_error"],
+        "state_identity": {
+            "producer_state_sha256": None,
+            "hash_algorithm": "SHA-256",
+            "hash_scope": "complete state artifact bytes after atomic save",
+            "self_reference": False,
+            "published_by": "future full-development-fit consumer lineage, not this definition",
+            "tensor_identity_hashes": "future consumer records tensor_sha256 for every required tensor",
+        },
+        "provenance_fields": {
+            "development_authority_id": "N3_DEVELOPMENT_BANK_V2",
+            "source_manifest_sha256": V2_SOURCE_MANIFEST_SHA256,
+            "q_materialization_manifest_sha256": V2_Q_MANIFEST_SHA256,
+            "q_artifact_sha256": V2_Q_ARTIFACT_SHA256,
+            "q_tensor_sha256": V2_Q_TENSOR_SHA256,
+            "source_indices_sha256": "8e6859cbe0ad10090b1d5d7c55de28232f9db30c45093078dbf29f8545473a0e",
+            "labels_sha256": "d28f06d6ecde9d08797f954e60041f79b512e2ad61480e21d5702cb841fabef3",
+            "selected_by_v3_replay_report_sha256": V3_REPLAY_REPORT_SHA256,
+            "selected_by_v3_replay_lineage_sha256": V3_REPLAY_LINEAGE_SHA256,
+            "sealed_confirmation_included": False,
+        },
+        "forbidden_state_inputs": [
+            "sealed confirmation values",
+            "heldout development rows",
+            "fold identity as a sampling condition",
+            "labels as a producer condition",
+            "post-fit q refit or tuning",
+        ],
+    }
+
+
+def _sampling_contract() -> dict[str, Any]:
+    return {
+        "schema": SAMPLING_INTERFACE_SCHEMA,
+        "consumer": "future standalone confirmation consumer",
+        "inputs": {
+            "producer_state": {
+                "schema": PRODUCER_STATE_SCHEMA,
+                "semantic_authority_id": PRODUCER_STATE_SEMANTIC_ID,
+                "state_sha256_required": True,
+            },
+            "requested_sample_count": {
+                "type": "positive integer",
+                "minimum": 1,
+                "hidden_cap": False,
+            },
+            "rng_namespace": {
+                "type": "string",
+                "required": True,
+                "must_equal": RNG_NAMESPACE,
+            },
+            "seed": {
+                "type": "nonnegative signed 63-bit integer",
+                "required": True,
+                "hidden_derivation": False,
+            },
+        },
+        "algorithm": [
+            "validate state schema, semantic authority, state SHA, tensor shapes, CPU device, float64 dtype, and finite values",
+            "create torch.Generator(device='cpu') and seed it with the explicitly supplied seed",
+            "draw noise=torch.randn((requested_sample_count,100), generator=generator, device='cpu', dtype=torch.float64)",
+            "compute z=noise.mm(cholesky.T)",
+            "compute u=torch.special.ndtr(z)",
+            "evaluate each coordinate with the stored sorted_values and quantile_table_positions using frozen endpoint tails and linear interpolation",
+            "return the resulting q tensor after finite and nonnegative boundary validation",
+        ],
+        "seed_semantics": "explicit seed is passed directly; namespace is an identity/version check, not an implicit seed source",
+        "rng_generator": "torch.Generator(device='cpu')",
+        "rng_dtype": "torch.float64",
+        "output": {
+            "object": "CPU torch.Tensor",
+            "shape": ["requested_sample_count", DIMENSION],
+            "dtype": "torch.float64",
+            "finite": True,
+            "nonnegative": True,
+            "q_definition": "R2_AMPLITUDE",
+            "persisted_mapping_keys": ["q", "producer_state_sha256", "rng_namespace", "seed", "requested_sample_count"],
+        },
+        "prohibited_sampling_behavior": {
+            "development_q_rows_required": False,
+            "fit_recomputation": False,
+            "fold_or_heldout_input": False,
+            "sealed_feedback": False,
+            "samplewise_normalization": False,
+            "rejection": False,
+            "best_of_n": False,
+            "retry": False,
+            "clipping_or_epsilon_repair": False,
+        },
+    }
+
+
+def _contract_payload(
+    repo_root: Path,
+    git: Mapping[str, Any],
+    authorities: Mapping[str, Any],
+    v2_summary: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    replay: Mapping[str, Any],
+    governance_snapshot: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "result": "VALID_COMPLETED",
+        "classification": READY_CLASSIFICATION,
+        "claim_classification": CLAIM_CLASSIFICATION,
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "git": {
+            **git,
+            "definition_script": _relative(repo_root, Path(__file__).resolve()),
+            "definition_script_sha256": file_sha256(Path(__file__).resolve()),
+            "expected_branch": EXPECTED_BRANCH,
+            "expected_head": EXPECTED_HEAD,
+        },
+        "input_authorities": dict(authorities),
+        "v2_development_authority": dict(v2_summary),
+        "selection": {
+            "selected_development_producer_candidate": SELECTED_DEVELOPMENT_CANDIDATE,
+            "selected_candidate_id": GAUSSIAN_CANDIDATE_ID,
+            "selection_basis": "sole V3 development-supported candidate on the frozen V2 bank",
+            "v3_gaussian_fold_pattern": [True, True, True, True, True],
+            "v3_gaussian_classification": "N3_EMPIRICAL_GAUSSIAN_COPULA_V3_DEVELOPMENT_SUPPORTED",
+            "v3_student_t_fold_pattern": [True, True, False, True, True],
+            "v3_student_t_classification": "N3_FIXED_R_STUDENT_T_COPULA_V3_NOT_SUPPORTED",
+            "secondary_metric_ranking_required": False,
+            "descriptive_v3_guardrails_used_as_tiebreak": False,
+            "posthoc_selection": False,
+            "project_selected_producer": None,
+            "frozen_producer_state": None,
+        },
+        "historical_immutability": {
+            "gaussian_v2_classification": "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED",
+            "gaussian_v2_fold_pattern": [True, True, True, True, False],
+            "student_t_v2_classification": "N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED",
+            "student_t_v2_fold_pattern": [True, True, False, True, True],
+            "v2_reports_modified": False,
+            "v3_gaussian_support_retained": True,
+            "v3_student_t_not_supported_retained": True,
+        },
+        "selected_producer_family": _selected_family_contract(candidate),
+        "full_development_fit": _full_fit_contract(),
+        "producer_state_contract": _producer_state_contract(),
+        "standalone_sampling_interface": _sampling_contract(),
+        "stage_boundary": {
+            "development_selection": {
+                "authority": "V3 frozen-candidate replay",
+                "selection_result": SELECTED_DEVELOPMENT_CANDIDATE,
+                "scope": "development-only",
+                "sealed_access": False,
+            },
+            "producer_state_freeze": {
+                "status_now": "DEFINED_NOT_EXECUTED",
+                "requires": "one later all-5000 V2 development fit and complete immutable state serialization",
+                "state_now": None,
+                "sealed_access": False,
+            },
+            "sealed_confirmation": {
+                "status": "RESERVED_NOT_MATERIALIZED",
+                "consumed": False,
+                "separate_future_contract_required": True,
+                "cannot_drive_selection_or_fit_tuning": True,
+                "input_to_this_consumer": False,
+            },
+        },
+        "claim_boundary": {
+            "claim": "EMPIRICAL_GAUSSIAN_COPULA is the sole candidate that passed calibrated V3 raw-q development compatibility on all five N3 Development Bank V2 folds",
+            "amplitude_side_only": True,
+            "not_independent_confirmation": True,
+            "not_population_generalization": True,
+            "not_complex_ols_compatibility": True,
+            "not_amplitude_phase_joint_validity": True,
+            "not_semantic_controllability": True,
+            "not_image_generation": True,
+            "not_optical_realizability": True,
+            "not_chen_style_complete_ols_reproduction": True,
+            "not_training_or_formal_promotion": True,
+        },
+        "governance": {
+            "selected_producer_candidate": SELECTED_DEVELOPMENT_CANDIDATE,
+            "selected_producer": None,
+            "frozen_producer_state": None,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "sealed_confirmation_status": "RESERVED_NOT_MATERIALIZED",
+            "sealed_confirmation_consumed": False,
+            "governance_transition": "candidate selection is recorded; project producer and state remain unfrozen",
+            "pre_contract_governance_snapshot_sha256": governance_snapshot["governance_state"],
+        },
+        "not_executed": [
+            "all-5000-row full-development producer fit",
+            "producer-state serialization",
+            "producer-state SHA publication",
+            "new all-development model-q sampling",
+            "sealed confirmation loading or materialization",
+            "Student-t retry or reselection",
+            "new q producer or evaluator",
+            "new guardrail calibration",
+            "complex OLS, phase, image, semantic, or optical evaluation",
+            "CUDA, optimizer, backward, or training",
+            "formal promotion or generation readiness",
+        ],
+        "contract_totality": _contract_totality_checks(),
+        "next_action": "EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1",
+        "only_next_action_authorized": True,
+        "selection_authority_replay_report_sha256": V3_REPLAY_REPORT_SHA256,
+    }
+
+
+def define_contract(repo_root: Path) -> dict[str, Any]:
+    root = repo_root.resolve()
+    git = _git_state(root)
+    _require(git["branch"] == EXPECTED_BRANCH, f"unexpected branch: {git['branch']}")
+    _require(git["head"] == EXPECTED_HEAD, f"unexpected HEAD: {git['head']}")
+    _governance, governance_snapshot = _validate_current_governance(root)
+    source, q_manifest, fold, ceiling = _validate_v2_authorities(root)
+    replay, _lineage, _evaluator, _calibration = _validate_v3_selection(root)
+    _registry, _comparison, candidate, _historical = _validate_n4_and_gaussian(root)
+    authorities = _authority_bundle(root, governance_snapshot)
+    payload = _contract_payload(
+        root,
+        git,
+        authorities,
+        _v2_authority_summary(source, q_manifest, fold, ceiling),
+        candidate,
+        replay,
+        governance_snapshot,
+    )
+    return payload
+
+
+def publish_contract(repo_root: Path, payload: Mapping[str, Any]) -> Path:
+    target = repo_root / OUTPUT_DIR / CONTRACT_NAME
+    if target.exists():
+        raise FileExistsError(f"refusing to overwrite selected-producer contract: {target}")
+    atomic_write_new_json(target, payload, artifact_kind="selected-producer freeze contract")
+    return target
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--publish", action="store_true", help="publish the write-once contract after validation")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
+    try:
+        payload = define_contract(args.repo_root)
+        target = None
+        if args.publish:
+            target = publish_contract(args.repo_root.resolve(), payload)
+        output = {
+            "result": "READY",
+            "classification": READY_CLASSIFICATION,
+            "semantic_authority": PRODUCER_STATE_SEMANTIC_ID,
+            "contract_schema": CONTRACT_SCHEMA,
+            "artifact_path": _relative(args.repo_root.resolve(), target) if target else None,
+            "artifact_sha256": file_sha256(target) if target else None,
+            "selected_development_producer_candidate": SELECTED_DEVELOPMENT_CANDIDATE,
+            "frozen_producer_state": None,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "sealed_confirmation": "RESERVED_NOT_MATERIALIZED",
+            "next_action": "EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1",
+        }
+        print(json.dumps(output, indent=2, sort_keys=True))
+        return 0
+    except (InvalidHarnessError, FileNotFoundError, FileExistsError) as exc:
+        print(json.dumps({"result": "BLOCKED", "reason": str(exc)}, indent=2, sort_keys=True))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

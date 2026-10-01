@@ -1,0 +1,120 @@
+schema: lightgen_optical_manifold_smf_bogt_mpcdar_rank16_integration_qualification_v1
+hypothesis: H-LOMA-CBOGT-S8-MPCDAR-R16-IQ
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+parent:
+  id: H-LOMA-CBOGT-S7-MPCDAR_attempt-03
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1.yaml
+  config_sha256: eee1cb9c26369e7226ae6b8588943ed3e83fa18a71013afa29fbfa0e89e5d4c3
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_review_v1.json
+  review_sha256: 108721c4db7c80dd56b7166bb32ef5b4ca2129f91bd76b60682c39e26a5cfcbd
+  implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery.py
+  implementation_module_sha256: aaf2892651b6c22d9ee78d7deecb10fd47af1a18a481f7a3699735631afb7337
+  implementation_commit: b59172750d0c88bbc9f7426ab7a21a1d63639f57
+  validation: outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/validation.json
+  validation_sha256: b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2
+  audit: outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/audit.json
+  audit_sha256: 43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785
+  compact_report: outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/compact_report.json
+  compact_report_sha256: 9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9
+  status: passed
+  classification: mean_preserving_centered_data_aware_readout_recovery_completed
+artifact:
+  manifest_schema: lightgen_optical_manifold_smf_bogt_mpcdar_rank16_integration_qualification_artifact.v1
+  payload_schema: lightgen_optical_manifold_smf_bogt_mpcdar_rank16_frozen_payload.v1
+  payload_file: payload.pt
+  rank: 16
+  feature_dim: 256
+  output_dim: 40000
+  target_shape: [200, 200]
+  formula_version: centered_mean_preserving_data_aware_rank16_factorized_v1
+  dtype: torch.float64
+  device_storage: cpu
+  keys: [mu_fit, c_mean, T16, V16]
+  tensor_shapes:
+    mu_fit: [256]
+    c_mean: [40000]
+    T16: [256, 16]
+    V16: [40000, 16]
+  scalar_count_total: 684352
+  raw_float64_tensor_bytes: 5474816
+  formula: prediction = c_mean + ((z64 - mu_fit) @ T16) @ V16.T
+  runtime_module: src/ldm_project/v2/application/current/frozen_mpcdar_rank16_readout.py
+fit_replay:
+  panel_identity: probe_fit_origin_reference|mnist_train_indices_0_54999|N=1000|per_label=100
+  count: 1000
+  moment_accumulator: mpcdar._replay_fit_moments
+  arithmetic: deterministic float64 Welford/Chan merge
+  centered_definition: C=M2/N
+  mu_parent_sha256: 187bb9a64c2142dcb7eb79325f3720bc8d86a6c854c9ddcc4725add4c4069496
+  C_parent_sha256: be2ac0c63a6bcf290ee04fde074508d823c462368c9360078f99b9556b2b4d52
+  probe_sha256: 3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed
+  fit_panel_hash: 532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d
+  target_labels_used: false
+  target_values_used: false
+  selection_used: false
+  confirmation_used: false
+  refit: false
+panels:
+  selection:
+    count: 1000
+    source: mnist_test_indices_5000_9999
+    role: registered_selection
+  confirmation:
+    count: 5000
+    source: horizon_heldout_train_indices_55000_59999
+    role: registered_confirmation
+  feature_contract: output.camera -> mra._feature_projection(real, complex_value=False)
+  feature_contract_version: mra._feature_projection.real.adaptive_avg_pool_16x16.v1
+  streaming: true
+  prediction_bank_saved: false
+  pooled_feature_bank_saved: false
+  target_bank_saved: false
+  internal_stage_capture: false
+tolerances:
+  probe_replay_absolute: 1.0e-05
+  probe_replay_relative: 1.0e-06
+  integration_reference_absolute: 1.0e-04
+  integration_reference_relative: 1.0e-06
+  physical_baseline: 1.0e-06
+evaluation:
+  rank: 16
+  candidate_family: [16]
+  search: false
+  tested_ranks: [16]
+  unsearched_ranks: [0, 1, 2, 4, 8, 32, 64, 128, 256]
+  selection_before_confirmation: true
+  confirmation_conditional_on_selection: true
+  fit_replayed_in_each_process: true
+  reference_and_artifact_same_feature_stream: true
+  no_refit: true
+  no_training: true
+  no_physical_forward_modification: true
+resource:
+  microbatch_size: 10
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_mpcdar_rank16_integration_qualification
+  no_update_diagnostic_authorized: true
+  integration_only: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  generation: false
+  prohibited:
+    - training
+    - optimizer
+    - gradient
+    - backward
+    - probe_refit
+    - bias_refit
+    - decoder
+    - generation
+    - promotion
+    - new_rank
+    - rank_family_mutation
+    - target_fitting
+    - physical_forward_modification

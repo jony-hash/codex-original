@@ -1,0 +1,662 @@
+"""Freeze the execution protocol for the already-defined N3 low-rank study.
+
+This is a definition consumer, not an experiment executor.  It validates the
+immutable model-order contract and its prior readiness failure, then records
+the missing execution semantics in one write-once JSON artifact.  It never
+fits a candidate, selects a rank, opens an attempt, or executes CUDA.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import git_identity
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256, safe_torch_load, tensor_sha256
+
+
+TASK_ID = "DEFINE_LIGHTGEN_2D_N3_LOW_RANK_FIT_PROTOCOL_V1"
+PROTOCOL_SCHEMA = "lightgen_2d_n3_low_rank_fit_protocol.v1"
+CLASSIFICATION = "N3_LOW_RANK_FIT_PROTOCOL_DEFINED"
+OUTER_GATE = "NONE"
+REQUIRED_AUTHORIZATION = (
+    "AUTHORIZED_EXECUTE_LIGHTGEN_2D_N3_LOW_RANK_CLASS_CONDITIONED_STRUCTURAL_MODEL_ORDER_V1"
+)
+
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_CONSUMER_HEAD = "500045d6a92843c81ffeda010e01351f559e453b"
+HISTORICAL_PRODUCER_HEAD = "a9cd1749adfa690e282fd52a6425564fc2cf102c"
+
+CONTRACT_PATH = Path(
+    "outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1/runs/"
+    "contract_definition_01/lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract.v1.json"
+)
+CONTRACT_SHA256 = "a5c7c3ab6528871f33b58a965a6d89870749a4e3bf1028e27d062ac78c53ae16"
+READINESS_FAILURE_PATH = Path(
+    "outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1/runs/"
+    "readiness_failure_01/n3_model_order_fit_protocol_undefined.v1.json"
+)
+READINESS_FAILURE_SHA256 = "bc96f1ebb870f88bbce9f30407af1b81c790ae41f8e7332c00893a2f9601b30c"
+
+START_CHECKPOINT = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/"
+    "attempt_03/scientific_step_009000.pt"
+)
+START_CHECKPOINT_SHA256 = "14e76f3273e6f794cbadaee63a881bd686645016c5c5aba62c727ce9860afcee"
+START_GENERATOR_TENSOR_SHA256 = "7ca256a5f9979941f11950cc543ac702e8c8602e0f958106b2de206f9c939147"
+FROZEN_RUNTIME_STATE_SHA256 = "bd03b3d1ff5e5204981eab28b1a73965a334d900191f8741e5f0bfd0ad3790cd"
+
+TRAINING_SOURCE = Path("data/MNIST/processed/training.pt")
+TRAINING_SOURCE_SHA256 = "8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd"
+STRUCTURAL_REPORT = Path(
+    "outputs/20260921_non_classifier_structural_semantic_confirmation_v1/runs/"
+    "attempt_04/report.json"
+)
+STRUCTURAL_REPORT_SHA256 = "126d5ed7dd35ed3117c23683582e28e790ab948da16be063deb3e2cc4fd29b95"
+STRUCTURAL_REFERENCE = Path(
+    "outputs/20260921_non_classifier_structural_semantic_confirmation_v1/runs/"
+    "attempt_04/structural_reference.pt"
+)
+STRUCTURAL_REFERENCE_SHA256 = "e6304ac70fafc7f5d5ecc61c0d91af6520fa257bc8fe50903cbe340a7bcae142"
+SURROGATE_NORMALIZATION = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/"
+    "attempt_03/surrogate_normalization.pt"
+)
+SURROGATE_NORMALIZATION_SHA256 = "63d0e11aefadd55acb7248b91b631a44a6a9aa4a6da4ca624e35b3276cd2cf98"
+ACCEPTED_STRUCTURAL_REPORT = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/attempt_03/report.json"
+)
+ACCEPTED_STRUCTURAL_REPORT_SHA256 = "83ae194a80699557c40864dcf994e73027f6c1ca7ecbaac5ccf1cd03e46fdc30"
+SOURCE_MANIFEST = Path(
+    "outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/attempt_03/source_manifest.json"
+)
+SOURCE_MANIFEST_SHA256 = "04c001f7d925ec4b6ff59bb448d2b352b22a6fa16a9c286787340f63db36b8b6"
+
+STRUCTURAL_OBJECTIVE_SOURCE = Path(
+    "scripts/research/lightgen/execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1.py"
+)
+STRUCTURAL_OBJECTIVE_SOURCE_SHA256 = "c8b2af36df70d7c0fedaaec7a089234e1833da0e2c4a85d47b6504bdaf6e2eeb"
+SEMANTIC_OBJECTIVE_SOURCE = Path(
+    "scripts/research/lightgen/execute_lightgen_2d_three_evaluator_robust_semantic_continuation_v1.py"
+)
+SEMANTIC_OBJECTIVE_SOURCE_SHA256 = "f148a3eab5315bc1c60c38af6bf4d1c96c25fbf3becf44c45cfdf2a4dc99367f"
+RUNTIME_SOURCE = Path(
+    "src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py"
+)
+RUNTIME_SOURCE_SHA256 = "124cdca99c40dfc30e05f5b2db3be4cd9fc4cbb3ff944f226c01afcd80c8540b"
+SEMANTIC_RUNTIME_SOURCE = Path(
+    "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py"
+)
+SEMANTIC_RUNTIME_SOURCE_SHA256 = "d01a234f6486a99c7ac2307b1b4021ed2ffccb53812a0a858675617a9023c3ce"
+
+OUTPUT_ROOT = Path("outputs/20260923_n3_low_rank_class_conditioned_structural_model_order_v1")
+DEFAULT_OUTPUT_DIR = OUTPUT_ROOT / "runs" / "protocol_definition_01"
+PROTOCOL_NAME = "lightgen_2d_n3_low_rank_fit_protocol.v1.json"
+
+PHASE_SHAPE = (2, 1, 100, 100)
+PARAMETER_DIMENSION = 20_000
+CLASS_COUNT = 10
+RANK_DOMAIN = (0, 1, 2)
+FIT_UPDATES = 300
+FIT_ROWS_PER_CLASS = 256
+RECOVERY_INTERVAL = 25
+MASTER_SEED = 20_260_923
+RANK_SEED_STRIDE = 1_009
+INIT_ALPHA = 1.0e-6
+
+FROZEN_PARAMETER_NAMES = [
+    "theta_shared=accepted_step9000.generator.phase",
+    "encoder.phase",
+    "OLS",
+    "W_OLS",
+    "scale",
+    "T=I_100",
+    "S1",
+    "E_S",
+    "E_I",
+    "E_C",
+    "E_D",
+    "f_struct",
+    "surrogate_normalization",
+    "structural_reference",
+    "q95",
+]
+
+
+class ProtocolError(RuntimeError):
+    """Raised when the execution protocol cannot be uniquely frozen."""
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ProtocolError(message)
+
+
+def _mapping(value: object, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _repo_path(root: Path, value: str | Path) -> Path:
+    relative = Path(value)
+    _require(not relative.is_absolute(), f"{value} must be repository-relative")
+    return (root / relative).resolve()
+
+
+def _relative(root: Path, path: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def _artifact_ref(root: Path, relative: str | Path, expected: str, role: str) -> dict[str, str]:
+    target = _repo_path(root, relative)
+    _require(target.is_file(), f"{role} is missing: {target}")
+    observed = file_sha256(target).lower()
+    _require(observed == expected.lower(), f"{role} hash changed: {target}")
+    return {"path": _relative(root, target), "sha256": expected.lower(), "role": role}
+
+
+def _load_json(root: Path, relative: Path, expected_sha: str, name: str) -> dict[str, Any]:
+    _artifact_ref(root, relative, expected_sha, name)
+    payload = json.loads(_repo_path(root, relative).read_text(encoding="utf-8"))
+    return dict(_mapping(payload, name))
+
+
+def _validate_contract(root: Path) -> dict[str, Any]:
+    contract = _load_json(root, CONTRACT_PATH, CONTRACT_SHA256, "immutable N3 model-order contract")
+    _require(contract.get("schema") == "lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract.v1", "N3 contract schema changed")
+    _require(contract.get("classification") == "N3_LOW_RANK_MODEL_ORDER_CONTRACT_DEFINED", "N3 contract classification changed")
+    _require(contract.get("result") == "READY" and contract.get("status") == "valid_completed", "N3 contract is not valid completed")
+    _require(contract.get("execution_boundary", {}).get("scientific_attempt_created") is False, "N3 contract already consumed an attempt")
+    _require(contract.get("candidate_domain", {}).get("ranks") == [0, 1, 2], "N3 rank domain changed")
+    _require(contract.get("candidate_fit_procedure", {}).get("gradient_backend") == "SCALAR_REFERENCE_VJP", "N3 backend changed")
+    _require(contract.get("one_shot_selection", {}).get("selection_result_in_definition") is False, "N3 selection was consumed")
+    return contract
+
+
+def _validate_readiness_failure(root: Path) -> dict[str, Any]:
+    failure = _load_json(root, READINESS_FAILURE_PATH, READINESS_FAILURE_SHA256, "prior N3 readiness failure")
+    _require(failure.get("classification") == "N3_MODEL_ORDER_FIT_PROTOCOL_UNDEFINED", "prior failure classification changed")
+    _require(failure.get("result") == "BLOCKED" and failure.get("status") == "valid_failed", "prior readiness failure is not valid")
+    _require(failure.get("execution_boundary", {}).get("scientific_attempt_created") is False, "prior failure consumed an attempt")
+    _require(failure.get("authorization") == REQUIRED_AUTHORIZATION, "prior failure authorization changed")
+    return failure
+
+
+def _validate_git(root: Path) -> dict[str, Any]:
+    current = git_identity(root)
+    _require(current.get("branch") == EXPECTED_BRANCH, "consumer branch changed")
+    _require(current.get("head") == EXPECTED_CONSUMER_HEAD, "consumer HEAD changed")
+    return {
+        "producer": {
+            "head": HISTORICAL_PRODUCER_HEAD,
+            "role": "historical producer/source provenance",
+        },
+        "consumer": {
+            "branch": current.get("branch"),
+            "head": current.get("head"),
+            "worktree_dirty": current.get("worktree_dirty"),
+            "status_sha256": current.get("status_sha256"),
+        },
+        "consumer_head_exact_required": False,
+        "required_consumer_head": None,
+        "head_equal": current.get("head") == HISTORICAL_PRODUCER_HEAD,
+        "producer_head_is_provenance_only": True,
+        "semantics": "HASH_ON_TRUST_BOUNDARY_V2: producer HEAD is provenance unless an explicit consumer exact lock is consumed",
+    }
+
+
+def _validate_checkpoint(root: Path) -> dict[str, Any]:
+    path = _repo_path(root, START_CHECKPOINT)
+    payload = _mapping(
+        safe_torch_load(path, expected_sha256=START_CHECKPOINT_SHA256, map_location="cpu"),
+        "accepted step9000 checkpoint",
+    )
+    generator = payload.get("generator_state")
+    _require(payload.get("completed_updates") == 9000, "accepted checkpoint is not step9000")
+    _require(payload.get("trainable_parameter_names") == ["generator.phase"], "accepted trainable boundary changed")
+    _require(isinstance(generator, torch.Tensor), "accepted generator tensor is missing")
+    _require(tuple(generator.shape) == PHASE_SHAPE and generator.dtype == torch.float32, "accepted generator geometry changed")
+    _require(tensor_sha256(generator) == START_GENERATOR_TENSOR_SHA256, "accepted generator tensor changed")
+    _require(payload.get("frozen_runtime_state_sha256") == FROZEN_RUNTIME_STATE_SHA256, "frozen runtime identity changed")
+    return {
+        "path": START_CHECKPOINT.as_posix(),
+        "sha256": START_CHECKPOINT_SHA256,
+        "schema": payload.get("schema"),
+        "completed_updates": 9000,
+        "generator_shape": list(PHASE_SHAPE),
+        "generator_dtype": "torch.float32",
+        "generator_tensor_sha256": START_GENERATOR_TENSOR_SHA256,
+        "frozen_runtime_state_sha256": FROZEN_RUNTIME_STATE_SHA256,
+        "historical_optimizer_state_consumed": False,
+        "role": "frozen shared theta_shared baseline; not a continuation optimizer state",
+    }
+
+
+def _validate_source_manifest(root: Path) -> dict[str, Any]:
+    manifest = _load_json(root, SOURCE_MANIFEST, SOURCE_MANIFEST_SHA256, "accepted source manifest")
+    _require(manifest.get("schema") == "research_execution_source_manifest.v1", "source manifest schema changed")
+    _require(manifest.get("source_manifest_id") == "899bca5983365744a713b8f51471a1a007c52aed4bf59142006328f329c687b4", "source manifest identity changed")
+    _require(manifest.get("execution_source_semantics_id") == "7158a85d84d4422d080892941ea20d0f5527f707e37a4c92eb06a6e7585f47e0", "source semantics identity changed")
+    _require(manifest.get("semantic_authority_id") == "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION", "semantic authority changed")
+    return {
+        "path": SOURCE_MANIFEST.as_posix(),
+        "sha256": SOURCE_MANIFEST_SHA256,
+        "source_manifest_id": manifest["source_manifest_id"],
+        "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+        "semantic_authority_id": manifest["semantic_authority_id"],
+        "producer_head": manifest.get("head"),
+        "dirty": manifest.get("dirty"),
+        "relevant_source_identity": manifest.get("relevant_source_identity"),
+        "role": "historical frozen authority provenance; actual consumer source is recorded separately",
+    }
+
+
+def _validate_no_attempt(root: Path) -> None:
+    attempt_root = _repo_path(root, OUTPUT_ROOT / "runs" / "attempt_01")
+    _require(not attempt_root.exists(), "N3 attempt_01 already exists")
+
+
+def _authority_refs(root: Path) -> dict[str, Any]:
+    evaluator_files = {
+        "E_S_checkpoint": ("outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/smooth_mnist_evaluator_v21.pt", "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c", "frozen smooth evaluator"),
+        "E_I_checkpoint": ("outputs/20260724_v2/runs/20260724_114819_935841_formal_v2_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt", "16a42fad849ed9af249fa65bed9567a8fabc011fcc9d107061f69cdb27f21684", "frozen independent evaluator"),
+        "E_C_checkpoint": ("outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt", "e5688c68a6fba506a22530770efd3f6a09d5c72097437c28c535ddec26a50f95", "frozen classifier evaluator"),
+        "E_D_checkpoint": ("outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt", "b8ece3e3bacedd5b5bec63073bee02ce7489161030b835740c681a1ebd3f9ff9", "frozen independent evaluator"),
+        "train_ols": ("outputs/20260917_chen_bogt_complex_ols_v1/runs/attempt_01/final_train_ols.pt", "2d1264219faa0964467d40f2e4882ec3767d3a1aafd30e143bf406aa39be6dcc", "frozen TRAIN OLS"),
+        "dev_ols": ("outputs/20260918_frozen_dev_ols_cmos_v1/runs/attempt_01/dev_complex_ols.pt", "5a8efe07c6ba52168f415e56fccdd68c2552b6dd5f4f975dabc96d2215fbb622", "frozen DEV OLS"),
+        "S1_winner": ("outputs/20260920_semantically_conditioned_ols_sampler_v1/runs/attempt_01/winner_frozen_sampler.pt", "166cf15ea91666afe1fe1c88e8897b88d58a4740253d59838927502babba568c", "frozen S1 sampler"),
+    }
+    evaluator_refs = {
+        name: _artifact_ref(root, path, sha, role)
+        for name, (path, sha, role) in evaluator_files.items()
+    }
+    return {
+        "accepted_step9000_checkpoint": _artifact_ref(root, START_CHECKPOINT, START_CHECKPOINT_SHA256, "accepted step9000 checkpoint"),
+        "frozen_structural_report": _artifact_ref(root, STRUCTURAL_REPORT, STRUCTURAL_REPORT_SHA256, "frozen structural report"),
+        "frozen_structural_reference": _artifact_ref(root, STRUCTURAL_REFERENCE, STRUCTURAL_REFERENCE_SHA256, "frozen structural reference"),
+        "accepted_surrogate_normalization": _artifact_ref(root, SURROGATE_NORMALIZATION, SURROGATE_NORMALIZATION_SHA256, "accepted surrogate normalization"),
+        "accepted_structural_execution_report": _artifact_ref(root, ACCEPTED_STRUCTURAL_REPORT, ACCEPTED_STRUCTURAL_REPORT_SHA256, "accepted structural execution report"),
+        "canonical_train_source": _artifact_ref(root, TRAINING_SOURCE, TRAINING_SOURCE_SHA256, "canonical TRAIN source"),
+        "accepted_source_manifest": _artifact_ref(root, SOURCE_MANIFEST, SOURCE_MANIFEST_SHA256, "accepted source manifest"),
+        "evaluator_and_ols_authorities": evaluator_refs,
+    }
+
+
+def _source_refs(root: Path) -> dict[str, Any]:
+    refs = {
+        "structural_objective": {
+            "path": _relative(root, _repo_path(root, STRUCTURAL_OBJECTIVE_SOURCE)),
+            "sha256": STRUCTURAL_OBJECTIVE_SOURCE_SHA256,
+            "functions": ["_structural_surrogate", "_normalized_surrogate", "_structural_bundle"],
+            "semantic_role": "immutable accepted differentiable structural objective implementation",
+        },
+        "semantic_objective": {
+            "path": _relative(root, _repo_path(root, SEMANTIC_OBJECTIVE_SOURCE)),
+            "sha256": SEMANTIC_OBJECTIVE_SOURCE_SHA256,
+            "role": "selection-only semantic evaluators; not part of FIT loss",
+        },
+        "runtime": {
+            "path": _relative(root, _repo_path(root, RUNTIME_SOURCE)),
+            "sha256": RUNTIME_SOURCE_SHA256,
+            "role": "frozen optical/runtime implementation authority",
+        },
+        "semantic_runtime": {
+            "path": _relative(root, _repo_path(root, SEMANTIC_RUNTIME_SOURCE)),
+            "sha256": SEMANTIC_RUNTIME_SOURCE_SHA256,
+            "role": "frozen semantic/evaluator runtime authority",
+        },
+    }
+    for item in refs.values():
+        role = item.get("role", item.get("semantic_role"))
+        _require(isinstance(role, str), "source reference role is missing")
+        _artifact_ref(root, item["path"], item["sha256"], role)
+    return refs
+
+
+def _init_protocol() -> dict[str, Any]:
+    return {
+        "parameter_dtype": "torch.float32",
+        "device": "cuda:0",
+        "flattening": "row-major over (2,1,100,100), j=0..19999",
+        "B": {
+            "shape": [PARAMETER_DIMENSION, "r"],
+            "requires_grad": True,
+            "rank_order": "k=0..r-1",
+            "element_formula": "B[j,k] = (-1)**((j >> k) & 1) / sqrt(20000)",
+            "normalization": "each column has unit L2 norm; the first two columns are orthogonal",
+            "rank_zero": "empty (20000,0) tensor",
+        },
+        "A": {
+            "shape": [CLASS_COUNT, "r"],
+            "requires_grad": True,
+            "class_order": "c=0..9",
+            "rank_order": "k=0..r-1",
+            "element_formula": "A[c,k] = 1e-6 * (-1)**bit_count(c & (1 << k))",
+            "scale": INIT_ALPHA,
+            "rank_zero": "empty (10,0) tensor",
+        },
+        "correction_at_initialization": "nonzero for positive ranks and exactly zero for r=0; no data-dependent initialization",
+        "shared_baseline": "theta_shared is copied from accepted step9000 generator.phase and is never optimized",
+    }
+
+
+def _rng_protocol() -> dict[str, Any]:
+    return {
+        "master_seed": MASTER_SEED,
+        "rank_seed_derivation": f"seed_r = {MASTER_SEED} + {RANK_SEED_STRIDE}*r",
+        "rank_seeds": {str(rank): MASTER_SEED + RANK_SEED_STRIDE * rank for rank in RANK_DOMAIN},
+        "cpu_generator": "torch.Generator(device='cpu').manual_seed(seed_r)",
+        "cuda_generator": "torch.cuda.manual_seed_all(seed_r) for logical cuda:0",
+        "global_seed_calls": ["torch.manual_seed(seed_r)", "torch.cuda.manual_seed_all(seed_r)"],
+        "sampler_rng": None,
+        "determinism": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "torch_use_deterministic_algorithms": {"enabled": True, "warn_only": False},
+            "cudnn_deterministic": True,
+            "cudnn_benchmark": False,
+            "cuda_matmul_tf32": False,
+            "cuda_cudnn_tf32": False,
+        },
+        "reset_order": [
+            "snapshot process CPU/CUDA RNG before each rank preflight or fit",
+            "restore snapshot after rank teardown",
+            "seed the rank-specific CPU/CUDA generators",
+            "restore the caller snapshot after the rank completes",
+        ],
+        "rank_independence": "each rank starts from the same baseline and fresh rank-derived RNG; no rank inherits another rank's RNG or optimizer state",
+        "environment_binding": {"pytorch": "2.5.1", "cuda_build": "12.1", "device": "NVIDIA GeForce RTX 3060 Laptop GPU", "logical_device": "cuda:0"},
+    }
+
+
+def _lookup_protocol() -> dict[str, Any]:
+    return {
+        "labels": {"dtype": "torch.int64", "shape": "(N,)", "legal_range": [0, 9], "invalid_behavior": "fail closed"},
+        "operation": "coeff = A.index_select(0, labels)",
+        "coefficient_shape": "(N,r)",
+        "correction_operation": "flat_delta = coeff @ B.T",
+        "correction_shape": "(N,20000)",
+        "reshape": "flat_delta.reshape(N,2,1,100,100)",
+        "injection": "theta_c = theta_shared.unsqueeze(0) + correction; inject immediately before existing phase-only modulation",
+        "broadcasting": "only batch dimension N broadcasts; no class/sample axis may broadcast silently",
+        "class_mapping": "label c maps to A[c,:] with class order 0..9 and row-major phase axes",
+        "shape_or_label_failure": "wrong dtype, rank, range, batch shape, or nonfinite correction is technical-invalid and stops the experiment",
+    }
+
+
+def _objective_protocol() -> dict[str, Any]:
+    return {
+        "authority": {
+            "semantic_authority_id": "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION",
+            "implementation": STRUCTURAL_OBJECTIVE_SOURCE.as_posix(),
+            "functions": ["_structural_surrogate", "_normalized_surrogate", "_structural_bundle"],
+            "source_sha256": STRUCTURAL_OBJECTIVE_SOURCE_SHA256,
+        },
+        "input_and_features": {
+            "raw_cmos_view": "prior _cmos_view(raw_intensity)",
+            "target_view": "frozen target CMOS view from N3_FIT input",
+            "surrogate_dimension": 336,
+            "soft_thresholds": [0.25, 0.50, 0.75],
+            "tau": 0.05,
+            "eps_mass": 1.0e-12,
+            "normalization": "(value - canonical TRAIN-target mean) / max(population_std, 1e-6)",
+            "normalization_artifact": {"path": SURROGATE_NORMALIZATION.as_posix(), "sha256": SURROGATE_NORMALIZATION_SHA256},
+            "target_detached": True,
+        },
+        "loss": "mean((normalized_surrogate(raw_cmos_view) - normalized_surrogate(target_view.detach()))**2)",
+        "reduction": "one float64-equivalent mean over the 10-row batch and all 336 features; no per-class weighting beyond the fixed one-row-per-class batch",
+        "fit_terms": ["L_struct"],
+        "excluded_fit_terms": ["L_S", "L_I", "L_C", "SIC", "L_rec", "L_op", "delta_struct", "weighted utility"],
+        "phase_interaction": "real additive phase correction enters the existing phase-only transfer; no amplitude, evaluator, OLS, or architecture replacement",
+        "sign": "minimize L_struct; lower is better",
+    }
+
+
+def _optimizer_protocol() -> dict[str, Any]:
+    return {
+        "name": "Adam",
+        "parameter_names": ["n3_correction.B", "n3_correction.A"],
+        "learning_rate": 1.0e-3,
+        "betas": [0.9, 0.999],
+        "eps": 1.0e-8,
+        "weight_decay": 0.0,
+        "amsgrad": False,
+        "scheduler": None,
+        "gradient_clipping": None,
+        "projection": None,
+        "state_initialization": "fresh zero first/second moments for A and B; optimizer step=0 for every rank",
+        "reset_from_step9000": {
+            "value": True,
+            "meaning": "reset candidate parameters to accepted step9000 baseline plus deterministic correction initialization",
+            "historical_adam_state_consumed": False,
+            "accepted_step9000_moments": "not loaded; historical generator.phase Adam state is irrelevant to new A/B tensors",
+        },
+        "update_counts": {"rank_0": 0, "rank_1": FIT_UPDATES, "rank_2": FIT_UPDATES},
+        "rank_schedule": "same optimizer hyperparameters and update count for all positive ranks",
+    }
+
+
+def _sampler_protocol(contract: Mapping[str, Any]) -> dict[str, Any]:
+    roles = _mapping(_mapping(contract["data_roles"], "contract data_roles")["roles"], "contract roles")
+    fit = _mapping(roles["N3_FIT"], "N3_FIT")
+    return {
+        "data_role": "TRAIN",
+        "authority": "contract.data_roles.roles.N3_FIT",
+        "count": fit["count"],
+        "rows_per_class": FIT_ROWS_PER_CLASS,
+        "indices_sha256": fit["indices_sha256"],
+        "indices_by_class": fit["indices_by_class"],
+        "batch_size": CLASS_COUNT,
+        "batch_rule": "indices_by_class[c][cursor % 256] for c=0..9, in class order",
+        "initial_cursor": 0,
+        "cursor_update": "cursor := (cursor + 1) % 256 after each persistent update",
+        "schedule": "cyclic class-balanced schedule; 256-row per-class bank is reused deterministically across 300 updates",
+        "rank_reset": "cursor=0 for rank 0 measurement and independently for ranks 1 and 2",
+        "sampler_rng": None,
+        "forbidden_roles": ["N3_SELECT", "N3_CONFIRM", "DEV", "protected", "test", "sealed"],
+        "selection_leakage": "no metric, label order, or sample from N3_SELECT/N3_CONFIRM may enter FIT",
+    }
+
+
+def _budget_protocol() -> dict[str, Any]:
+    return {
+        "rank_0": {"updates": 0, "role": "exact shared baseline reference", "fit": False},
+        "rank_1": {"updates": FIT_UPDATES, "fit": True},
+        "rank_2": {"updates": FIT_UPDATES, "fit": True},
+        "equal_positive_rank_budget": True,
+        "early_stopping": False,
+        "evaluation_cadence": "final_only at update 300 for positive ranks; baseline evaluated once",
+        "selection_during_fit": False,
+        "selection_input": "only intact endpoint fit_final_rank_{r}_step_00300.pt is passed to N3_SELECT",
+        "max_updates": FIT_UPDATES,
+    }
+
+
+def _recovery_protocol() -> dict[str, Any]:
+    return {
+        "recovery_interval_updates": RECOVERY_INTERVAL,
+        "write_once": True,
+        "recovery_pattern": "recovery_rank_{r}_step_{step:05d}.pt",
+        "final_endpoint_pattern": "fit_final_rank_{r}_step_00300.pt",
+        "persisted_state": ["A", "B", "Adam state", "cursor", "CPU/CUDA RNG", "source manifest", "rank seed", "contract/protocol hashes"],
+        "resume": "a technical interruption may resume the same rank/attempt from the latest intact recovery with exact state; no changed semantics or alternate rank may be substituted",
+        "corrupt_or_missing_recovery": "technical-invalid; required rank failure terminates the one-shot experiment",
+        "recovery_as_selection": False,
+        "checkpoint_selection": "none; final endpoint only, and N3_SELECT is run once",
+        "confirmation_endpoint": "N3_CONFIRM receives only the single rank selected by the frozen contract after all required fits complete",
+    }
+
+
+def _failure_protocol() -> dict[str, Any]:
+    return {
+        "technical_invalid": [
+            "nonfinite loss, gradient, parameter, optimizer state, or RNG state",
+            "CUDA/runtime failure or OOM",
+            "shape/label lookup or physical-validity failure",
+            "incomplete 300-update budget",
+            "corrupt or missing recovery",
+            "protected/test/sealed read or data-role leakage",
+        ],
+        "technical_status": "INVALID_HARNESS",
+        "technical_scope": "any required rank technical-invalid terminates the entire one-shot comparison before N3_SELECT/N3_CONFIRM; the rank is not silently removed",
+        "scientific_infeasibility": "a valid, complete finite candidate that fails the frozen N3_SELECT semantic feasibility rule participates as scientifically infeasible",
+        "retry": "no retry that changes initialization, seed, budget, optimizer, data roles, or objective; same-state recovery only for technical interruption",
+        "selection_fallback": None,
+    }
+
+
+def _physical_protocol() -> dict[str, Any]:
+    return {
+        "phase": "real finite theta_c; existing transfer exp(i*theta_c) remains unit modulus",
+        "amplitude": "unchanged existing positive intensity/amplitude path",
+        "clip": False,
+        "wrap": False,
+        "projection": False,
+        "reparameterization": False,
+        "violation": "technical-invalid; never silently corrected",
+        "retained_checks": ["raw CMOS finite/nonconstant", "nonnegative plane power", "existing reconstruction validity", "existing optical validity"],
+        "frozen_hard_authorities": ["337D hard structural metric", "q95", "class order", "threshold", "evaluator definitions"],
+    }
+
+
+def _preflight_protocol() -> list[dict[str, Any]]:
+    return [
+        {"order": 1, "id": "authority_identity", "check": "contract, prior failure, accepted checkpoint, producer/consumer semantics and source manifest hashes", "expected": "PASS"},
+        {"order": 2, "id": "rank_zero_exact_baseline", "check": "r=0 produces theta_shared exactly and no trainable correction", "expected": "PASS"},
+        {"order": 3, "id": "rank_initialization", "check": "deterministic r=1/r=2 A/B formulas, dtype/device/layout/counts", "expected": "PASS"},
+        {"order": 4, "id": "class_lookup", "check": "labels 0..9 index A, multiply B.T, reshape and inject with no silent broadcasting", "expected": "PASS"},
+        {"order": 5, "id": "finite_loss_and_gradients", "check": "finite frozen differentiable L_struct and finite scalar-reference gradients on the first N3_FIT batch", "expected": "PASS"},
+        {"order": 6, "id": "trainable_frozen_firewall", "check": "only A/B require gradients and all frozen parameters/buffers remain unchanged", "expected": "PASS"},
+        {"order": 7, "id": "optimizer_semantics", "check": "fresh Adam zero state, exact hyperparameters, no historical step9000 moments", "expected": "PASS"},
+        {"order": 8, "id": "sampler_first_batch", "check": "cursor=0 gives one frozen TRAIN row per class and no SELECT/CONFIRM/protected/test/sealed reads", "expected": "PASS"},
+        {"order": 9, "id": "temporary_update_rank_1", "check": "one temporary A/B Adam update is finite and changes trainable tensors only", "expected": "PASS"},
+        {"order": 10, "id": "temporary_update_rank_2", "check": "one temporary A/B Adam update is finite and changes trainable tensors only", "expected": "PASS"},
+        {"order": 11, "id": "exact_rollback", "check": "restore parameters, optimizer, cursor, CPU/CUDA RNG and runtime state byte/tensor exactly after each temporary update", "expected": "PASS"},
+        {"order": 12, "id": "physical_validity", "check": "phase-only transfer and existing raw CMOS/power/reconstruction/optical checks", "expected": "PASS"},
+        {"order": 13, "id": "cuda_viability", "check": "required device is available and one temporary update for each positive rank completes without OOM", "expected": "PASS"},
+        {"order": 14, "id": "data_firewall", "check": "protected/test/sealed read counters are all zero", "expected": "PASS"},
+    ]
+
+
+def build_protocol(root: Path) -> dict[str, Any]:
+    root = root.resolve()
+    _validate_no_attempt(root)
+    contract = _validate_contract(root)
+    failure = _validate_readiness_failure(root)
+    git = _validate_git(root)
+    checkpoint = _validate_checkpoint(root)
+    source_manifest = _validate_source_manifest(root)
+    authorities = _authority_refs(root)
+    source_refs = _source_refs(root)
+    fit = _mapping(contract["candidate_fit_procedure"], "contract candidate_fit_procedure")
+    _require(fit.get("gradient_backend") == "SCALAR_REFERENCE_VJP", "contract backend is not scalar reference")
+    _require(fit.get("updates") == FIT_UPDATES, "contract update budget changed")
+    partition = _mapping(contract["data_roles"], "contract data_roles")
+    roles = _mapping(partition["roles"], "contract roles")
+    _require(_mapping(roles["N3_FIT"], "N3_FIT").get("rows_per_class") == FIT_ROWS_PER_CLASS, "N3_FIT rows per class changed")
+    definition_path = Path(__file__).resolve()
+    return {
+        "schema": PROTOCOL_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "result": "READY",
+        "status": "valid_completed",
+        "classification": CLASSIFICATION,
+        "outer_gate": OUTER_GATE,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git": git,
+        "definition_entrypoint": {"path": _relative(root, definition_path), "sha256": file_sha256(definition_path)},
+        "contract_authority": {"path": CONTRACT_PATH.as_posix(), "sha256": CONTRACT_SHA256, "classification": contract["classification"]},
+        "prior_readiness_failure": {"path": READINESS_FAILURE_PATH.as_posix(), "sha256": READINESS_FAILURE_SHA256, "classification": failure["classification"]},
+        "source_manifest": source_manifest,
+        "accepted_step9000": checkpoint,
+        "frozen_authorities": authorities,
+        "source_implementations": source_refs,
+        "producer_consumer_semantics": {
+            "producer_head": HISTORICAL_PRODUCER_HEAD,
+            "consumer_head": EXPECTED_CONSUMER_HEAD,
+            "consumer_head_exact_required": False,
+            "producer_head_is_provenance_only": True,
+            "hash_on_trust_boundary": "HASH_ON_TRUST_BOUNDARY_V2",
+            "actual_consumer_source_manifest": "this protocol records the current consumer source separately; it does not require checkout to the historical producer head",
+        },
+        "model_family_binding": {
+            "rank_domain": list(RANK_DOMAIN),
+            "phase_shape": list(PHASE_SHAPE),
+            "parameter_dimension": PARAMETER_DIMENSION,
+            "correction": "Delta_theta_c = reshape(B @ A[c,:].T, (2,1,100,100))",
+            "trainable_parameter_names": ["n3_correction.B", "n3_correction.A"],
+            "stored_counts": {str(rank): (PARAMETER_DIMENSION + CLASS_COUNT) * rank for rank in RANK_DOMAIN},
+            "frozen_parameter_names": FROZEN_PARAMETER_NAMES,
+            "no_new_architecture": True,
+        },
+        "initialization": _init_protocol(),
+        "rng_and_determinism": _rng_protocol(),
+        "class_lookup_and_injection": _lookup_protocol(),
+        "fit_objective": _objective_protocol(),
+        "optimizer": _optimizer_protocol(),
+        "sampler": _sampler_protocol(contract),
+        "fit_budget": _budget_protocol(),
+        "checkpoint_and_recovery": _recovery_protocol(),
+        "technical_failure_semantics": _failure_protocol(),
+        "physical_validity": _physical_protocol(),
+        "strict_preflight": {
+            "ordered_checks": _preflight_protocol(),
+            "expected_status": "READY",
+            "scientific_attempt_created": False,
+            "cuda_executed_by_definition": False,
+            "optimizer_updates_by_definition": 0,
+            "rank_selected_by_definition": False,
+            "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+        },
+        "execution_boundary": {
+            "required_execution_authorization": REQUIRED_AUTHORIZATION,
+            "authorization_consumed": False,
+            "candidate_fit_executed": False,
+            "rank_selection_executed": False,
+            "scientific_attempt_created": False,
+            "cuda_executed": False,
+            "optimizer_updates": 0,
+            "checkpoint_writes": 0,
+            "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+            "next_action": "a later authorized executor must consume this protocol and return a strict READY receipt before creating an attempt",
+        },
+        "claim_boundary": {
+            "protocol_only": True,
+            "contract_unchanged": True,
+            "no_candidate_support_claim": True,
+            "no_rank_selection": True,
+            "no_scientific_result": True,
+            "no_promotion": True,
+        },
+    }
+
+
+def write_protocol(root: Path, output_dir: str | Path = DEFAULT_OUTPUT_DIR) -> Path:
+    root = root.resolve()
+    target = (root / output_dir if not Path(output_dir).is_absolute() else Path(output_dir)).resolve()
+    outputs_root = (root / "outputs").resolve()
+    _require(outputs_root in target.parents and target not in {outputs_root, outputs_root / "runs"}, "protocol output must be a distinct child under outputs")
+    _require(not target.exists(), f"protocol output already exists: {target}")
+    payload = build_protocol(root)
+    target.mkdir(parents=True, exist_ok=False)
+    path = target / PROTOCOL_NAME
+    atomic_write_new_json(path, payload, artifact_kind="N3 low-rank fit protocol")
+    return path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    args = parser.parse_args()
+    path = write_protocol(args.repo_root, args.output_dir)
+    print(json.dumps({"result": "READY", "classification": CLASSIFICATION, "outer_gate": OUTER_GATE, "protocol": path.as_posix(), "candidate_fit_executed": False, "rank_selection_executed": False, "cuda_executed": False}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

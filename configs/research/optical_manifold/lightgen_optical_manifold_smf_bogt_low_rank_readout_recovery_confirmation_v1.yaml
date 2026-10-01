@@ -1,0 +1,220 @@
+schema: lightgen_optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation_v1
+hypothesis: H-LOMA-CBOGT-S6-LRRC
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+lineage:
+  amendment: H-LOMA-CBOGT-S6-LRRC
+  parent_hypothesis: H-LOMA-CBOGT-S6-LSDA
+  lineage_start_head: e0e9145836e9d3786dbe643fceae5d72e2e7d96a
+  rmal_probe_frozen: true
+  lsda_passed_required: true
+  selection_confirmation_not_consumed: true
+  attempt_name: lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04
+rmal_consumer:
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
+  config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_review_v1.json
+  review_sha256: 73ba944ac5766c88591e0f5125cc031a1c9c55bd84aa2cbc30ea457bd4fb30e8
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/validation.json
+  validation_sha256: affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/audit.json
+  audit_sha256: 5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa
+  compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/compact_report.json
+  compact_report_sha256: c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137
+  probe: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/probes.pt
+  probe_sha256: 3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed
+  implementation_commit: 5b274b926474784a1ad49744e75190afff31747c
+  audit_status: passed
+  audit_classification: bounded_recoverability_established_at_detector
+lsda_consumer:
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit_v1.yaml
+  config_sha256: d5093fc9f26ccf19eaa1bb74c3867fb25023e5837c00e96c5432facd30d9339d
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit_review_v1.json
+  review_sha256: b57b0098c4ed69591d96a889a806dea42479175740eb79b3e7d5ac8fe1536cb3
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/validation.json
+  validation_sha256: 3f24dcc7d56e098ec778998bb8ddc7871973131f1d7269c86da729395426c2f2
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/audit.json
+  audit_sha256: 97842d5707541516c79adb87c3a1e609ee533156895908c9e99c015cde0f9b13
+  compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/compact_report.json
+  compact_report_sha256: e281daf9a4a62f85828a3bc8055ce044027d0c0fb1af0a522febcf3c2b68185b
+  implementation_module: src/ldm_project/v2/application/research/optical_manifold/optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit.py
+  implementation_module_sha256: 0e501ee3d777bdbb17cfb156f2779352530f39a8ed4c62b8cbb48adc186ebd08
+  implementation_commit: bed235283d1fa47f4a5a38d41368d87ce2b5d218
+  result_git_commit: e0e9145836e9d3786dbe643fceae5d72e2e7d96a
+  status: passed
+  classification: linear_readout_spectral_attribution_completed
+rwsa_identity:
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_v1_attempt_02/audit.json
+  audit_classification: invalid_harness
+  audit_sha256: 4d0154eb002cb812056eed40fce11d7f8e2e9a2f6cfc998d4393b1a14f2d654f
+  audit_status: invalid_harness
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_v1.yaml
+  config_sha256: 076e447cd2a574cdaf6196bfecfa7071d3fd66957501d61e06bdb0847998171a
+  implementation_commit: 5b274b926474784a1ad49744e75190afff31747c
+  implementation_module_sha256: f9ef7f32d8d02051fcb11286e02c6e06aaed66a8724a79fec5e63ddacf59844c
+  result_git_commit: 0dead1b73655b3556450cedbb5d0a2c579385209
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_review_v1.json
+  review_sha256: b616d431e3727b59c6dbaa146be84513f04c1fd89e1457b523f91f5ddbbb77ae
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_v1_attempt_02/validation.json
+  validation_sha256: 498903c577b6997a3f57fabe21c27217fcc29abc4eff6e1de029f9b9ba692763
+  validation_status: passed
+rwsa_active_identity:
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_active_domain_v1_attempt_02/audit.json
+  audit_classification: descriptive_structural_attribution_completed
+  audit_sha256: cb3feabbfc0b70e23d43ae18a354dabc112319eb11d2c8cea2c13f6bd5c0337b
+  audit_status: passed
+  compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_active_domain_v1_attempt_02/compact_report.json
+  compact_report_sha256: 23b38d3231594cb0eb3ebab21972b8979ffaf825e17c901f4b86d46eeddc1c11
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_active_domain_v1.yaml
+  config_canonical_sha256: 2115380c676fc710470429abed9438d154a1758db99e5635d6295eeaae03a25d
+  config_sha256: f5ae22615259888c1cb64b89dc11005d99c5412285461889118fed041cf2d18f
+  implementation_commit: e0c442f92dd23b71d048ceb647570b76406c0435
+  implementation_module_sha256: a357d89c0d06d98f48e06c76e6b1e58c660ba4c1cd0f5f8e8d9e2e7843388572
+  result_git_commit: e0c442f92dd23b71d048ceb647570b76406c0435
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_active_domain_review_v1.json
+  review_sha256: 77ceffe03f135cbf20c81a164b353242d5a755bbd104a7dd22becbd2d4cb4b9f
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_structure_attribution_active_domain_v1_attempt_02/validation.json
+  validation_sha256: 686d99f331c99b30a73cb3a70cc1002aa0a21a33b014e2a59a5e6c33f8a5e15d
+  validation_status: passed
+zcsa_identity:
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_zero_column_semantics_audit_v1_attempt_01/audit.json
+  audit_classification: zero_column_semantics_attribution_completed
+  audit_sha256: 0cba5990462e9f8cc238885b14c90c907a7c6f085877b6c8ad0c8b95cbf0bfb8
+  audit_status: passed
+  compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_zero_column_semantics_audit_v1_attempt_01/compact_report.json
+  compact_report_sha256: 772fb739b39d029c213ab42e8f552648782607b5562b6350d4d2c9744b73b9e6
+  config: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_zero_column_semantics_audit_v1.yaml
+  config_canonical_sha256: a09dfe21cd0735530689f52cae42067a14ee80776098bcf1321f993557a965c3
+  config_sha256: 7fba357434f83f5300982a5319fe161776824d4b3ee6487efe74db7c9fe09fb0
+  implementation_commit: 1f5e553f6c7ad80217427ab83f5669e7b9758acb
+  implementation_module_sha256: d046bd6b29993825deea33a4c02d6e0a7e10a9e73ddfd9016e918a04e9a7e1d7
+  result_git_commit: 1f5e553f6c7ad80217427ab83f5669e7b9758acb
+  review_contract: configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_detector_readout_zero_column_semantics_audit_review_v1.json
+  review_sha256: ea90976379e935144ae51db18665862595d66cd538fdcc3835d8f7cdee0b59a0
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_zero_column_semantics_audit_v1_attempt_01/validation.json
+  validation_sha256: d422f1e31e8298f9662896f832b207ad896fb619c5a656bccf54b099cd419954
+  validation_status: passed
+  audit_status: passed
+rank_candidates: [1, 2, 4, 8, 16, 32, 64, 128, 256]
+controls:
+  rank_0_bias_only: prediction_0=b
+  rank_256_full_positive_anchor: U_256 U_256.T W plus original b
+truncation:
+  operator: P_k W where P_k=U_k U_k.T
+  factorized_operator: z_k=z U_k; dynamic=z_k (U_k.T W)
+  spectrum_source: LSDA ordered CPU float64 symmetric eigensolver
+  source_W_dtype: torch.float32
+  analysis_dtype: torch.float64
+  bias: original frozen RMAL b; never refit or recomputed
+  rank_specific_scaling: false
+  normalization: false
+  calibration: false
+  permanent_W_k_saved: false
+evaluation:
+  selection:
+    count: 1000
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+    per_label: 100
+    source: mnist_test_indices_5000_9999
+  confirmation:
+    count: 5000
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+    source: horizon_heldout_train_indices_55000_59999
+  candidate_prefix:
+    consumed: false
+    count: 5000
+    source: mnist_test_indices_0_4999
+  feature_path: output.camera -> mra._feature_projection(real, complex_value=False)
+  streaming: true
+  pooled_feature_bank_saved: false
+  target_bank_saved: false
+  internal_stage_capture: false
+  six_stage_rmal_search: false
+  no_refit: true
+gate_inheritance:
+  source: rmal._panel_gate(report, require_bootstrap=confirmation)
+  inherited_checks:
+    - finite
+    - feature_contract
+    - physical_anchor_replay
+    - relative_improvement
+    - strict_template_crossing
+    - paired_below_cyclic
+    - instance_sensitive
+    - frozen
+    - bootstrap_lower_bound
+    - square_law_consistency
+  material_relative_improvement: 0.05
+  bootstrap_replicates: 2000
+  bootstrap_seed: 1236
+  confidence_level: 0.95
+  physical_baseline_tolerance: 1.0e-6
+  no_new_spectral_threshold: true
+  no_retained_energy_success_gate: true
+spectral_boundaries:
+  candidate_relative_gaps:
+    '1': 0.131054483
+    '2': 0.178902324
+    '4': 0.034630756
+    '8': 0.105670493
+    '16': 0.104494812
+    '32': 0.061605380
+    '64': 0.043964196
+    '128': 0.052600464
+  full_spectrum_smallest_gap:
+    rank: 36
+    relative_gap: 0.0025793411
+  descriptive_only: true
+  no_degeneracy_threshold: true
+measurement:
+  objective: functional_low_dimensional_reconstruction_recoverability
+  primary_metric: full_RMAL_probe_paired_MSE
+  candidate_family: [1, 2, 4, 8, 16, 32, 64, 128, 256]
+  search_order_after_anchor: [1, 2, 4, 8, 16, 32, 64, 128]
+  rank_0_control: 0
+  rank_256_anchor_first: true
+  selection_before_confirmation: true
+  confirmation_conditional_on_selection: true
+  first_double_pass_stops_search: true
+  first_confirmed_candidate_rank_only: true
+  no_middle_rank_backtest: true
+  no_candidate_family_mutation: true
+  no_training: true
+  no_refit: true
+  no_physical_forward_modification: true
+  mechanism_evidence_only: true
+resource:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  max_temporary_compact_feature_bytes: 134217728
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_low_rank_readout_recovery_confirmation
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  mechanism_evidence_only: true
+  prohibited:
+    - training
+    - optimizer
+    - gradient
+    - backward
+    - probe_refit
+    - bias_refit
+    - rank_specific_scaling
+    - normalization
+    - calibration_fit
+    - new_readout
+    - decoder
+    - fmf
+    - modal_sweep
+    - ols_redesign
+    - relay_tuning
+    - geometry_tuning
+    - prior
+    - generation
+    - promotion
+    - candidate_family_mutation
+    - middle_rank_backtest
