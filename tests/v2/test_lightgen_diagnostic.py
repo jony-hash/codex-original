@@ -48,6 +48,25 @@ def test_fiber_ols_keeps_complex_interface_and_matches_reference():
     assert all(torch.equal(value, system.state_dict()[name]) for name, value in before.items())
 
 
+def test_lightgen_external_ols_uses_same_generator_and_rejects_invalid_coefficients():
+    system = LightGenAmplitudeFiberOLSSystemV2(_small_config())
+    seed = torch.full((1, 1, 32, 32), 0.5)
+    real_path = system(system.command(seed))
+    coefficients = real_path.ols.coefficients.detach().requires_grad_(True)
+
+    generated = system.forward_from_ols(coefficients)
+    assert torch.allclose(generated.raw_camera.tensor, real_path.raw_camera.tensor)
+    assert generated.ols.coefficients is coefficients
+    assert generated.optical_trace[0].provenance.operation == "single_mode_fiber_reemission"
+    generated.raw_camera.tensor.square().mean().backward()
+    assert coefficients.grad is not None
+    assert torch.isfinite(coefficients.grad).all()
+    assert coefficients.grad.abs().sum() > 0
+
+    with pytest.raises(ValueError, match=r"\[batch, 100\]"):
+        system.forward_from_ols(torch.zeros(1, 99, dtype=torch.complex64))
+
+
 def test_formal_config_cannot_be_used_as_lightgen_audit():
     config = load_config("configs/v2/legacy/formal_global_amplitude_finite_crop_identity.yaml")
     assert config.system.kind == "formal_amplitude_finite_crop_identity"
