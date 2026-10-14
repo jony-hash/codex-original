@@ -1,0 +1,3 @@
+# Packages installed outside the Conda lock; Windows CPython 3.11 wheel SHA-256.
+fsspec==2026.7.0 --hash=sha256:b57ddbafedfaef7018c1ecab32aa200a9d7ca26b77965f64e48b70061249d279
+pymupdf==1.28.2 --hash=sha256:ebd244918798502d7b4504c90410d1711a4d7675a32584ca30f1bab419ecbffe

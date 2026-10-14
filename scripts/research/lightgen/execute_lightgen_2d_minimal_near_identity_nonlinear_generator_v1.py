@@ -1762,9 +1762,46 @@ def run_nonlinear(*, repo_root: Path | None = None, output_dir: str | Path = DEF
     )
     _write_json(target / "preflight.json", preflight)
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and preflight.get("three_step_real_update", {}).get("updates") == 3
+        and preflight.get("three_step_real_update", {}).get("generator_departed") is True
+        and preflight.get("three_step_real_update", {}).get("eta_finite") is True
+        and preflight.get("negative_control", {}).get("passed") is True
+        and all(preflight.get("frozen_parameter_probe", {}).get(name) is True for name in ("encoder_phase_unchanged", "ols_unchanged", "w_ols_unchanged", "evaluators_frozen"))
+        and preflight.get("protected_test_sealed") == {"protected": False, "test": False, "sealed": False}
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+            "negative_control_rejected": preflight.get("negative_control"),
+            "frozen_parameter_probe": preflight.get("frozen_parameter_probe"),
+            "protected_test_sealed": preflight.get("protected_test_sealed"),
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+        },
+        implementation={
+            "passed": preflight.get("optimizer", {}).get("parameter_names") == ["generator.phase", "generator.eta"],
+            "selected_engine": "minimal_near_identity_nonlinear_cuda_generator_phase_eta",
+            "optimizer_mode": preflight.get("optimizer_mode"),
+            "trainable_parameter_names": preflight.get("optimizer", {}).get("parameter_names"),
+        },
+        selected_engine="minimal_near_identity_nonlinear_cuda_generator_phase_eta",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt("minimal-near-identity-nonlinear-generator-v1:attempt_01")
+    effective_identity = control.open_scientific_attempt(
+        target,
+        "minimal-near-identity-nonlinear-generator-v1:attempt_01",
+        receipt,
+        resume=True,
+    )
     _write_json(
         target / "execution_manifest.json",
         {

@@ -586,9 +586,14 @@ def _run_preflight(
     _freeze_generator_only(consumer)
     successor._clear_grads(consumer)
     _restore_rng(initial_rng)
+    runtime_restored = conflict._state_digest(initial_state) == conflict._state_digest(consumer.runtime.state_dict())
+    teacher_unchanged = teacher_initial == _state_identity(teacher)
+    _require(runtime_restored and teacher_unchanged, "preflight did not restore runtime or changed the frozen teacher")
     return {
         "schema": PREFLIGHT_SCHEMA,
         "status": "READY",
+        "runtime_restored": runtime_restored,
+        "frozen_evaluators_unchanged": teacher_unchanged,
         "starting_authority": {"path": PRIOR_STEP_0.as_posix(), "sha256": EXPECTED_PRIOR_STEP_0_SHA256, "selected_step": 0},
         "teacher_positive_control_required": True,
         "target_feature_contract": "stopgrad(FrozenMNISTEvaluator(batch)) paired with FrozenMNISTEvaluator(clamp(raw_cmos,0,1)->adaptive_avg_pool2d(28,28))",
@@ -800,9 +805,29 @@ def run_successor(*, repo_root: Path | None = None, output_dir: str | Path = DEF
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
     _write_json(target / "source_manifest.json", source_manifest)
     _write_json(target / "preflight.json", {**preflight, "teacher_positive_control": teacher_positive, "data_firewall": {"protected": False, "test": False, "sealed": False}})
-    control.mark_preflight_ready()
+    cuda_free, cuda_total = torch.cuda.mem_get_info(device)
+    preflight_updates = preflight.get("three_step_real_update")
+    if not isinstance(preflight_updates, Mapping):
+        preflight_updates = {}
+    negative_control = preflight.get("negative_control")
+    negative_control_passed = negative_control.get("passed") is True if isinstance(negative_control, Mapping) else False
+    selected_engine = "target_image_alignment_cuda_generator_phase"
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": bool(preflight.get("status") == "READY" and teacher_positive.get("passed") is True and preflight.get("runtime_restored") is True and preflight.get("frozen_evaluators_unchanged") is True and preflight_updates.get("updates") == 3 and negative_control_passed),
+            "three_step_updates": preflight_updates.get("updates"),
+            "negative_control_rejected": negative_control_passed,
+            "data_firewall": {"protected": False, "test": False, "sealed": False},
+        },
+        resource={"passed": int(cuda_total) > 0 and 0 <= int(cuda_free) <= int(cuda_total) and preflight.get("status") == "READY", "free_bytes": int(cuda_free), "total_bytes": int(cuda_total)},
+        implementation={"passed": conflict._generator(consumer).requires_grad and not consumer.runtime.encoder.phase.requires_grad, "selected_engine": selected_engine},
+        selected_engine=selected_engine,
+        created_at=time.time(),
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    effective_identity = control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
+    _write_json(target / "preflight_receipt.json", receipt.to_dict())
     _write_json(
         target / "execution_manifest.json",
         {

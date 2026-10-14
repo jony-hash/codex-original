@@ -1485,9 +1485,43 @@ def run_capacity_expansion(*, repo_root: Path | None = None, output_dir: str | P
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
     preflight = _run_preflight(candidate_consumer, train_evaluator, authorities["training"]["references"], images, labels, authorities["train_indices"], calibration_indices, authorities["step0"]["sampler_state"], authorities["conflict_optimizer_state"], beta=authorities["weights"]["beta"], gamma=authorities["weights"]["gamma"], delta=authorities["weights"]["delta"])
     _write_json(target / "preflight.json", preflight)
-    control.mark_preflight_ready()
+    cuda_free, cuda_total = torch.cuda.mem_get_info(device)
+    correctness = {
+        "passed": bool(
+            preflight.get("status") == "READY"
+            and preflight.get("three_step_real_update", {}).get("updates") == 3
+            and preflight.get("negative_control", {}).get("passed") is True
+            and preflight.get("frozen_parameter_probe", {}).get("encoder_phase_unchanged") is True
+            and preflight.get("protected_test_sealed") == {"protected": False, "test": False, "sealed": False}
+        ),
+        "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+        "frozen_optimizer_negative_control_rejected": preflight.get("negative_control", {}).get("passed"),
+        "frozen_parameter_probe": preflight.get("frozen_parameter_probe"),
+        "protected_test_sealed": preflight.get("protected_test_sealed"),
+    }
+    receipt = control.make_ready_receipt(
+        correctness=correctness,
+        resource={
+            "passed": int(cuda_total) > 0 and 0 <= int(cuda_free) <= int(cuda_total),
+            "free_bytes": int(cuda_free),
+            "total_bytes": int(cuda_total),
+        },
+        implementation={
+            "passed": preflight.get("optimizer_mode") == "PRIOR_2L_MOMENTS_COPIED_WITH_ZERO_NEW_PLANE_MOMENTS",
+            "selected_engine": "minimal_generator_capacity_expansion_cuda",
+            "optimizer_mode": preflight.get("optimizer_mode"),
+            "trainable_parameter_names": ["generator.phase"],
+        },
+        selected_engine="minimal_generator_capacity_expansion_cuda",
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt("minimal-generator-capacity-expansion-v1:attempt_01")
+    effective_identity = control.open_scientific_attempt(
+        target,
+        "minimal-generator-capacity-expansion-v1:attempt_01",
+        receipt,
+        resume=True,
+    )
     _write_json(target / "execution_manifest.json", {"schema": "minimal_generator_capacity_expansion_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "authorization_token": AUTHORIZATION_TOKEN, "input_authorities": ["M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION", conflict.OUTER_GATE, "GENERATOR_SEMANTIC_CONTROLLABILITY_ATTRIBUTION_RESOLVED", "CHEN_BOGT_PHASE_COMPLETION_REPAIR_V1_Q2", "SMOOTH_MNIST_EVALUATOR_V2_1"], "source_manifest": source_manifest, "run_identity": effective_identity.to_dict(), "data_identity": authorities["data_identity"], "git_before": start_git, "cuda_runtime": cuda_runtime, "scope": {"stage1": True, "bounded_updates": SCIENTIFIC_UPDATES, "trainable": ["generator.phase[0:3]"], "frozen": ["encoder.phase", "OLS", "scale", "T=I_100", "W_OLS", "latent normalization", "P2", "Q2", "evaluators"], "protected": False, "test": False, "sealed": False}})
 
     candidate_consumer.runtime.train()

@@ -1,0 +1,188 @@
+{
+  "schema": "autodl_connection_repair.v1",
+  "date": "2026-10-14",
+  "status": "VERIFIED_CONNECTIVITY_RESTORED",
+  "cause": "Codex restricted sandbox networking; identical command succeeds with require_escalated",
+  "previous_client_dns_or_proxy_fault_inference": "WITHDRAWN",
+  "same_command_comparison": {
+    "date": "2026-10-14",
+    "same_command_network_permission_comparison": [
+      {
+        "execution": "restricted_sandbox",
+        "command": "scripts/maintenance/autodl_run.ps1 -Action Check",
+        "result": {
+          "chunk_id": "dc9c0e",
+          "wall_time_seconds": 1.5043587999999999,
+          "exit_code": 1,
+          "original_token_count": 103,
+          "output": "Exception: D:\\codex-original\\scripts\\maintenance\\autodl_run.ps1:34\r\nLine |\r\n  34 |  … de -ne 0) { throw \"SSH exited ${code}: $($output -join [Environment]: …\r\n     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n     | SSH exited 255: ssh: Could not resolve hostname connect.westb.seetacloud.com:\r\n     | \\262\\273\\326\\252\\265\\300\\325\\342\\321\\371\\265\\304\\326\\367\\273\\372\\241\\243\r\n"
+        }
+      },
+      {
+        "execution": "require_escalated",
+        "command": "scripts/maintenance/autodl_run.ps1 -Action Check",
+        "result": {
+          "chunk_id": "23a651",
+          "wall_time_seconds": 4.4756588,
+          "exit_code": 0,
+          "original_token_count": 189,
+          "output": "{\"project\": \"/root/autodl-tmp/codex-original\", \"python\": \"/root/miniconda3/bin/python\", \"python_exists\": true, \"project_exists\": true, \"watcher_script_exists\": true, \"python_exit_code\": 0, \"runtime\": {\"python\": \"/root/miniconda3/bin/python\", \"python_version\": \"3.12.3\", \"torch\": \"2.5.1+cu124\", \"cuda_available\": true, \"gpu\": \"NVIDIA GeForce RTX 4080\", \"project_import\": \"/root/autodl-tmp/codex-original/src/ldm_project/__init__.py\"}, \"system_disk\": {\"total_bytes\": 32212254720, \"free_bytes\": 29262221312, \"used_bytes\": 2950033408}, \"data_disk\": {\"total_bytes\": 53687091200, \"free_bytes\": 36145377280, \"used_bytes\": 17541713920}, \"screen_version\": \"Screen version 4.09.00 (GNU) 30-Jan-22\", \"nvidia_smi\": [\"NVIDIA GeForce RTX 4080, 32760 MiB, 1 MiB, 0 %\"]}\r\n"
+        }
+      }
+    ]
+  },
+  "external_environment_check": {
+    "project": "/root/autodl-tmp/codex-original",
+    "python": "/root/miniconda3/bin/python",
+    "python_exists": true,
+    "project_exists": true,
+    "watcher_script_exists": true,
+    "python_exit_code": 0,
+    "runtime": {
+      "python": "/root/miniconda3/bin/python",
+      "python_version": "3.12.3",
+      "torch": "2.5.1+cu124",
+      "cuda_available": true,
+      "gpu": "NVIDIA GeForce RTX 4080",
+      "project_import": "/root/autodl-tmp/codex-original/src/ldm_project/__init__.py"
+    },
+    "system_disk": {
+      "total_bytes": 32212254720,
+      "free_bytes": 29262221312,
+      "used_bytes": 2950033408
+    },
+    "data_disk": {
+      "total_bytes": 53687091200,
+      "free_bytes": 36145377280,
+      "used_bytes": 17541713920
+    },
+    "screen_version": "Screen version 4.09.00 (GNU) 30-Jan-22",
+    "nvidia_smi": [
+      "NVIDIA GeForce RTX 4080, 32760 MiB, 1 MiB, 0 %"
+    ]
+  },
+  "cloud_probe": {
+    "status": "PASS",
+    "purpose": "SSH screen CUDA and exact-file transfer engineering probe",
+    "python": "/root/miniconda3/bin/python",
+    "project": "/root/autodl-tmp/codex-original",
+    "torch": "2.5.1+cu124",
+    "gpu": "NVIDIA GeForce RTX 4080",
+    "cuda_sum_observed": 523776,
+    "cuda_sum_expected": 523776,
+    "roundtrip_marker": "autodl-connection-repair-20261014-v1",
+    "training_updates": 0,
+    "optical_forwards": 0,
+    "dataset_reads": 0,
+    "evaluator_calls": 0
+  },
+  "screen_exit": {
+    "task": "autodl_connection_repair_v1",
+    "run_id": "af5a1995fc314c16a1628ebec15539f0",
+    "state": "COMMAND_EXITED_ZERO",
+    "exit_code": 0,
+    "updated_at": "2026-10-14T00:29:56+08:00"
+  },
+  "telemetry": {
+    "run_id": "af5a1995fc314c16a1628ebec15539f0",
+    "state": "STOPPED",
+    "samples": 1,
+    "collector_failures": 0,
+    "telemetry": "telemetry.csv"
+  },
+  "transfer_receipt": {
+    "status": "COMPLETE",
+    "remote_alias": "autodl-monthly",
+    "remote_run_dir": "/root/autodl-tmp/codex-original/outputs/20261014_autodl_connection_repair_v1/runs/attempt_01",
+    "destination": "D:\\codex-original\\outputs\\20261014_autodl_connection_repair_v1\\runs\\autodl_backup_attempt_01",
+    "created_at": "2026-10-14T00:31:07.5704855+08:00",
+    "files": [
+      {
+        "path": "probe.json",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 470,
+        "local_size_bytes": 470,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "resource_telemetry.csv",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 334,
+        "local_size_bytes": 334,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "task_control/status.json",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 168,
+        "local_size_bytes": 168,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "task_control/run.log",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 442,
+        "local_size_bytes": 442,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "task_control/command.sh",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 1135,
+        "local_size_bytes": 1135,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "task_control/telemetry_status.json",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 148,
+        "local_size_bytes": 148,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "task_control/telemetry.csv",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 334,
+        "local_size_bytes": 334,
+        "status": "COPIED",
+        "detail": ""
+      },
+      {
+        "path": "task_control/telemetry_copy_status.json",
+        "scp_exit_code": 0,
+        "remote_size_bytes": 96,
+        "local_size_bytes": 96,
+        "status": "COPIED",
+        "detail": ""
+      }
+    ]
+  },
+  "local_readback": "PASS",
+  "fixed_execution_policy": {
+    "host": "autodl-monthly",
+    "project": "/root/autodl-tmp/codex-original",
+    "python": "/root/miniconda3/bin/python",
+    "training_and_long_validation": "CLOUD",
+    "local_roles": [
+      "source",
+      "preparation",
+      "review",
+      "backup"
+    ],
+    "codex_network_permission": "require_escalated",
+    "scientific_budgets_and_gates": "UNCHANGED"
+  },
+  "system_or_remote_source_changes": [],
+  "training_updates": 0,
+  "optical_forwards": 0,
+  "dataset_reads": 0,
+  "evaluator_calls": 0,
+  "ols_saved_field_postprocess": "NOT_RUN_USER_REQUESTED_CONNECTION_REPAIR_FIRST",
+  "guarantee": "Verified present connection and avoids confirmed sandbox misdiagnosis; no promise of permanent Internet availability"
+}

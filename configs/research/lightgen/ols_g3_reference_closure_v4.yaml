@@ -1,0 +1,60 @@
+schema: ols_g3_reference_closure.v4
+status: zero_update_synthetic_diagnostic_only
+source_evidence:
+  v3_run_dir: outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/attempt_01
+  v3_report: report.json
+  fixed_phase_screens: fixed_phase_screens.pt
+  middle_aperture_fields: middle_aperture_fields.pt
+  g3_common_roi_fields: g3_common_roi_fields.pt
+  fixed_second_hop_fields: fixed_second_hop_common_roi_fields.pt
+  v3_reference_report: independent_reference_convergence.json
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  encoder_shape: [100, 100]
+  encoder_aperture_m: 2.0e-4
+  propagation_windows_mm: [4.096, 6.144, 8.192]
+  propagation_grid_sizes: [2048, 3072, 4096]
+  inter_encoder_spacing_m: 1.5e-3
+  last_encoder_to_fiber_m: 1.5e-3
+  phase_screen_count: 2
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+fiber:
+  reference_pitch_m: 1.25e-4
+  mode_field_diameter_m: 1.4222e-5
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+reference:
+  type: nonperiodic_bandlimited_sampled_field_angular_spectrum_integral
+  dtype: complex128
+  quadrature: composite_gauss_legendre
+  refinement_order_per_frequency_cell: 4
+  refinement_frequency_nodes_per_axis: [2048, 4096, 8192, 16384, 32768]
+  cross_order_per_frequency_cell: 8
+  cross_order_frequency_nodes_per_axis: 32768
+  roi_probe_indices: [128, 512, 1023, 1535, 1919]
+  fiber_center_probe_count: 100
+  convergence_tolerance: 1.0e-7
+  reference_field_scale: sqrt_input_power_over_200um
+  frequency_row_chunk: 64
+  position_batch: 16
+  include_pixel_sinc_factor: false
+  apply_additional_spectral_filter: false
+  expand_spatial_propagation_grid: false
+gates:
+  g3_complex_relative_error_after_common_global_phase_max: 1.0e-4
+  production_dtype: complex64
+  high_precision_diagnostic_dtype: complex128
+scope:
+  formal_training_updates: 0
+  phase_optimizer_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  fid_calls: 0
+  loss_changes: 0
+  material_forward_calls: 0
+  propagation_solver_replacement: forbidden
+  optical_geometry_change: forbidden
+  hidden_grid_expansion: forbidden
+  per_sample_or_per_port_renormalization: forbidden

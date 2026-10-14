@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -631,9 +632,22 @@ def run_analysis(*, repo_root: Path | None = None, output_dir: str | Path = DEFA
     target.mkdir(parents=True, exist_ok=False)
     run_identity = _make_identity(source_manifest)
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    cuda_free, cuda_total = torch.cuda.mem_get_info(device)
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": bool(_state_digest(_runtime_state(consumer)) == step0_runtime_digest and ledger.counts.get(TRAIN_ROLE, 0) == int(batch.shape[0]) and all(parameter.grad is None for parameter in consumer.runtime.parameters()) and all(ledger.counts.get(role, 0) == 0 for role in ("protected", "test", "sealed"))),
+            "explicit_train_rows": int(batch.shape[0]),
+            "protected_test_sealed_zero": all(ledger.counts.get(role, 0) == 0 for role in ("protected", "test", "sealed")),
+        },
+        resource={"passed": int(cuda_total) > 0 and 0 <= int(cuda_free) <= int(cuda_total), "free_bytes": int(cuda_free), "total_bytes": int(cuda_total), "updates": 0},
+        implementation={"passed": run_identity.optimizer_identity.get("created") is False and run_identity.optimizer_identity.get("parameter_updates") == 0, "selected_engine": "read_only_cuda_attribution"},
+        selected_engine="read_only_cuda_attribution",
+        created_at=time.time(),
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    effective_identity = control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
+    _write_json(target / "preflight_receipt.json", receipt.to_dict())
     _write_json(target / "source_manifest.json", source_manifest)
     _write_json(
         target / "execution_manifest.json",

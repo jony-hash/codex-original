@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import math
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -885,9 +886,33 @@ def run_analysis(*, repo_root: Path | None = None, output_dir: str | Path = DEFA
     attempt_id = f"{RUN_ID}:{target.name}"
     identity = _make_identity(source_manifest, bank, dev_subset, attempt_id)
     control = ResearchRunControl(identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    cuda_free, cuda_total = torch.cuda.mem_get_info(device)
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": bool(
+                preflight.get("status") == "READY"
+                and preflight.get("optimizer_created") is False
+                and preflight.get("parameter_updates") == 0
+                and preflight.get("temporary_probe", {}).get("runtime_restored") is True
+                and _state_digest(_runtime_state(consumer)) == _state_digest(initial_step9000_runtime)
+                and preflight.get("gradient_analysis", {}).get("structural_gradient_finite") is True
+                and preflight.get("gradient_analysis", {}).get("SIC_gradient_finite") is True
+                and initial_evaluator_states == {name: prior_attribute._state_digest(model.state_dict()) for name, model in (("E_S", smooth), ("E_I", independent), ("E_C", ec), ("E_D", ed))}
+                and all(ledger.counts.get(role, 0) == 0 for role in ("protected", "test", "sealed"))
+            ),
+            "finite_gradient_analysis": bool(preflight.get("gradient_analysis", {}).get("structural_gradient_finite") and preflight.get("gradient_analysis", {}).get("SIC_gradient_finite")),
+            "frozen_evaluators": bool(initial_evaluator_states == {name: prior_attribute._state_digest(model.state_dict()) for name, model in (("E_S", smooth), ("E_I", independent), ("E_C", ec), ("E_D", ed))}),
+            "protected_test_sealed_zero": bool(all(ledger.counts.get(role, 0) == 0 for role in ("protected", "test", "sealed"))),
+        },
+        resource={"passed": int(cuda_total) > 0 and 0 <= int(cuda_free) <= int(cuda_total), "free_bytes": int(cuda_free), "total_bytes": int(cuda_total), "updates": 0},
+        implementation={"passed": preflight.get("optimizer_created") is False and preflight.get("parameter_updates") == 0, "selected_engine": "read_only_cuda_attribution"},
+        selected_engine="read_only_cuda_attribution",
+        created_at=time.time(),
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(attempt_id)
+    effective_identity = control.open_scientific_attempt(target, attempt_id, receipt, resume=True)
+    _write_json(target / "preflight_receipt.json", receipt.to_dict(), kind="step9000 attribution preflight receipt")
 
     _write_torch(target / "diagnostic_bank.pt", {"schema": "step9000_structural_classifier_semantic_tradeoff_bank.v1", "task_id": TASK_ID, "data_role": TRAIN_ROLE, "A_indices": bank["a_indices"], "A_labels": bank["a_labels"], "B_indices": bank["b_indices"], "B_labels": bank["b_labels"], "DEV_indices": dev_subset, "DEV_labels": labels.index_select(0, dev_subset), "A_B_source": "accepted cross-evaluator semantic-divergence bank", "DEV_rule": "first 10 canonical DEV rows per class"}, kind="frozen TRAIN A/B and DEV diagnostic bank")
     _write_json(target / "source_manifest.json", source_manifest, kind="step9000 attribution source manifest")

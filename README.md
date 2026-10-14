@@ -34,6 +34,12 @@ $env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoo
 $py = Join-Path $envRoot 'python.exe'
 ```
 
+For a clean Windows environment, use the checked-in package lock and then run
+the minimum CPU regression suite described in
+[Windows development and verification](docs/operations/windows_development.md).
+The existing supported environment is unchanged. CPU checks establish software
+contracts only; they do not authorize or validate a CUDA research run.
+
 运行 CUDA compatibility smoke：
 
 ```powershell
@@ -55,9 +61,9 @@ $py = Join-Path $envRoot 'python.exe'
 
 正式 v2 物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 可读性条件与输入/数据角色核对均保持有效。摘要和运行记录可保留来源信息，但不作为执行锁。正式 v2 架构是 `conditional_identity_logit_amplitude_v2`。
 
-v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。
+v1 的最新研究状态、capacity gate 结果和 checkpoint promotion 边界以[当前状态](docs/CURRENT_STATUS.md)及其引用的证据为准。
 
-LightGen 当前研究问题是 BOGT 联合目标如何经统一的 Encoder→复 OLS→Generator 映射呈现为可辨识 CMOS 图像。可复用的 BOGT 训练实现位于 [`lightgen_2d_chen_bogt_complex_ols_training.py`](src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py)，三评价器规范梯度的共享数值函数位于 [`canonical_semantics.py`](src/ldm_project/v2/application/research/lightgen/canonical_semantics.py)。规范方向改善过 DEV/S1 读数，但完整生成门槛仍未达到；small-bank step2200 只作研究证据，原 attempt 仍为 `INVALID_HARNESS`。类别1/7定位没有科学结论。已停止 M0 执行器已归档；目前没有科学执行授权，详见[当前状态](docs/CURRENT_STATUS.md)。
+LightGen 当前研究问题、最新测量、冻结/历史入口和停止点均以[当前状态](docs/CURRENT_STATUS.md)及[当前交接](docs/status/current_handoff.md)为准。可复用的 BOGT 训练实现位于 [`lightgen_2d_chen_bogt_complex_ols_training.py`](src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py)，三评价器规范梯度的共享数值函数位于 [`canonical_semantics.py`](src/ldm_project/v2/application/research/lightgen/canonical_semantics.py)。最初类别1/7归因 attempt 的 `INVALID_HARNESS` 与后续冻结诊断、Generator-only 对照是不同任务和记录；后续结果没有追认旧 attempt，也没有自动授权新的研究动作。目录分类和历史入口见[研究代码导航](docs/research/project_map.md)。
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/archive/acceptance_v9_10_label_template_inverse_20260622.json)。
 
@@ -87,6 +93,8 @@ LightGen 当前研究问题是 BOGT 联合目标如何经统一的 Encoder→复
 | `tests/research/{lightgen,scaled_chen,optical_manifold,capacity}/` | 与研究代码同类分组的测试 |
 | `scripts/research/archive/project_refactor_20261001/lightgen/m0/` | 已停止的 M0 执行器；保留供历史查阅，不是当前运行入口 |
 | `scripts/research/archive/project_refactor_20261001/lightgen/n3/` | 已关闭且无当前消费者的 N3 执行器；原文归档，结果仍在 `outputs/` |
+| `scripts/research/{lightgen,scaled_chen,optical_manifold,capacity}/` | 当前按家族检索的命令入口；是否可执行、冻结重放或仅供历史查阅，以当前状态和任务凭据为准 |
+| `scripts/research/archive/`, `tests/archive/`, `docs/archive/` | 冻结/归档材料；用于历史重放或溯源，不隐含执行授权 |
 | `docs/archive/20261001_project_refactor/` | 精简前状态、交接、项目记忆和完整历史快照 |
 | `outputs/` | 当前 Windows-native runs 与已恢复历史 outputs 的可见树；恢复元数据位于 `outputs/_wsl_restore_metadata_v4/`，`outputs/final_pt/` 保持固定 |
 | `data/raw/` | 不可变原始数据 |
@@ -108,6 +116,7 @@ LightGen 当前研究问题是 BOGT 联合目标如何经统一的 Encoder→复
 - [Fiber / Electronic O0 Status](docs/status/v2_fiber_image_generation_v1.md)：fiber 路线状态；electronic O0 当前决策以 capacity ledger 为准。
 - [Experiment History](docs/status/experiment_history.md)：历史 baseline、负实验、seed sweep 和复验记录。
 - [Research Project Map](docs/research/project_map.md)：研究代码、配置、测试和历史文档迁移表。
+- [Windows Development](docs/operations/windows_development.md)：新环境锁、安装步骤和最小 CPU 回归命令。
 - [Git Branch Management](docs/operations/git_branch_management.md)：稳定分支治理、现场核验与安全回档。
 - [Long-Training Preflight](docs/operations/long-training-preflight.md)：长训练、模型选择和科学结论前的 fail-closed 预检。
 - [AGENTS.md](AGENTS.md)：仓库执行契约与不可变边界。

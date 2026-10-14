@@ -1,0 +1,198 @@
+{
+  "figure": "01_ols_nonlinear_mechanism_corrected_2p5d",
+  "scientific_status": "TARGET conceptual mechanism; no material response, phase map, measurement, or performance is encoded",
+  "optical_field": "individually embedded constant-color RGBA Gaussian-like envelopes; alpha is a visual schematic and is not phase-resolved",
+  "projection": "all physical planes use the same shallow top-down offset direction",
+  "editable_content": "SMF facet and cores, material plane, diffractive planes/cells, and CMOS face/pixels are native SVG vectors; optical envelopes are embedded RGBA images",
+  "representative_mode_count": 6,
+  "checks": {
+    "required_groups_present": true,
+    "exact_smf_core_count_100": true,
+    "six_selected_core_sources_match_facet": true,
+    "visible_text_or_labels_absent": true,
+    "transparent_svg_no_background_rectangle": true,
+    "phase_cell_grid_on_both_diffusers": true,
+    "distinct_detector_receiving_pixel_face": true
+  },
+  "embedded_field_checks": {
+    "emitted_beamlets": [
+      {
+        "shape": [
+          1590,
+          1198
+        ],
+        "alpha_max": 61,
+        "edge_alpha_max": 0
+      },
+      {
+        "shape": [
+          1590,
+          1194
+        ],
+        "alpha_max": 61,
+        "edge_alpha_max": 0
+      },
+      {
+        "shape": [
+          1590,
+          1184
+        ],
+        "alpha_max": 61,
+        "edge_alpha_max": 0
+      },
+      {
+        "shape": [
+          1590,
+          1174
+        ],
+        "alpha_max": 61,
+        "edge_alpha_max": 0
+      },
+      {
+        "shape": [
+          1590,
+          1164
+        ],
+        "alpha_max": 61,
+        "edge_alpha_max": 0
+      },
+      {
+        "shape": [
+          1590,
+          1154
+        ],
+        "alpha_max": 61,
+        "edge_alpha_max": 0
+      }
+    ],
+    "overlap_region": [
+      {
+        "shape": [
+          1590,
+          1500
+        ],
+        "alpha_max": 49,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          1500
+        ],
+        "alpha_max": 49,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          1500
+        ],
+        "alpha_max": 49,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          1500
+        ],
+        "alpha_max": 50,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          1500
+        ],
+        "alpha_max": 51,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          1500
+        ],
+        "alpha_max": 51,
+        "edge_alpha_max": 20
+      }
+    ],
+    "post_nonlinear_field": [
+      {
+        "shape": [
+          1590,
+          2180
+        ],
+        "alpha_max": 21,
+        "edge_alpha_max": 21
+      },
+      {
+        "shape": [
+          1590,
+          2180
+        ],
+        "alpha_max": 20,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          2180
+        ],
+        "alpha_max": 20,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          2180
+        ],
+        "alpha_max": 20,
+        "edge_alpha_max": 20
+      },
+      {
+        "shape": [
+          1590,
+          2180
+        ],
+        "alpha_max": 21,
+        "edge_alpha_max": 21
+      },
+      {
+        "shape": [
+          1590,
+          2180
+        ],
+        "alpha_max": 21,
+        "edge_alpha_max": 21
+      }
+    ]
+  },
+  "rendered_visual_review": {
+    "checks": {
+      "no_visible_text_numbers_or_fake_measurements": "PASS",
+      "exact_10x10_fiber_facet": "PASS",
+      "no_closed_field_polygons_or_hard_field_corners": "PASS",
+      "six_gaussian_modes_emerge_from_selected_cores": "PASS",
+      "shared_shallow_2p5d_projection": "PASS",
+      "D1_D2_have_diffractive_cell_faces": "PASS",
+      "thin_orange_material_plane": "PASS",
+      "CMOS_has_distinct_receiving_pixel_face": "PASS",
+      "no_glow_particles_or_noise": "PASS",
+      "discrete_to_progressive_overlap_to_continuous_field": "PASS"
+    },
+    "status": "PASS",
+    "note": "Optical alpha fields are schematic and not phase-resolved or experimental results.",
+    "inspected": [
+      "full white-background preview",
+      "2x crop from SMF facet through nonlinear plane",
+      "2x crop from nonlinear plane through CMOS"
+    ]
+  },
+  "rendered_png": {
+    "path": "01_ols_nonlinear_mechanism_corrected_2p5d.png",
+    "transparent_background": true,
+    "mode": "RGBA",
+    "aspect_ratio": "2.857:1",
+    "height_px": 2100,
+    "width_px": 6000
+  }
+}

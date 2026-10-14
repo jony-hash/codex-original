@@ -16,6 +16,7 @@
 | v2 旧蒸馏、prototype/capacity 与 LightGen 历史 | [archive](archive/)；活动兼容实现仍在显式 `legacy`/`diagnostic` 命名空间 |
 | LightGen 论文补充材料与图源数据 | [`research_assets/lightgen/science_adv7434/`](../research_assets/lightgen/science_adv7434/)；只读 reference-only 证据包 |
 | 命令、stage 和回档 | [Stage Guide](operations/stage_guide.md) / [Git branch management](operations/git_branch_management.md) |
+| Windows 新环境安装与最小 CPU 验证 | [Windows development and verification](operations/windows_development.md) |
 | 长训练、模型选择和科学结论预检 | [Long-training preflight](operations/long-training-preflight.md) |
 | 输出与 artifact 语义 | [Output notes](operations/output_artifact_notes.md) |
 | 实验历史 | [Experiment history](status/experiment_history.md) |

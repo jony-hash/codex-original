@@ -16,6 +16,7 @@ import threading
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping
 
 from ldm_project.v2.evidence import atomic_torch_save_new, atomic_write_json, canonical_sha256, file_sha256, safe_torch_load
@@ -92,6 +93,18 @@ def _require(condition: bool, message: str, error_type: type[Exception] = RunCon
         raise error_type(message)
 
 
+def _freeze_json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Copy and freeze receipt data so a READY result cannot change later."""
+    def freeze(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            return MappingProxyType({str(key): freeze(nested) for key, nested in item.items()})
+        if isinstance(item, (list, tuple)):
+            return tuple(freeze(nested) for nested in item)
+        return item
+
+    return freeze(value)
+
+
 def _git_output(root: Path, *arguments: str) -> str:
     try:
         completed = subprocess.run(
@@ -162,9 +175,9 @@ def capture_execution_source_manifest(
 ) -> ExecutionSourceManifest:
     """Capture only the source files that can affect the named execution.
 
-    Branch, HEAD, and dirty state are provenance fields.  Resume compatibility
-    uses ``execution_source_semantics_id`` so an unrelated document edit does
-    not invalidate an otherwise identical execution source.
+    Branch, HEAD, dirty state, and source digests are provenance for saved run
+    and recovery reports. Resume compatibility validates the loaded model,
+    configuration, optimizer and sampler instead of matching these digests.
     """
 
     root = Path(repo_root).resolve()
@@ -429,6 +442,27 @@ class PreflightReceipt:
         check_groups: Mapping[str, Any] | None = None,
         resource_envelope: Mapping[str, Any] | None = None,
     ) -> None:
+        _require(
+            source_semantics_id is None or execution_source_semantics_id is None or source_semantics_id == execution_source_semantics_id,
+            "preflight receipt source semantics aliases disagree",
+        )
+        _require(
+            source_semantics_id is None or source_semantics is None or source_semantics_id == source_semantics,
+            "preflight receipt source semantics aliases disagree",
+        )
+        _require(
+            execution_source_semantics_id is None or source_semantics is None or execution_source_semantics_id == source_semantics,
+            "preflight receipt source semantics aliases disagree",
+        )
+        _require(
+            authorization_id is None or authorization is None or authorization_id == authorization,
+            "preflight receipt authorization aliases disagree",
+        )
+        _require(checks is None or check_groups is None or checks == check_groups, "preflight receipt check aliases disagree")
+        _require(
+            resource is None or resource_envelope is None or resource == resource_envelope,
+            "preflight receipt resource aliases disagree",
+        )
         source = source_semantics_id or execution_source_semantics_id or source_semantics
         auth = authorization_id or authorization
         check_map = checks if checks is not None else check_groups
@@ -454,6 +488,33 @@ class PreflightReceipt:
             "preflight receipt must record correctness, resource, and implementation checks",
         )
         _require(isinstance(self.resource, Mapping), "preflight resource envelope must be a mapping")
+        if self.status == PREFLIGHT_READY:
+            for check_group in PREFLIGHT_CHECK_GROUPS:
+                result = self.checks[check_group]
+                _require(isinstance(result, Mapping), f"preflight check group must be a mapping: {check_group}")
+                _require(result.get("passed") is True, f"preflight check group did not pass: {check_group}")
+                group_status = result.get("status")
+                if group_status is not None:
+                    _require(
+                        isinstance(group_status, str) and group_status.upper() in {"PASS", "PASSED", "READY", "COMPLETE", "COMPLETED"},
+                        f"preflight check group status is not successful: {check_group}",
+                    )
+            implementation = self.checks[IMPLEMENTATION_SELECTION]
+            if "selected_engine" in implementation and "engine" in implementation:
+                _require(
+                    implementation["selected_engine"] == implementation["engine"],
+                    "preflight implementation aliases disagree",
+                )
+            selected = self.selected_engine
+            if selected is None:
+                selected = implementation.get("selected_engine", implementation.get("engine"))
+            _require(isinstance(selected, str) and bool(selected.strip()), "preflight selected implementation is required")
+            declared = implementation.get("selected_engine", implementation.get("engine"))
+            if declared is not None:
+                _require(declared == selected, "preflight implementation selection is inconsistent")
+            object.__setattr__(self, "selected_engine", selected)
+        object.__setattr__(self, "checks", _freeze_json_mapping(self.checks))
+        object.__setattr__(self, "resource", _freeze_json_mapping(self.resource))
 
     @property
     def execution_source_semantics_id(self) -> str:
@@ -489,16 +550,74 @@ class PreflightReceipt:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "PreflightReceipt":
         _require(value.get("schema") in (None, PREFLIGHT_RECEIPT_SCHEMA), "preflight receipt schema mismatch", ResumeCompatibilityError)
+        _require(
+            "source_semantics_id" not in value
+            or "execution_source_semantics_id" not in value
+            or value["source_semantics_id"] == value["execution_source_semantics_id"],
+            "preflight receipt source semantics aliases disagree",
+            ResumeCompatibilityError,
+        )
+        _require(
+            "checks" not in value or "check_groups" not in value or value["checks"] == value["check_groups"],
+            "preflight receipt check aliases disagree",
+            ResumeCompatibilityError,
+        )
+        _require(
+            "resource" not in value or "resource_envelope" not in value or value["resource"] == value["resource_envelope"],
+            "preflight receipt resource aliases disagree",
+            ResumeCompatibilityError,
+        )
+        check_mapping = value.get("checks", value.get("check_groups"))
+        _require(
+            isinstance(check_mapping, Mapping),
+            "preflight receipt checks are missing",
+            ResumeCompatibilityError,
+        )
+        implementation = check_mapping.get(IMPLEMENTATION_SELECTION)
+        if isinstance(implementation, Mapping):
+            _require(
+                "selected_engine" not in implementation
+                or "engine" not in implementation
+                or implementation["selected_engine"] == implementation["engine"],
+                "preflight implementation aliases disagree",
+                ResumeCompatibilityError,
+            )
+        _require(
+            "authorization_id" not in value or "authorization" not in value or value["authorization_id"] == value["authorization"],
+            "preflight receipt authorization aliases disagree",
+            ResumeCompatibilityError,
+        )
+        _require(
+            "selected_engine" not in value
+            or not isinstance(implementation, Mapping)
+            or not any(name in implementation for name in ("selected_engine", "engine"))
+            or value["selected_engine"] == implementation.get("selected_engine", implementation.get("engine")),
+            "preflight implementation selection is inconsistent",
+            ResumeCompatibilityError,
+        )
         source = value.get("source_semantics_id", value.get("execution_source_semantics_id"))
         checks = value.get("checks", value.get("check_groups"))
         resource = value.get("resource", value.get("resource_envelope", {}))
         _require(isinstance(value.get("authorization_id"), str) and value["authorization_id"], "preflight receipt authorization is missing", ResumeCompatibilityError)
         _require(isinstance(checks, Mapping), "preflight receipt checks are missing", ResumeCompatibilityError)
+        selected = value.get("selected_engine")
+        if value.get("status", PREFLIGHT_READY) == PREFLIGHT_READY:
+            for group in PREFLIGHT_CHECK_GROUPS:
+                group_value = checks.get(group)
+                _require(isinstance(group_value, Mapping), f"preflight receipt group is missing: {group}", ResumeCompatibilityError)
+                _require(group_value.get("passed") is True, f"preflight receipt group did not pass: {group}", ResumeCompatibilityError)
+            implementation = checks[IMPLEMENTATION_SELECTION]
+            if selected is None:
+                selected = implementation.get("selected_engine", implementation.get("engine"))
+            _require(isinstance(selected, str) and bool(selected.strip()), "preflight implementation selection is missing", ResumeCompatibilityError)
+            declared = implementation.get("selected_engine", implementation.get("engine"))
+            if declared is not None:
+                _require(declared == selected, "preflight implementation selection is inconsistent", ResumeCompatibilityError)
         return cls(
             source_semantics_id=source if isinstance(source, str) else "",
             authorization_id=str(value["authorization_id"]),
             checks=dict(checks),
-            selected_engine=None if value.get("selected_engine") is None else str(value["selected_engine"]),
+            selected_engine=selected,
             resource=dict(resource) if isinstance(resource, Mapping) else {},
             failure_signature=None if value.get("failure_signature") is None else str(value["failure_signature"]),
             recheck_count=int(value.get("recheck_count", 0)),
@@ -530,6 +649,8 @@ class ResearchRunControl:
     def _validate_receipt(self, receipt: PreflightReceipt) -> None:
         _require(receipt.authorization_id == self.authorization_id, "preflight authorization does not match task authorization", ResumeCompatibilityError)
         _require(receipt.status == PREFLIGHT_READY, "scientific execution requires a READY preflight receipt")
+        # Reconstruct to revalidate nested values at the consumption boundary.
+        PreflightReceipt.from_mapping(receipt.to_dict())
 
     @staticmethod
     def _coerce_receipt(receipt: PreflightReceipt | Mapping[str, Any]) -> PreflightReceipt:
@@ -559,16 +680,41 @@ class ResearchRunControl:
         self.preflight_status = PREFLIGHT_BLOCKED
         self.receipt = None
 
-    def mark_preflight_ready(self, receipt: PreflightReceipt | Mapping[str, Any] | None = None) -> None:
+    def make_ready_receipt(
+        self,
+        *,
+        correctness: Mapping[str, Any],
+        resource: Mapping[str, Any],
+        implementation: Mapping[str, Any],
+        selected_engine: str,
+        resource_envelope: Mapping[str, Any] | None = None,
+        created_at: float | None = None,
+    ) -> PreflightReceipt:
+        """Build the task-bound receipt from producer-computed check groups."""
+
+        return PreflightReceipt(
+            source_semantics_id=self.identity.execution_source_semantics_id,
+            authorization_id=self.authorization_id,
+            checks={
+                CORRECTNESS_INVARIANTS: dict(correctness),
+                RESOURCE_ENVELOPE: dict(resource),
+                IMPLEMENTATION_SELECTION: dict(implementation),
+            },
+            selected_engine=selected_engine,
+            resource={} if resource_envelope is None else dict(resource_envelope),
+            created_at=created_at,
+        )
+
+    def mark_preflight_ready(self, receipt: PreflightReceipt | Mapping[str, Any]) -> None:
         _require(self.state == RUN_PREPARING, "preflight can only be completed before execution")
-        if receipt is not None:
-            normalized = self._coerce_receipt(receipt)
-            if self.preflight_status == PREFLIGHT_READY and self.receipt is not None:
-                _require(normalized == self.receipt, "READY preflight receipt is write-once", ResumeCompatibilityError)
-            self._validate_receipt(normalized)
-            self.receipt = normalized
+        normalized = self._coerce_receipt(receipt)
+        if self.preflight_status == PREFLIGHT_READY and self.receipt is not None:
+            _require(normalized == self.receipt, "READY preflight receipt is write-once", ResumeCompatibilityError)
+        self._validate_receipt(normalized)
+        self.receipt = normalized
+        if normalized.failure_signature is not None:
             self.failure_signature = normalized.failure_signature
-            self.recheck_count = normalized.recheck_count
+        self.recheck_count = max(self.recheck_count, normalized.recheck_count)
         self.preflight_status = PREFLIGHT_READY
 
     def blocked_preflight_receipt(self) -> PreflightReceipt:
@@ -592,28 +738,30 @@ class ResearchRunControl:
 
     def start_execution(self) -> None:
         _require(self.preflight_status == PREFLIGHT_READY, "execution requires the same task's READY preflight")
+        _require(self.receipt is not None, "execution requires a complete READY preflight receipt")
+        self._validate_receipt(self.receipt)
         _require(self.state == RUN_PREPARING, "execution has already started")
         self.state = RUNNING
 
     def open_scientific_attempt(
         self,
         output_dir: str | Path,
-        attempt_id: str | None = None,
-        receipt: PreflightReceipt | Mapping[str, Any] | None = None,
+        attempt_id: str | None,
+        receipt: PreflightReceipt | Mapping[str, Any],
         *,
         resume: bool = False,
     ) -> ResearchRunIdentity:
         """Atomically enter ``SCIENTIFIC_ACTIVE`` for one frozen attempt.
 
-        ``resume=True`` only reopens an existing directory after an interruption;
-        it never creates a new attempt identity.  The legacy
-        :meth:`begin_scientific_attempt` remains available for closed historical
-        executors but is intentionally not used by active executors.
+        ``resume=True`` only reopens an existing directory; it never creates a
+        new attempt identity. Every caller must present the exact READY receipt
+        that authorized this task.
         """
 
-        chosen_receipt = self.receipt if receipt is None else self._coerce_receipt(receipt)
+        chosen_receipt = self._coerce_receipt(receipt)
         _require(chosen_receipt is not None, "strict scientific attempt requires a complete READY receipt")
         self._validate_receipt(chosen_receipt)
+        _require(self.receipt == chosen_receipt, "scientific attempt receipt differs from the task's READY receipt", ResumeCompatibilityError)
         _require(self.preflight_status == PREFLIGHT_READY, "scientific attempt requires READY preflight")
         _require(self.state in {RUN_PREPARING, RUNNING, RUN_INTERRUPTED}, "scientific attempt cannot be reopened from this state")
         target = Path(output_dir).resolve()
@@ -634,15 +782,17 @@ class ResearchRunControl:
         self,
         output_dir: str | Path,
         attempt_id: str,
-        receipt: PreflightReceipt | Mapping[str, Any] | None = None,
+        receipt: PreflightReceipt | Mapping[str, Any],
     ) -> ResearchRunIdentity:
         return self.open_scientific_attempt(output_dir, attempt_id, receipt, resume=True)
 
-    def begin_scientific_attempt(self, attempt_id: str | None = None) -> ResearchRunIdentity:
-        _require(self.state == RUNNING, "scientific attempt begins only while running")
-        chosen = attempt_id or f"{self.identity.run_id}:scientific"
-        self.identity = self.identity.with_scientific_attempt(chosen)
-        return self.identity
+    def begin_scientific_attempt(
+        self,
+        attempt_id: str | None = None,
+        receipt: PreflightReceipt | Mapping[str, Any] | None = None,
+    ) -> ResearchRunIdentity:
+        del attempt_id, receipt
+        raise RunControlError("begin_scientific_attempt is disabled; use open_scientific_attempt with a READY receipt")
 
     def complete(self) -> None:
         _require(self.state in {RUNNING, RUN_SCIENTIFIC_ACTIVE}, "only an active task can complete")

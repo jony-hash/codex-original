@@ -1,0 +1,82 @@
+schema: compact_ols_pareto_design.v1
+status: diagnostic_only
+scope:
+  formal_training: forbidden
+  task_evaluator: forbidden
+  dataset_read: forbidden
+  task_loss: forbidden
+  material_nonlinearity_forward_model: forbidden
+  production_geometry_mutation: forbidden
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 4096
+  inter_encoder_spacing_m: 1.5e-3
+  current_reference_distance_m: 1.5e-3
+  encoder_layers: 2
+  layer_power_transmission: 0.889
+  layer_power_transmission_status: reference_scenario_not_measured_for_current_device
+  input_power_w: 2.493e-4
+  input_power_status: synthetic_reference_scenario
+  illumination: uniform_coherent_top_hat_expanding_with_trainable_aperture
+  aperture_pixels: [100, 150, 200, 250, 300, 400, 500, 600]
+  last_encoder_to_fiber_distance_m: [5.0e-4, 1.0e-3, 2.0e-3, 3.0e-3, 5.0e-3, 8.0e-3, 1.0e-2]
+fiber:
+  rows: 10
+  columns: 10
+  pitch_m: [1.25e-4, 1.0e-4, 7.5e-5, 6.25e-5, 5.0e-5]
+  pitch_status:
+    "0.000125": STANDARD_SM_FIBER_REFERENCE
+    other: NON_STANDARD_GEOMETRY
+  cladding_diameter_m: 1.25e-4
+  mfd_m: 1.4222e-5
+  length_m: 8.5e-3
+  attenuation_db_per_km: 0.0
+  mode_model: step_index_lp01_ports
+  v_number: 2.2
+  fill: 0.8
+optimization:
+  optimizer: Adam
+  learning_rate: 0.04
+  steps_per_objective: 24
+  objective_names: [maximize_total_coupling, maximize_effective_dimension, maximize_uniform_distribution]
+  phase_only: true
+  initialization: zero_phase_for_every_case
+  uniform_target: 0.01
+  random_seed: 20261013
+  objectives:
+    maximize_total_coupling: maximize sum(P_i)/P_input
+    maximize_effective_dimension: maximize (sum(P_i)^2)/sum(P_i^2)
+    maximize_uniform_distribution: minimize sum((P_i/sum(P_i) - 0.01)^2)
+screen:
+  level_a:
+    effective_dimension_min: 90.0
+    input_to_fiber_efficiency_min: 0.30
+    edge_retention_min: 0.001
+  level_b_effective_dimension_open_interval: [50.0, 90.0]
+  level_c_effective_dimension_max: 50.0
+  interpretation: engineering_tier_not_physical_acceptance
+nonlinearity_sensitivity:
+  input_power_w: [2.493e-4, 1.0e-3, 1.0e-2, 1.0e-1, 3.0e-1]
+  i_sat_w_cm2: [10.0, 100.0, 520.0, 1000.0, 10000.0, 100000.0, 1000000.0, 30000000.0]
+  active_ratio_open_interval: [0.1, 10.0]
+  device_claims_allowed: false
+manufacturability:
+  score_definition: "mean of aperture-area inverse-rank, two-layer pixel-feature inverse-rank, and fiber-geometry reference score; higher ranks easier to fabricate within this sweep, not a process feasibility probability"
+  reference_aperture_pixels: 100
+  standard_fiber_pitch_m: 1.25e-4
+  nonstandard_pitch_below_m: 7.5e-5
+  fiber_reference_scores:
+    standard: 100.0
+    nonstandard_ge_75um: 50.0
+    custom_below_75um: 0.0
+  printer_limits: unavailable_not_measured
+execution:
+  required_propagation_grid: 4096
+  architecture_count: 280
+  objective_count_per_architecture: 3
+  phase_steps_per_objective: 24
+  formal_training_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  task_metric_calls: 0

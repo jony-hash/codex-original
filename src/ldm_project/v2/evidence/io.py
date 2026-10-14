@@ -42,7 +42,7 @@ def canonical_sha256(value: Any) -> str:
 
 def file_sha256(path: str | Path) -> str:
     digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
+    with _io_path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -55,7 +55,7 @@ def safe_torch_load(
     map_location: str | torch.device = "cpu",
 ) -> Any:
     """Load a v2 tensor/container artifact with an optional pre-load digest check."""
-    target = Path(path)
+    target = _io_path(path)
     if expected_sha256 is not None and file_sha256(target) != expected_sha256:
         raise ValueError(f"artifact content no longer matches {target}")
     try:
@@ -117,14 +117,24 @@ def tensor_sha256(value: torch.Tensor) -> str:
     return digest.hexdigest()
 
 
+def _io_path(path: str | Path) -> Path:
+    target = Path(path)
+    if os.name == "nt":
+        absolute = str(target.resolve())
+        if not absolute.startswith("\\\\?\\"):
+            absolute = "\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute
+        target = Path(absolute)
+    return target
+
+
 def _temporary_path(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, delete=False) as handle:
+    with NamedTemporaryFile(prefix=".artifact.", suffix=".tmp", dir=path.parent, delete=False) as handle:
         return Path(handle.name)
 
 
 def atomic_write_json(path: str | Path, payload: Mapping[str, Any]) -> None:
-    target = Path(path)
+    target = _io_path(path)
     temporary = _temporary_path(target)
     try:
         temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -140,7 +150,7 @@ def atomic_write_new_json(
     artifact_kind: str = "artifact",
 ) -> None:
     """Publish one complete JSON artifact without replacing an existing file."""
-    target = Path(path)
+    target = _io_path(path)
     temporary = _temporary_path(target)
     try:
         temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -153,10 +163,11 @@ def atomic_write_new_json(
 
 
 def atomic_torch_save(path: str | Path, payload: Any) -> None:
-    target = Path(path)
+    target = _io_path(path)
     temporary = _temporary_path(target)
     try:
-        torch.save(payload, temporary)
+        with temporary.open("wb") as handle:
+            torch.save(payload, handle)
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
@@ -169,10 +180,11 @@ def atomic_torch_save_new(
     artifact_kind: str = "artifact",
 ) -> None:
     """Publish one complete torch artifact without replacing an existing file."""
-    target = Path(path)
+    target = _io_path(path)
     temporary = _temporary_path(target)
     try:
-        torch.save(payload, temporary)
+        with temporary.open("wb") as handle:
+            torch.save(payload, handle)
         try:
             os.link(temporary, target)
         except FileExistsError as exc:

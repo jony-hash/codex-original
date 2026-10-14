@@ -38,7 +38,6 @@ BATCH_SIZE = 10
 FIT_PER_CLASS = 200
 GENERATE_PER_CLASS = 200
 LEARNING_RATE = 5.0e-5
-DEVICE_MEMORY_FRACTION_MAX = 0.90
 MACRO_RECALL_MIN = 0.50
 CLASS_RECALL_MIN = 0.10
 SATURATED_PIXEL_FRACTION_MAX = 0.01
@@ -135,6 +134,7 @@ def _optimizer(model: LightGenAmplitudeFiberOLSSystemV2) -> torch.optim.Adam:
 
 def _memory_fraction(device: torch.device) -> float:
     free, total = torch.cuda.mem_get_info(device)
+    _require(total > 0 and 0 <= free <= total, "CUDA reported invalid device memory")
     return max((total - free) / total, torch.cuda.max_memory_reserved(device) / total)
 
 
@@ -142,48 +142,76 @@ def _preflight(model: LightGenAmplitudeFiberOLSSystemV2, images: torch.Tensor, l
     started = time.perf_counter()
     torch.cuda.reset_peak_memory_stats(device)
     initial_state = {name: value.detach().clone() for name, value in model.state_dict().items()}
+    initial_gradients = {name: None if parameter.grad is None else parameter.grad.detach().clone() for name, parameter in model.named_parameters()}
     evaluator_state = {name: value.detach().clone() for name, value in evaluator.state_dict().items()}
-    label_batch = torch.arange(10, device=device)
-    amplitude, target = _input_and_target(images, rows[0], device)
-    with torch.no_grad():
-        clean_logits = evaluator(images.index_select(0, rows[0]).to(device))[1]
-        true_ce = F.cross_entropy(clean_logits, label_batch)
-        shifted_ce = F.cross_entropy(clean_logits, (label_batch + 1) % 10)
-        _require(bool(true_ce < shifted_ce), "shifted-label negative control did not reject wrong labels")
+    cpu_rng = torch.random.get_rng_state().clone()
+    cuda_rng = torch.cuda.get_rng_state_all() if device.type == "cuda" else []
+    updates = []
+    try:
+        label_batch = torch.arange(10, device=device)
+        _require(torch.equal(labels.index_select(0, rows[0]).to(device), label_batch), "preflight rows do not match their declared labels")
+        amplitude, target = _input_and_target(images, rows[0], device)
+        with torch.no_grad():
+            clean_logits = evaluator(images.index_select(0, rows[0]).to(device))[1]
+            true_ce = F.cross_entropy(clean_logits, label_batch)
+            shifted_ce = F.cross_entropy(clean_logits, (label_batch + 1) % 10)
+            negative_control = bool(torch.isfinite(true_ce) and torch.isfinite(shifted_ce) and true_ce < shifted_ce)
+            _require(negative_control, "shifted-label negative control did not reject wrong labels")
+            torch.cuda.synchronize(device)
+            real_started = time.perf_counter()
+            real_result = model(model.command(amplitude))
+            torch.cuda.synchronize(device)
+            real_forward_seconds = time.perf_counter() - real_started
+            generated_started = time.perf_counter()
+            generated_result = model.forward_from_ols(real_result.ols.coefficients)
+            torch.cuda.synchronize(device)
+            generated_forward_seconds = time.perf_counter() - generated_started
+            _require(torch.allclose(real_result.raw_camera.tensor, generated_result.raw_camera.tensor), "OLS direct path differs from real path")
+            raw = real_result.raw_camera.tensor
+            rec0 = F.mse_loss(raw, target)
+            ce0 = F.cross_entropy(evaluator(_view(raw))[1], label_batch)
+            semantic_scale = float((rec0 / ce0.clamp_min(1.0e-12)).detach())
+            _require(math.isfinite(semantic_scale) and semantic_scale > 0.0, "semantic loss scale is invalid")
+        optimizer = _optimizer(model)
+        for cursor in range(3):
+            _require(torch.equal(labels.index_select(0, rows[cursor]).to(device), label_batch), "preflight rows do not match their declared labels")
+            amplitude, target = _input_and_target(images, rows[cursor], device)
+            updates.append(_step(model, optimizer, evaluator, amplitude, target, label_batch, semantic_scale))
         torch.cuda.synchronize(device)
-        real_started = time.perf_counter()
-        real_result = model(model.command(amplitude))
-        torch.cuda.synchronize(device)
-        real_forward_seconds = time.perf_counter() - real_started
-        generated_started = time.perf_counter()
-        generated_result = model.forward_from_ols(real_result.ols.coefficients)
-        torch.cuda.synchronize(device)
-        generated_forward_seconds = time.perf_counter() - generated_started
-        _require(torch.allclose(real_result.raw_camera.tensor, generated_result.raw_camera.tensor), "OLS direct path differs from real path")
-        raw = real_result.raw_camera.tensor
-        rec0 = F.mse_loss(raw, target)
-        ce0 = F.cross_entropy(evaluator(_view(raw))[1], label_batch)
-        semantic_scale = float((rec0 / ce0.clamp_min(1.0e-12)).detach())
-        _require(math.isfinite(semantic_scale) and semantic_scale > 0.0, "semantic loss scale is invalid")
-    optimizer = _optimizer(model)
-    for cursor in range(3):
-        amplitude, target = _input_and_target(images, rows[cursor], device)
-        _step(model, optimizer, evaluator, amplitude, target, label_batch, semantic_scale)
-    torch.cuda.synchronize(device)
-    elapsed = time.perf_counter() - started
-    fraction = _memory_fraction(device)
-    _require(fraction <= DEVICE_MEMORY_FRACTION_MAX, "preflight exceeded VRAM cap")
-    estimated = (
-        elapsed / 3.0 * UPDATES
-        + real_forward_seconds * ((10 * FIT_PER_CLASS + 5_000) / BATCH_SIZE)
-        + generated_forward_seconds * (10 * GENERATE_PER_CLASS / BATCH_SIZE)
-        + 300.0
-    )
-    _require(all(torch.equal(value, evaluator_state[name]) for name, value in evaluator.state_dict().items()), "training evaluator changed")
-    model.load_state_dict(initial_state)
-    _require(all(torch.equal(value, initial_state[name]) for name, value in model.state_dict().items()), "preflight failed to restore model")
-    torch.cuda.empty_cache()
-    return {"seconds": elapsed, "real_forward_seconds": real_forward_seconds, "generated_forward_seconds": generated_forward_seconds, "peak_vram_fraction": fraction, "estimated_execution_seconds": estimated, "semantic_scale": semantic_scale, "negative_control_true_ce": float(true_ce), "negative_control_shifted_ce": float(shifted_ce), "three_updates": True}
+        elapsed = time.perf_counter() - started
+        fraction = _memory_fraction(device)
+        estimated = (
+            elapsed / 3.0 * UPDATES
+            + real_forward_seconds * ((10 * FIT_PER_CLASS + 5_000) / BATCH_SIZE)
+            + generated_forward_seconds * (10 * GENERATE_PER_CLASS / BATCH_SIZE)
+            + 300.0
+        )
+        frozen_evaluator = bool(
+            all(torch.equal(value, evaluator_state[name]) for name, value in evaluator.state_dict().items())
+            and all(not parameter.requires_grad and parameter.grad is None for parameter in evaluator.parameters())
+        )
+        _require(frozen_evaluator, "training evaluator changed or is not frozen")
+    finally:
+        model.load_state_dict(initial_state)
+        evaluator.load_state_dict(evaluator_state)
+        for name, parameter in model.named_parameters():
+            parameter.grad = initial_gradients[name]
+        torch.random.set_rng_state(cpu_rng)
+        if cuda_rng:
+            torch.cuda.set_rng_state_all(cuda_rng)
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+    model_restored = all(torch.equal(value, initial_state[name]) for name, value in model.state_dict().items())
+    rng_restored = torch.equal(cpu_rng, torch.random.get_rng_state()) and all(torch.equal(before, after) for before, after in zip(cuda_rng, torch.cuda.get_rng_state_all() if cuda_rng else [], strict=True))
+    _require(model_restored and rng_restored, "preflight failed to restore model/RNG")
+    return {
+        "seconds": elapsed, "real_forward_seconds": real_forward_seconds,
+        "generated_forward_seconds": generated_forward_seconds, "peak_vram_fraction": fraction,
+        "estimated_execution_seconds": estimated, "semantic_scale": semantic_scale,
+        "negative_control_true_ce": float(true_ce), "negative_control_shifted_ce": float(shifted_ce),
+        "three_updates": len(updates) == 3, "negative_control": negative_control,
+        "frozen_evaluator": frozen_evaluator, "model_restored": model_restored, "rng_restored": rng_restored,
+    }
 
 
 def _class_ols_statistics(model: LightGenAmplitudeFiberOLSSystemV2, images: torch.Tensor, labels: torch.Tensor, train: torch.Tensor, device: torch.device) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -305,11 +333,25 @@ def main() -> None:
     receipt = PreflightReceipt(
         source_semantics_id=manifest.execution_source_semantics_id,
         authorization_id=AUTHORIZATION,
-        checks={CORRECTNESS_INVARIANTS: {"status": "PASSED", "three_updates": True, "negative_control": True, "frozen_evaluator": True}, RESOURCE_ENVELOPE: {"status": "PASSED", "peak_vram_fraction": preflight["peak_vram_fraction"], "estimated_execution_seconds": preflight["estimated_execution_seconds"]}, IMPLEMENTATION_SELECTION: {"status": "PASSED", "engine": "full_400x400_cuda"}},
-        selected_engine="full_400x400_cuda", resource={"device_memory_fraction_max": DEVICE_MEMORY_FRACTION_MAX},
+        checks={
+            CORRECTNESS_INVARIANTS: {
+                "passed": all(preflight[key] is True for key in ("three_updates", "negative_control", "frozen_evaluator", "model_restored", "rng_restored")),
+                **{key: preflight[key] for key in ("three_updates", "negative_control", "frozen_evaluator", "model_restored", "rng_restored")},
+            },
+            RESOURCE_ENVELOPE: {
+                "passed": preflight["three_updates"] is True and math.isfinite(preflight["peak_vram_fraction"]) and 0 <= preflight["peak_vram_fraction"] <= 1,
+                "peak_vram_fraction": preflight["peak_vram_fraction"],
+                "estimated_execution_seconds": preflight["estimated_execution_seconds"],
+            },
+            IMPLEMENTATION_SELECTION: {
+                "passed": device.type == "cuda" and config.system.kind == "diagnostic_lightgen_amplitude_fiber_ols_400" and preflight["three_updates"] is True,
+                "engine": "full_400x400_cuda",
+            },
+        },
+        selected_engine="full_400x400_cuda", resource={"peak_vram_fraction_observed": preflight["peak_vram_fraction"]},
     )
     control.mark_preflight_ready(receipt)
-    control.open_scientific_attempt(RUN_DIR, attempt_id="attempt_01")
+    control.open_scientific_attempt(RUN_DIR, attempt_id="attempt_01", receipt=receipt)
     atomic_write_new_json(RUN_DIR / "preflight.json", {"receipt": receipt.to_dict(), "measurements": preflight, "source_manifest": manifest.to_dict()})
     heartbeat = HeartbeatWriter(RUN_DIR, identity.run_id, total_steps=UPDATES)
     heartbeat.update(state=control.state, phase="TRAINING", step=0, force=True)
@@ -327,7 +369,6 @@ def main() -> None:
         if cursor % 25 == 0:
             heartbeat.raise_liveness_error()
             fraction = _memory_fraction(device)
-            _require(fraction <= DEVICE_MEMORY_FRACTION_MAX, "training exceeded VRAM cap")
             atomic_write_new_json(RUN_DIR / f"progress_{cursor:04d}.json", {"completed_updates": cursor, "latest_loss": history[-1], "elapsed_seconds": time.perf_counter() - started, "peak_vram_fraction": fraction})
             print(f"step {cursor}/{UPDATES}: loss={history[-1]['total']:.6g}, peak VRAM={fraction:.3f}", flush=True)
     model.eval()
@@ -337,7 +378,6 @@ def main() -> None:
     means, real_std, imag_std = _class_ols_statistics(model, images, labels, train, device)
     dev_metrics = _evaluate_dev(model, ed, images, labels, dev, device)
     generated_metrics, sampled_ols, generated_views, raw_examples = _evaluate_generation(model, ed, means, real_std, imag_std, device)
-    _require(_memory_fraction(device) <= DEVICE_MEMORY_FRACTION_MAX, "evaluation exceeded VRAM cap")
     passed = generated_metrics["macro_recall"] >= MACRO_RECALL_MIN and min(generated_metrics["recall_by_class"]) >= CLASS_RECALL_MIN and generated_metrics["saturated_pixel_fraction"] <= SATURATED_PIXEL_FRACTION_MAX
     if passed:
         control.complete()

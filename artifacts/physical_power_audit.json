@@ -1,0 +1,399 @@
+{
+  "schema": "physical_power_audit.v1",
+  "audit_date": "2026-10-13",
+  "phase": "completed_stopped",
+  "scope": "small_aligned_2plus2_research_runtime",
+  "wavelength": {
+    "value": 5.32e-07,
+    "unit": "m"
+  },
+  "trainable_grid": [
+    100,
+    100
+  ],
+  "dx": {
+    "value": 2e-06,
+    "unit": "m"
+  },
+  "dy": {
+    "value": 2e-06,
+    "unit": "m"
+  },
+  "trainable_physical_size": {
+    "value": [
+      0.0002,
+      0.0002
+    ],
+    "unit": "m"
+  },
+  "simulation_grid": [
+    2048,
+    2048
+  ],
+  "simulation_physical_size": {
+    "value": [
+      0.004096,
+      0.004096
+    ],
+    "unit": "m",
+    "semantics": "transient ASM padding, cropped after every layer"
+  },
+  "coupling_grid": [
+    100,
+    100
+  ],
+  "coupling_physical_size": {
+    "value": [
+      0.0002,
+      0.0002
+    ],
+    "unit": "m"
+  },
+  "encoder_layers": 2,
+  "decoder_layers": 2,
+  "current_saved_mainline_decoder": {
+    "layers": 4,
+    "phase_windows": [
+      [
+        100,
+        100
+      ],
+      [
+        400,
+        400
+      ],
+      [
+        100,
+        100
+      ],
+      [
+        400,
+        400
+      ]
+    ],
+    "trainable_parameters": 340000
+  },
+  "fiber_channels": 100,
+  "fiber_pitch": {
+    "value": 1.777777777777778e-05,
+    "unit": "m",
+    "parameter_status": "PROJECT_GEOMETRY_UNMEASURED",
+    "not_sampling_pitch": true
+  },
+  "gaussian_opt_in_fiber_pitch": {
+    "value": 2e-05,
+    "unit": "m"
+  },
+  "fiber_length": {
+    "implemented_value": null,
+    "requested_scenario_m": 0.0085
+  },
+  "requested_facet_pitch_m": 0.000125,
+  "requested_facet_array_width_m": 0.00125,
+  "absolute_power_model": false,
+  "layer_transmission_model": false,
+  "finite_aperture_loss_model": true,
+  "fiber_overlap_model": true,
+  "fiber_overlap_model_status": "complex area-weighted synthetic LP01; optional Gaussian; hardware uncalibrated",
+  "physical_intensity_model": false,
+  "nonlinear_material_model": false,
+  "relative_optical_power_penalty": true,
+  "hidden_normalizations": [
+    {
+      "location": "LightGenImageInputAdapter",
+      "type": "input [0,1], clamp, sqrt",
+      "internal_field_renormalization": false
+    },
+    {
+      "location": "fiber_operator._mode_bank",
+      "type": "area-weighted mode basis normalization",
+      "internal_field_renormalization": false
+    },
+    {
+      "location": "CoherentImagingRelay",
+      "type": "fixed amplitude Jacobian 1/abs(M)",
+      "internal_field_renormalization": false
+    },
+    {
+      "location": "BOGT statistical variable",
+      "type": "modal power / frozen TRAIN reference",
+      "internal_field_renormalization": false
+    },
+    {
+      "location": "Q_fg",
+      "type": "image total-mass normalization in metric/loss",
+      "internal_field_renormalization": false
+    },
+    {
+      "location": "canonical_semantics.cmos_view",
+      "type": "clamp and pooling at evaluator/display boundary",
+      "internal_field_renormalization": false
+    }
+  ],
+  "checks": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PARTIAL",
+    "5": "FAIL",
+    "6": "FAIL",
+    "7": "PARTIAL",
+    "8": "FAIL",
+    "9": "PARTIAL",
+    "10": "FAIL",
+    "11": "FAIL",
+    "12": "FAIL",
+    "13": "PARTIAL",
+    "14": "PASS"
+  },
+  "status": {
+    "physical_power_model": "FAIL",
+    "propagation_window": "PARTIAL",
+    "smf_overlap": "PARTIAL",
+    "nonlinear_layer": "FAIL",
+    "training_power_constraint": "PARTIAL"
+  },
+  "critical_failures": [
+    "no absolute source/field calibration",
+    "nominal 125um facet array exceeds 200um coupling support",
+    "no per-layer material transmission",
+    "no 532nm calibrated physical material/intensity",
+    "current saved expanded Generator differs from target 2+2"
+  ],
+  "unknown_parameters": [
+    "actual facet pitch and MFD",
+    "facet imaging magnification",
+    "532nm measured layer transmission",
+    "8.5mm fiber attenuation and complex transport",
+    "material T(I), phase, time response, and damage limits"
+  ],
+  "scientific_updates": 0,
+  "evaluator_calls": 0,
+  "permitted_next_actions": [
+    "proposal for next authorized task: define source-W and facet/imaging plane contract",
+    "proposal: A1 source calibration only, A2 layer power transmission, A3 geometry/transport, A4 physical material field model",
+    "proposal: A5 power-aware regularization only after independent diagnostics show a relevant deficit"
+  ],
+  "blocked_actions": [
+    "formal training within this completed task",
+    "evaluator edits or task-score-based diagnostic tuning",
+    "material/model adoption and physical deployment",
+    "treating literature or arbitrary scenario parameters as project measurements"
+  ],
+  "classification": "AUDIT_COMPLETED_WITH_PHYSICAL_GAPS",
+  "engineering_observations": {
+    "opening_entrypoint": "NameError Mapping not defined; recorded separately",
+    "current_entrypoint_probe": {
+      "status": "PASS",
+      "input": "synthetic all-ones image; zero phase; no checkpoint"
+    },
+    "concurrent_source_change": "typing import appeared in working tree during audit; not authored by this task"
+  },
+  "diagnostic_only_absolute_power_adapter_added": true,
+  "diagnostic_only_material_interface_added": true,
+  "boolean_scope": "existing audited optical chain; diagnostic additions do not change its flags",
+  "diagnostics": {
+    "directory": "outputs\\20261013_physical_power_audit_v1\\runs\\diagnostic-only_attempt_03",
+    "budget_directory": "outputs\\20261013_physical_power_audit_v1\\runs\\diagnostic-only_budget_02",
+    "numeric_component_checks_passed": true,
+    "target_facet_geometry_supported": false,
+    "no_aperture_power_relative_error": 2.3314683517128287e-15,
+    "pad_convergence_roi_relative_error": 6.697105917163601e-14,
+    "wrap_negative_control": [
+      {
+        "grid_size": 256,
+        "width_m": 0.000512,
+        "relative_power_error": 4.440892098500626e-16,
+        "left_half_power_fraction": 0.9999018667352675
+      },
+      {
+        "grid_size": 2048,
+        "width_m": 0.004096,
+        "relative_power_error": 8.881784197001252e-16,
+        "left_half_power_fraction": 8.961672801234636e-25
+      }
+    ],
+    "gaussian_max_overlap_reference_error": 3.5523198962383873e-06,
+    "lp01_coupling_each": [
+      0.7169631244943796,
+      0.716793750500408,
+      0.7167418037944318,
+      0.7482940113785823
+    ],
+    "gaussian_coupling_each": [
+      0.1884130796310246,
+      0.1884145697625896,
+      0.1884138062078899,
+      0.19165644112277994
+    ],
+    "artifact_rows": {
+      "power_budget.csv": 200,
+      "channel_power.csv": 20000,
+      "coverage.csv": 450,
+      "material_response.csv": 7200,
+      "coupling_sensitivity.csv": 125
+    },
+    "coverage_distributions": 450
+  },
+  "check_details": [
+    {
+      "id": 1,
+      "status": "PASS",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+      "symbols": "WAVELENGTH_M; PlaneSpec; _transfer_function",
+      "key_variables": "wavelength_m=532e-9",
+      "actual_behavior": "SI ASM uses wavelength",
+      "risk": "no unit mixing found in selected chain"
+    },
+    {
+      "id": 2,
+      "status": "PASS",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+      "symbols": "LightGen2DSemanticGenerationInputOLSAlignment.__init__",
+      "key_variables": "phase=(2,1,100,100), pixel_pitch_m=2e-6",
+      "actual_behavior": "200um trainable active planes",
+      "risk": "saved mainline uses different expanded Decoder"
+    },
+    {
+      "id": 3,
+      "status": "PASS",
+      "file": "src/ldm_project/v2/optics/d2nn.py",
+      "symbols": "FiniteCropPhaseStack.forward",
+      "key_variables": "propagation_shape=(2048,2048)",
+      "actual_behavior": "pad propagation width 4.096mm then crop",
+      "risk": "coupling still on 200um plane"
+    },
+    {
+      "id": 4,
+      "status": "PARTIAL",
+      "file": "src/ldm_project/v2/optics/d2nn.py",
+      "symbols": "FiniteCropPhaseStack.forward; CoherentImagingRelay.__call__",
+      "key_variables": "crop_retention, source/target pupil",
+      "actual_behavior": "finite aperture loss; periodic FFT",
+      "risk": "Gaussian convergence does not verify arbitrary trained phases"
+    },
+    {
+      "id": 5,
+      "status": "FAIL",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+      "symbols": "LightGenImageInputAdapter.__call__; IdealAmplitudeSLM",
+      "key_variables": "[0,1] amplitude command; no P_laser",
+      "actual_behavior": "relative input; numerical integral lacks absolute field calibration",
+      "risk": "W cannot be inferred from function name"
+    },
+    {
+      "id": 6,
+      "status": "FAIL",
+      "file": "src/ldm_project/v2/optics/d2nn.py",
+      "symbols": "FiniteCropPhaseStack.forward",
+      "key_variables": "torch.polar(ones,phase)",
+      "actual_behavior": "phase-only unit amplitude inside aperture",
+      "risk": "no sqrt(T_layer) in original layers"
+    },
+    {
+      "id": 7,
+      "status": "PARTIAL",
+      "file": "src/ldm_project/v2/optics/fiber_operator.py",
+      "symbols": "FiberArrayOLS.project_coefficients; _mode_bank",
+      "key_variables": "LP01 V=2.2; complex overlap times area",
+      "actual_behavior": "true complex synthetic modal projection",
+      "risk": "cell crop and uncalibrated mode geometry"
+    },
+    {
+      "id": 8,
+      "status": "FAIL",
+      "file": "src/ldm_project/v2/optics/fiber_operator.py",
+      "symbols": "_mode_bank; FiberArraySpec",
+      "key_variables": "100 ports; pitch=17.7778um numerical; requested 125um",
+      "actual_behavior": "10x10 exists, real facet mapping absent",
+      "risk": "1.25mm nominal array cannot fit 200um coupling FOV"
+    },
+    {
+      "id": 9,
+      "status": "PARTIAL",
+      "file": "src/ldm_project/v2/optics/fiber_operator.py",
+      "symbols": "project_coefficients; transmit_coefficients; reemit_coefficients",
+      "key_variables": "T=I_100; no fiber length",
+      "actual_behavior": "coupling/transport/re-emission structurally separated",
+      "risk": "8.5mm attenuation and differential phase unmodelled"
+    },
+    {
+      "id": 10,
+      "status": "FAIL",
+      "file": "src/ldm_project/v2/optics/fiber_operator.py",
+      "symbols": "project_coefficients; forward energy check",
+      "key_variables": "abs(coefficients)^2; input power integral",
+      "actual_behavior": "relative modal powers only in original chain",
+      "risk": "W exists only in newly calibrated diagnostic scenarios"
+    },
+    {
+      "id": 11,
+      "status": "FAIL",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+      "symbols": "LightGen2DSemanticGenerationInputOLSAlignment._run_generator",
+      "key_variables": "writer -> generator",
+      "actual_behavior": "no material in audited path",
+      "risk": "historical ReLU proxies are not measured materials"
+    },
+    {
+      "id": 12,
+      "status": "FAIL",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+      "symbols": "LightGen2DSemanticGenerationInputOLSAlignment._run_generator",
+      "key_variables": "no I_sat or W/cm2 consumer",
+      "actual_behavior": "no original physical material intensity",
+      "risk": "actual material-plane MFD/reference plane unknown"
+    },
+    {
+      "id": 13,
+      "status": "PARTIAL",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py",
+      "symbols": "physical_plane_power; optical_power_loss_from_powers",
+      "key_variables": "frozen TRAIN P_ref; log ratio squared",
+      "actual_behavior": "relative integral power regularization",
+      "risk": "no absolute floors/ceilings or material coverage"
+    },
+    {
+      "id": 14,
+      "status": "PASS",
+      "file": "src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py",
+      "symbols": "input adapter; raw CMOS; downstream canonical_semantics/Q_fg",
+      "key_variables": "input clamp, mode basis norm, statistical/metric normalization",
+      "actual_behavior": "no per-layer field renormalization or output max norm in selected chain",
+      "risk": "downstream normalized shape metrics cannot establish brightness"
+    }
+  ],
+  "facts": [
+    "transient 2048 ASM grid exists",
+    "area-weighted complex LP01 overlap exists",
+    "current calibrated physical source and material absent from training chain"
+  ],
+  "inferences": [
+    "nominal 125um array requires a larger physical coupling plane or an explicit joint pitch/MFD imaging mapping",
+    "high-threshold scenario is near-linear only for specified zero-phase profiles and numeric material plane"
+  ],
+  "material_benchmarks": {
+    "520_w_cm2": {
+      "status": "literature conditional benchmark, other wavelength/tapered-QD structure, not TaP at 532nm",
+      "source": "https://preprints.opticaopen.org/articles/preprint/Passive_mode_locking_Erbium-doped_fiber_laser_based_on_semimetal_TaP_quantum_dots/24599145"
+    },
+    "3e7_w_cm2": {
+      "status": "user-requested high-threshold scene, precise Te at 532nm reference unverified",
+      "scope": "never this project film measurement"
+    }
+  },
+  "verification": {
+    "focused_pytest_passed": 14,
+    "full_pytest_run": false,
+    "ruff": "PASS",
+    "ast_compile": "PASS",
+    "git_diff_check": "PASS",
+    "runtime": "Windows Python 3.11.16 Torch 2.5.1 CPU diagnostic",
+    "model_state_unchanged": true,
+    "scientific_updates": 0,
+    "evaluator_calls": 0,
+    "delivery_readback": "outputs/20261013_physical_power_audit_v1/runs/delivery_verification.json"
+  },
+  "next_action_authorization": "none; suggestions require a new explicit instruction",
+  "audit_report": "docs/physical_power_audit.md"
+}

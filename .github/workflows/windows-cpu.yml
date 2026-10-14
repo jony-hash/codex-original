@@ -1,0 +1,59 @@
+name: Windows CPU software checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the hash-locked CPU environment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = Join-Path $env:pythonLocation 'python.exe'
+          & $py -m pip install --require-hashes -r requirements-win-cpu.lock.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $py scripts/verify_environment_locks.py --verify-installed-cpu-lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $py -m pip install --no-deps --no-build-isolation -e .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $py -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run the shared Windows CPU checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = Join-Path $env:pythonLocation 'python.exe'
+          & $py scripts/run_windows_cpu_checks.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check patch whitespace
+        shell: pwsh
+        env:
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            $base = "origin/$env:GITHUB_BASE_REF"
+            git diff --check "$base...$env:GITHUB_SHA"
+          } elseif ($env:PUSH_BASE_SHA -and $env:PUSH_BASE_SHA -notmatch '^0+$') {
+            git diff --check "$env:PUSH_BASE_SHA...$env:GITHUB_SHA"
+          } else {
+            git show --format= --check $env:GITHUB_SHA
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

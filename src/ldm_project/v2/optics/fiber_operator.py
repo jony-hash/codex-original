@@ -28,6 +28,7 @@ class FiberArraySpec:
     lateral_offset_m: tuple[float, float] = (0.0, 0.0)
     mode_model: str = "step_index_lp01_ports"
     expected_fov_m: tuple[float, float] = (200.0e-6, 200.0e-6)
+    array_center_pitch_m: float | None = None
 
     def __post_init__(self) -> None:
         if self.grid_shape != (10, 10):
@@ -42,6 +43,10 @@ class FiberArraySpec:
             raise ValueError("fill and facet_magnification must be positive and bounded")
         if len(self.lateral_offset_m) != 2:
             raise ValueError("lateral_offset_m must be an independent (y, x) pair")
+        if self.array_center_pitch_m is not None and (
+            not math.isfinite(self.array_center_pitch_m) or self.array_center_pitch_m <= 0.0
+        ):
+            raise ValueError("array_center_pitch_m must be finite and positive when supplied")
         if self.mode_model not in {"step_index_lp01_lowdin", "step_index_lp01_ports"}:
             raise ValueError("unsupported LP01 mode model")
 
@@ -194,19 +199,72 @@ def _mode_bank(plane: PlaneSpec, spec: FiberArraySpec, *, offset_m: tuple[float,
     return torch.complex(bank.to(torch.float32), torch.zeros_like(bank, dtype=torch.float32)).reshape(100, h, w)
 
 
+def _local_lp01_mode_patches(
+    plane: PlaneSpec, spec: FiberArraySpec
+) -> tuple[tuple[torch.Tensor, ...], tuple[tuple[int, int, int, int], ...]]:
+    """Build unit-power LP01 modes on disjoint Voronoi cells of a global plane."""
+    if spec.array_center_pitch_m is None:
+        raise ValueError("local global-plane modes require array_center_pitch_m")
+    dy, dx = plane.pixel_pitch_m
+    height, width = plane.shape
+    y = (torch.arange(height, dtype=torch.float64) + 0.5) * dy - plane.fov_m[0] / 2.0 + plane.origin_m[0]
+    x = (torch.arange(width, dtype=torch.float64) + 0.5) * dx - plane.fov_m[1] / 2.0 + plane.origin_m[1]
+    pitch = float(spec.array_center_pitch_m)
+    centers_y = (torch.arange(10, dtype=torch.float64) - 4.5) * pitch + plane.origin_m[0] + spec.lateral_offset_m[0]
+    centers_x = (torch.arange(10, dtype=torch.float64) - 4.5) * pitch + plane.origin_m[1] + spec.lateral_offset_m[1]
+    if centers_y[0] - pitch / 2.0 < y[0] - dy / 2.0 or centers_y[-1] + pitch / 2.0 > y[-1] + dy / 2.0:
+        raise ValueError("global optical plane does not contain the full fiber-array y support")
+    if centers_x[0] - pitch / 2.0 < x[0] - dx / 2.0 or centers_x[-1] + pitch / 2.0 > x[-1] + dx / 2.0:
+        raise ValueError("global optical plane does not contain the full fiber-array x support")
+
+    _, _, rho_e = lp01_eigenpair(spec.v_number)
+    core_radius = spec.waist_m / rho_e
+    area = dy * dx
+    modes: list[torch.Tensor] = []
+    bounds: list[tuple[int, int, int, int]] = []
+    for center_y in centers_y:
+        y0 = int(torch.searchsorted(y, center_y - pitch / 2.0, right=False))
+        y1 = int(torch.searchsorted(y, center_y + pitch / 2.0, right=False))
+        for center_x in centers_x:
+            x0 = int(torch.searchsorted(x, center_x - pitch / 2.0, right=False))
+            x1 = int(torch.searchsorted(x, center_x + pitch / 2.0, right=False))
+            if y0 >= y1 or x0 >= x1:
+                raise ValueError("fiber mode cell is unresolved by the global-plane sampling")
+            yy, xx = torch.meshgrid(y[y0:y1], x[x0:x1], indexing="ij")
+            radius = torch.sqrt((yy - center_y).square() + (xx - center_x).square())
+            profile = lp01_radial_profile(radius / core_radius, spec.v_number).to(torch.float64)
+            norm = (profile.square().sum() * area).sqrt()
+            if not torch.isfinite(norm) or float(norm) <= 0.0:
+                raise ValueError("fiber mode has no finite sampled power on its support")
+            modes.append(torch.complex((profile / norm).to(torch.float32), torch.zeros_like(profile, dtype=torch.float32)))
+            bounds.append((y0, y1, x0, x1))
+    return tuple(modes), tuple(bounds)
+
+
 class FiberArrayOLS(nn.Module):
     """100x100 complex field -> 100 LP01 ports -> 100x100 complex field."""
 
     diagnostic_only = True
 
-    def __init__(self, input_plane: PlaneSpec, spec: FiberArraySpec = FiberArraySpec(), transport: torch.Tensor | None = None) -> None:
+    def __init__(
+        self,
+        input_plane: PlaneSpec,
+        spec: FiberArraySpec = FiberArraySpec(),
+        transport: torch.Tensor | None = None,
+        *,
+        output_plane: PlaneSpec | None = None,
+        output_spec: FiberArraySpec | None = None,
+    ) -> None:
         super().__init__()
-        if input_plane.shape != (100, 100):
-            raise ValueError("fiber OLS requires the formal 100x100 encoder plane")
         if any(abs(a - b) > 1.0e-15 for a, b in zip(input_plane.pixel_pitch_m, (spec.pitch_m, spec.pitch_m), strict=True)):
-            raise ValueError("fiber pixel pitch does not match the encoder PlaneSpec")
-        if any(abs(a - b) > 1.0e-12 for a, b in zip(input_plane.fov_m, spec.expected_fov_m, strict=True)):
-            raise ValueError("fiber FOV does not match the research geometry")
+            raise ValueError("fiber sampling pitch does not match the input PlaneSpec")
+        if spec.array_center_pitch_m is None:
+            if input_plane.shape != (100, 100):
+                raise ValueError("the compact fiber OLS requires the formal 100x100 encoder plane")
+            if any(abs(a - b) > 1.0e-12 for a, b in zip(input_plane.fov_m, spec.expected_fov_m, strict=True)):
+                raise ValueError("fiber FOV does not match the research geometry")
+        elif input_plane.shape == (100, 100):
+            raise ValueError("explicit physical array spacing requires a global optical plane")
         if abs(input_plane.wavelength_m - spec.wavelength_m) > 1.0e-15:
             raise ValueError("fiber wavelength does not match the encoder PlaneSpec")
         if transport is None:
@@ -217,9 +275,25 @@ class FiberArrayOLS(nn.Module):
             raise ValueError("transport matrix is non-passive")
         self.input_plane = input_plane
         self.spec = spec
+        self.output_plane = output_plane or input_plane
+        self.output_spec = output_spec or spec
+        if self.output_plane.pixel_pitch_m != (self.output_spec.pitch_m, self.output_spec.pitch_m):
+            raise ValueError("output fiber sampling pitch does not match its PlaneSpec")
+        if abs(self.output_plane.wavelength_m - self.output_spec.wavelength_m) > 1.0e-15:
+            raise ValueError("output fiber wavelength does not match its PlaneSpec")
         lowdin = spec.mode_model == "step_index_lp01_lowdin"
-        self.register_buffer("input_modes", _mode_bank(input_plane, spec, offset_m=spec.lateral_offset_m, lowdin=lowdin))
-        self.register_buffer("output_modes", _mode_bank(input_plane, spec, offset_m=(0.0, 0.0), lowdin=lowdin))
+        self._local_input_mode_bounds: tuple[tuple[int, int, int, int], ...] | None = None
+        if spec.array_center_pitch_m is None:
+            self.register_buffer("input_modes", _mode_bank(input_plane, spec, offset_m=spec.lateral_offset_m, lowdin=lowdin))
+        else:
+            if lowdin:
+                raise ValueError("global physical LP01 cells are already disjoint; Lowdin mode is not applicable")
+            patches, self._local_input_mode_bounds = _local_lp01_mode_patches(input_plane, spec)
+            self.register_buffer("input_modes", torch.empty((0,), dtype=torch.complex64))
+            for index, patch in enumerate(patches):
+                self.register_buffer(f"input_mode_patch_{index}", patch)
+        output_lowdin = self.output_spec.mode_model == "step_index_lp01_lowdin"
+        self.register_buffer("output_modes", _mode_bank(self.output_plane, self.output_spec, offset_m=(0.0, 0.0), lowdin=output_lowdin))
         self.register_buffer("transport", transport)
         self.last_diagnostics: dict[str, object] = {}
 
@@ -239,8 +313,14 @@ class FiberArrayOLS(nn.Module):
     def project_coefficients(self, field: ComplexField) -> torch.Tensor:
         """Return differentiable complex LP01 overlaps in the fixed port order."""
         values = self._validated_values(field)
-        input_modes, _ = self._banks(field)
         area = self.input_plane.pixel_pitch_m[0] * self.input_plane.pixel_pitch_m[1]
+        if self._local_input_mode_bounds is not None:
+            coefficients = []
+            for index, (y0, y1, x0, x1) in enumerate(self._local_input_mode_bounds):
+                mode = getattr(self, f"input_mode_patch_{index}").to(values)
+                coefficients.append((mode.conj() * values[..., y0:y1, x0:x1]).sum(dim=(-2, -1)) * area)
+            return torch.stack(coefficients, dim=1)
+        input_modes, _ = self._banks(field)
         return torch.einsum("mhw,bhw->bm", input_modes.conj(), values) * area
 
     def transmit_coefficients(self, coefficients: torch.Tensor) -> torch.Tensor:
@@ -262,22 +342,25 @@ class FiberArrayOLS(nn.Module):
 
     def forward(self, field: ComplexField) -> ComplexField:
         values = self._validated_values(field)
-        input_modes, _ = self._banks(field)
         area = self.input_plane.pixel_pitch_m[0] * self.input_plane.pixel_pitch_m[1]
         coefficients = self.project_coefficients(field)
         output_coefficients = self.transmit_coefficients(coefficients)
         output_values = self.reemit_coefficients(output_coefficients)
         input_energy = values.abs().square().sum(dim=(-2, -1)) * area
-        output_energy = output_values.abs().square().sum(dim=(-2, -1)) * area
+        output_area = self.output_plane.pixel_pitch_m[0] * self.output_plane.pixel_pitch_m[1]
+        output_energy = output_values.abs().square().sum(dim=(-2, -1)) * output_area
         if torch.any(output_energy > input_energy * (1.0 + 1.0e-5) + 1.0e-12):
             raise ValueError("fiber OLS violates the input/output energy gate")
         input_energy_max = float(input_energy.max().detach())
         output_energy_max = float(output_energy.max().detach())
-        gram = input_modes.flatten(1).conj() @ input_modes.flatten(1).T * area
+        if self._local_input_mode_bounds is not None:
+            gram = torch.eye(100, dtype=torch.complex64, device=values.device)
+        else:
+            gram = self.input_modes.to(values).flatten(1).conj() @ self.input_modes.to(values).flatten(1).T * area
         singular_values = torch.linalg.svdvals(self.transport)
         self.last_diagnostics = {"input_energy_max": input_energy_max, "output_energy_max": output_energy_max, "input_energy": input_energy.detach(), "output_energy": output_energy.detach(), "coupling_efficiency": (coefficients.abs().square().sum(dim=1) / input_energy.clamp_min(1.0e-30)).detach(), "transport_singular_max": float(singular_values.max()), "transport_singular_min": float(singular_values.min()), "port_gram_rank": int(torch.linalg.matrix_rank(gram).item()), "port_gram_condition": float(torch.linalg.cond(gram)), "active_offset_m": list(self.spec.lateral_offset_m), "port_input_coefficients": coefficients.detach(), "port_output_coefficients": output_coefficients.detach()}
         output = output_values.unsqueeze(1) if field.tensor.ndim == 4 else output_values
-        return ComplexField(output, self.input_plane.with_plane("ols_output"), OperationProvenance("synthetic_smf_lp01_port_transport", self.input_plane.plane_id, 0.0, {"mode_model": self.spec.mode_model, "v_number": self.spec.v_number, "facet_magnification": self.spec.facet_magnification, "lateral_offset_m": list(self.spec.lateral_offset_m), "physical_parameter_status": "synthetic diagnostic-only"}))
+        return ComplexField(output, self.output_plane.with_plane("ols_output"), OperationProvenance("synthetic_smf_lp01_port_transport", self.input_plane.plane_id, 0.0, {"mode_model": self.spec.mode_model, "v_number": self.spec.v_number, "facet_magnification": self.spec.facet_magnification, "lateral_offset_m": list(self.spec.lateral_offset_m), "array_center_pitch_m": self.spec.array_center_pitch_m, "output_mode_plane": self.output_plane.to_dict(), "physical_parameter_status": "synthetic diagnostic-only"}))
 
 
 class FiberTransportEnsembleOLS(FiberArrayOLS):

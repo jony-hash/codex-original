@@ -1,0 +1,53 @@
+schema: ols_gaussian_dimension_reaudit.v1
+status: synthetic_diagnostic_only
+source_evidence:
+  gaussian_validation_report: outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/report.json
+  fixed_phase_screens: outputs/20261013_ols_gaussian_dimension_reaudit_v1/inputs/fixed_phase_screens.pt
+  original_fixed_phase_screens: outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/fixed_phase_screens.pt
+  historical_g3_report: outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_06/physical_reachability_and_convergence_v2.json
+  historical_dimension_report: outputs/20261013_compact_200um_ols_dimension_optimization_v1/runs/autodl_backup_results/full_measurement/compact_200um_ols_dimension_results.json
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  encoder_shape: [100, 100]
+  encoder_aperture_m: 2.0e-4
+  propagation_windows_mm: [4.096, 6.144, 8.192]
+  propagation_grid_sizes: [2048, 3072, 4096]
+  inter_encoder_spacing_m: 1.5e-3
+  last_encoder_to_fiber_m: 1.5e-3
+  phase_screen_count: 2
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+  illumination: uniform_coherent_top_hat
+fiber:
+  reference_pitch_m: 1.25e-4
+  cladding_diameter_m: 1.25e-4
+  mode_field_diameter_m: 1.4222e-5
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  transport: ideal_identity
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+dimension_diagnostic:
+  enabled_only_if_g3_passes: true
+  square_array_sizes: [1, 2, 3, 4, 5, 6, 7, 8, 10]
+  phase_cases: [zero, last_layer_x_1deg, last_layer_xy_1deg]
+  probe_count: 32
+  probe_seed: 20261013
+  probe_amplitudes: [0.25, 0.75]
+  amplitude_matrix_relative_singular_value_thresholds: [1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4]
+  numerical_rank_error_floor_fraction: 1.0e-10
+  diagnostic_optimizer_updates: 0
+scope:
+  formal_training: forbidden
+  dataset_read: forbidden
+  task_evaluator: forbidden
+  fid: forbidden
+  task_loss_change: forbidden
+  production_default_migration: forbidden
+  optical_geometry_change: forbidden
+  material_nonlinearity: forbidden
+  phase_optimizer_updates: forbidden
+gates:
+  g3_complex_relative_error_after_common_global_phase_max: 1.0e-4
+  production_dtype: complex64
+  independent_reference_dtype: complex128

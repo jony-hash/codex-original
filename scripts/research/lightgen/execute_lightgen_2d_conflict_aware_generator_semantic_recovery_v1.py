@@ -549,6 +549,7 @@ def _restore_rng(snapshot: tuple[torch.Tensor, list[torch.Tensor]]) -> None:
 
 def _run_preflight(consumer: Any, evaluator: FrozenMNISTEvaluator, references: Any, images: torch.Tensor, labels: torch.Tensor, train_indices: torch.Tensor, calibration_indices: torch.Tensor, step0: Mapping[str, Any], prior_report: Mapping[str, Any], *, beta: float, gamma: float, delta: float) -> dict[str, Any]:
     initial_state = {name: value.detach().cpu().clone() for name, value in consumer.runtime.state_dict().items()}
+    evaluator_initial = {name: value.detach().cpu().clone() for name, value in evaluator.state_dict().items()}
     initial_rng = _rng_snapshot()
     bad_optimizer = torch.optim.Adam(list(consumer.runtime.parameters()), lr=1.0e-3)
     try:
@@ -581,9 +582,14 @@ def _run_preflight(consumer: Any, evaluator: FrozenMNISTEvaluator, references: A
     _freeze_generator_only(consumer)
     successor._clear_grads(consumer)
     _restore_rng(initial_rng)
+    runtime_restored = _state_digest(initial_state) == _state_digest(consumer.runtime.state_dict())
+    evaluator_unchanged = all(torch.equal(value.detach().cpu(), evaluator_initial[name]) for name, value in evaluator.state_dict().items())
+    _require(runtime_restored and evaluator_unchanged, "preflight did not restore runtime or changed the frozen evaluator")
     return {
         "schema": PREFLIGHT_SCHEMA,
         "status": "READY",
+        "runtime_restored": runtime_restored,
+        "frozen_evaluators_unchanged": evaluator_unchanged,
         "starting_authority": {"path": PRIOR_STEP_0.as_posix(), "sha256": EXPECTED_PRIOR_STEP_0_SHA256, "selected_step": 0},
         "gradient_rule": "g_total=g_sem+project_nonconflicting(g_rec,g_sem)+project_nonconflicting(g_op,g_sem)",
         "eps_proj": EPS_PROJ,
@@ -731,9 +737,28 @@ def run_successor(*, repo_root: Path | None = None, output_dir: str | Path = DEF
         delta=authorities["weights"]["delta"],
     )
     _write_json(target / "preflight.json", preflight)
-    control.mark_preflight_ready()
+    cuda_free, cuda_total = torch.cuda.mem_get_info(device)
+    negative_control = preflight.get("negative_control")
+    negative_control_passed = negative_control.get("passed") is True if isinstance(negative_control, Mapping) else False
+    three_step = preflight.get("three_step_real_update")
+    three_step_count = three_step.get("updates") if isinstance(three_step, Mapping) else None
+    selected_engine = "conflict_aware_cuda_generator_phase"
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": bool(preflight.get("status") == "READY" and three_step_count == 3 and negative_control_passed and preflight.get("runtime_restored") is True and preflight.get("frozen_evaluators_unchanged") is True),
+            "three_step_updates": three_step_count,
+            "negative_control_rejected": negative_control_passed,
+            "frozen_evaluators": preflight.get("frozen_evaluators_unchanged"),
+        },
+        resource={"passed": int(cuda_total) > 0 and 0 <= int(cuda_free) <= int(cuda_total) and preflight.get("status") == "READY", "free_bytes": int(cuda_free), "total_bytes": int(cuda_total)},
+        implementation={"passed": _generator(consumer).requires_grad and not consumer.runtime.encoder.phase.requires_grad, "selected_engine": selected_engine},
+        selected_engine=selected_engine,
+        created_at=time.time(),
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    effective_identity = control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
+    _write_json(target / "preflight_receipt.json", receipt.to_dict())
     _write_json(
         target / "execution_manifest.json",
         {"schema": "conflict_aware_generator_semantic_recovery_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "authorization_token": AUTHORIZATION_TOKEN, "input_authorities": ["M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION", "FROZEN_LATENT_GENERATOR_SEMANTIC_RECOVERY_V1_RESOLVED", "GENERATOR_SEMANTIC_CONTROLLABILITY_ATTRIBUTION_RESOLVED", "CHEN_BOGT_PHASE_COMPLETION_REPAIR_V1_Q2", "SMOOTH_MNIST_EVALUATOR_V2_1"], "source_manifest": source_manifest, "run_identity": effective_identity.to_dict(), "data_identity": authorities["data_identity"], "git_before": start_git, "cuda_runtime": cuda_runtime, "scope": {"bounded_updates": 300, "trainable": ["generator.phase"], "frozen": ["encoder.phase", "OLS", "scale", "T=I_100", "W_OLS", "latent normalization", "P2", "Q2", "evaluators"], "protected": False, "test": False, "sealed": False}},

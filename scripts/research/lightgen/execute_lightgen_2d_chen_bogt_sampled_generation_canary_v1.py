@@ -1372,9 +1372,45 @@ def run_canary(output_dir: Path, *, resume: bool = False) -> dict[str, Any]:
     heartbeat = HeartbeatWriter(target, RUN_ID, total_steps=N_OPTICAL * 2, interval_seconds=60.0)
     heartbeat.update(state=RUN_PREPARING, phase="STATISTICS", step=0, latest_losses={"canary_phase": "FAST_PREFLIGHT_COMPLETE"}, force=True)
     control = ResearchRunControl(identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    device = torch.device("cuda:0")
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    correctness_passed = bool(
+        context["report"].get("result") == "VALID_COMPLETED_GENERATION_BUNDLE_READY"
+        and context["bundle"].get("bundle_role") == "GENERATION_INPUTS_COMPLETE"
+        and context["bundle"].get("selected_step") == 300
+        and context["bundle"].get("run_config", {}).get("propagation_grid_size") == PRODUCTION_PROPAGATION_GRID
+        and tuple(context["p2_candidate"]["u"].shape) == (N_LATENT, OLS_PORT_COUNT)
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "frozen_report_bundle_and_train_collection_validated": correctness_passed,
+            "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "device": torch.cuda.get_device_name(device),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+            "training_or_optimizer_updates": 0,
+        },
+        implementation={
+            "passed": context["bundle"].get("run_config", {}).get("propagation_grid_size") == PRODUCTION_PROPAGATION_GRID,
+            "selected_engine": "chen_bogt_sampled_generation_cuda_2048_direct",
+            "propagation_grid_size": PRODUCTION_PROPAGATION_GRID,
+            "optimizer_created": False,
+            "backward_called": False,
+        },
+        selected_engine="chen_bogt_sampled_generation_cuda_2048_direct",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    preflight_record = target / "preflight_receipt.json"
+    if preflight_record.exists():
+        preflight_record = target / f"preflight_receipt_recheck_{time.time_ns()}.json"
+    atomic_write_new_json(preflight_record, receipt.to_dict(), artifact_kind="canary preflight receipt")
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
     recovery = RecoveryCheckpointManager(
         target,
         identity,

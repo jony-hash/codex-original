@@ -658,18 +658,31 @@ def _preflight_receipt(source_manifest: Mapping[str, Any], preflight: Mapping[st
     semantic_reference = _mapping(preflight.get("semantic_batched_reference"), "Canary semantic batched reference")
     adam = _mapping(preflight.get("one_step_adam_equivalence"), "Canary Adam equivalence")
     rollback = _mapping(preflight.get("rollback"), "Canary rollback")
+    rollback_passed = all(rollback.get(name) is True for name in ("runtime", "frozen", "adam", "rng", "sampler", "evaluator_grads"))
     resource = _mapping(preflight.get("resource_envelope"), "Canary resource envelope")
+    implementation_passed = bool(
+        preflight.get("gradient_engine") == GRADIENT_ENGINE
+        and preflight.get("training_backend") == SCALAR_REFERENCE_ENGINE
+    )
     return PreflightReceipt(
         source_semantics_id=str(source_manifest["execution_source_semantics_id"]),
         authorization_id=AUTHORIZATION_ID,
         checks={
             CORRECTNESS_INVARIANTS: {
+                "passed": bool(
+                    semantic_reference.get("all_equivalent")
+                    and adam.get("passed")
+                    and _mapping(preflight.get("three_step_real_update"), "Canary three-step update").get("updates") == 3
+                    and rollback_passed
+                    and correctness.get("rejected")
+                ),
                 "gradient_equivalence": bool(semantic_reference.get("all_equivalent")),
                 "adam_one_step_equivalence": bool(adam.get("passed")),
-                "three_step_update_and_restore": bool(_mapping(preflight.get("three_step_real_update"), "Canary three-step update").get("updates") == 3 and all(bool(value) for value in rollback.values())),
+                "three_step_update_and_restore": bool(_mapping(preflight.get("three_step_real_update"), "Canary three-step update").get("updates") == 3 and rollback_passed),
                 "negative_control": bool(correctness.get("rejected")),
             },
             RESOURCE_ENVELOPE: {
+                "passed": bool(resource.get("resource_ok") and str(resource.get("status", "")).upper() in {"READY", "PASS", "PASSED"}),
                 "status": resource.get("status"),
                 "resource_ok": bool(resource.get("resource_ok")),
                 "median_update_seconds": resource.get("median_update_seconds"),
@@ -677,7 +690,7 @@ def _preflight_receipt(source_manifest: Mapping[str, Any], preflight: Mapping[st
                 "peak_memory": resource.get("peak_memory"),
                 "cuda": True,
             },
-            IMPLEMENTATION_SELECTION: {"selected_engine": SCALAR_REFERENCE_ENGINE, "training_backend": SCALAR_REFERENCE_ENGINE, "batched_reference_calls": semantic_reference.get("batched_calls"), "fixed": True},
+            IMPLEMENTATION_SELECTION: {"passed": implementation_passed, "selected_engine": SCALAR_REFERENCE_ENGINE, "gradient_engine": preflight.get("gradient_engine"), "training_backend": preflight.get("training_backend"), "batched_reference_calls": semantic_reference.get("batched_calls"), "fixed": True},
         },
         selected_engine=SCALAR_REFERENCE_ENGINE,
         resource={

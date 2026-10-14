@@ -17,7 +17,11 @@ from ldm_project.v2.optics import (
     reference_angular_spectrum_propagate,
     reference_b0_imaging,
 )
-from ldm_project.v2.optics.propagation import _PRODUCTION_TRANSFER_CACHE, clear_production_transfer_cache
+from ldm_project.v2.optics.propagation import (
+    _PRODUCTION_TRANSFER_CACHE,
+    _transfer_function,
+    clear_production_transfer_cache,
+)
 
 
 def _field(shape: tuple[int, int] = (8, 8)) -> ComplexField:
@@ -43,6 +47,46 @@ def test_production_asm_cache_is_physics_and_dtype_scoped() -> None:
     assert len(_PRODUCTION_TRANSFER_CACHE) == 1
     angular_spectrum_propagate(field, 2e-3, "other-distance")
     assert len(_PRODUCTION_TRANSFER_CACHE) == 2
+
+
+def test_complex64_transfer_uses_float64_phase_before_cast() -> None:
+    size, dx, wavelength, distance = 512, 2.0e-6, 532.0e-9, 1.5e-3
+    actual = _transfer_function(
+        (size, size),
+        pixel_pitch_m=(dx, dx),
+        wavelength_m=wavelength,
+        distance_m=distance,
+        device=torch.device("cpu"),
+        real_dtype=torch.float32,
+    )
+
+    fy = torch.fft.fftfreq(size, d=dx, dtype=torch.float64)
+    fx = torch.fft.fftfreq(size, d=dx, dtype=torch.float64)
+    grid_y, grid_x = torch.meshgrid(fy, fx, indexing="ij")
+    argument = 1.0 - (wavelength * grid_x).square() - (wavelength * grid_y).square()
+    phase = (2.0 * torch.pi * distance / wavelength) * torch.sqrt(argument.clamp_min(0.0))
+    reference = torch.where(
+        argument >= 0.0,
+        torch.polar(torch.ones_like(phase), phase),
+        torch.zeros_like(phase, dtype=torch.complex128),
+    ).to(torch.complex64)
+    corrected_error = torch.linalg.vector_norm(actual - reference) / torch.linalg.vector_norm(reference)
+
+    fy32 = torch.fft.fftfreq(size, d=dx, dtype=torch.float32)
+    fx32 = torch.fft.fftfreq(size, d=dx, dtype=torch.float32)
+    grid_y32, grid_x32 = torch.meshgrid(fy32, fx32, indexing="ij")
+    argument32 = 1.0 - (wavelength * grid_x32).square() - (wavelength * grid_y32).square()
+    phase32 = (2.0 * torch.pi * distance / wavelength) * torch.sqrt(argument32.clamp_min(0.0))
+    legacy = torch.where(
+        argument32 >= 0.0,
+        torch.polar(torch.ones_like(phase32), phase32),
+        torch.zeros_like(phase32, dtype=torch.complex64),
+    )
+    legacy_error = torch.linalg.vector_norm(legacy - reference) / torch.linalg.vector_norm(reference)
+
+    assert actual.dtype == torch.complex64
+    assert float(corrected_error) <= 1.0e-7
+    assert float(legacy_error) > 1.0e-4
 
 
 def test_transfer_cached_in_inference_mode_remains_backward_safe() -> None:

@@ -10,8 +10,8 @@ repository source, evidence and root [`AGENTS.md`](../AGENTS.md) take priority.
   ldm_project.v2`; its formal path is amplitude SLM → encoder metasurface →
   identity OLS → decoder metasurface → one CMOS exposure.
 - LightGen OLS-native research is separate from both formal runtime contracts.
-  Its current scientific question is semantic presentation through the BOGT
-  mapping, not proof of a hardware-ready generator.
+  Its current question, evidence, and stop point are maintained in
+  [`CURRENT_STATUS.md`](CURRENT_STATUS.md), not in this navigation file.
 - `raw_intensity` is the production raw-CMOS accessor. `IntensityFrame` stores
   its image in `.tensor`.
 
@@ -29,6 +29,7 @@ repository source, evidence and root [`AGENTS.md`](../AGENTS.md) take priority.
 | Current status | `docs/CURRENT_STATUS.md` |
 | Current handoff | `docs/status/current_handoff.md` |
 | Full historical record | `docs/archive/20261001_project_refactor/experiment_history_full.md` |
+| Windows development and CPU verification | `docs/operations/windows_development.md` |
 
 ## Reading Results
 

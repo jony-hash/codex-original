@@ -1,0 +1,409 @@
+{
+  "status": "PASS",
+  "scientific_status": "TARGET_SCHEMATIC",
+  "results": [
+    {
+      "variant": "main",
+      "overlaps": [],
+      "clipped": [],
+      "geometry": {
+        "texts": [
+          {
+            "text": "目标机制 · 示意 / schematic",
+            "x": 48,
+            "y": 33,
+            "w": 227.328125,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "EOLS(x,y) = ∑j zj vj(x,y)",
+            "x": 360.1796875,
+            "y": 89,
+            "w": 253.640625,
+            "h": 33.5,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "10×10 SMF-OLS",
+            "x": 22.125,
+            "y": 368,
+            "w": 171.75,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "100 complex coefficients",
+            "x": 1.3046875,
+            "y": 406,
+            "w": 213.390625,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "z₁ … z₁₀₀",
+            "x": 63.234375,
+            "y": 152,
+            "w": 89.53125,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "幅值 + 相位",
+            "x": 59.9921875,
+            "y": 444,
+            "w": 97.0029296875,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "coherent re-emission",
+            "x": 218.8984375,
+            "y": 372,
+            "w": 182.203125,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "LP01 / Gaussian 基模示意",
+            "x": 203.0234375,
+            "y": 444,
+            "w": 214.9521484375,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "|E|",
+            "x": 481.5,
+            "y": 341,
+            "w": 29,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "φ",
+            "x": 575.453125,
+            "y": 341,
+            "w": 17.09375,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "EOLS(x,y)",
+            "x": 490.984375,
+            "y": 160,
+            "w": 98.03125,
+            "h": 33.5,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "FNL",
+            "x": 717.7890625,
+            "y": 159,
+            "w": 36.751953125,
+            "h": 34,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "物理非线性",
+            "x": 680,
+            "y": 368,
+            "w": 111,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "幅值 / 相位响应待标定",
+            "x": 645.828125,
+            "y": 414,
+            "w": 180.34375,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "|E′|",
+            "x": 877.3984375,
+            "y": 341,
+            "w": 35.203125,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "φ′",
+            "x": 971.3515625,
+            "y": 341,
+            "w": 23.296875,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "E′OLS(x,y)",
+            "x": 886.4921875,
+            "y": 160,
+            "w": 105.015625,
+            "h": 33.5,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "D1",
+            "x": 1129.1640625,
+            "y": 368,
+            "w": 29.671875,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "D2",
+            "x": 1241.1640625,
+            "y": 368,
+            "w": 29.671875,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "自由空间传播",
+            "x": 1146,
+            "y": 162,
+            "w": 109,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "2L Decoder",
+            "x": 1150.9375,
+            "y": 406,
+            "w": 99.2392578125,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "生成图像",
+            "x": 1385,
+            "y": 368,
+            "w": 88,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "CMOS",
+            "x": 1401.65625,
+            "y": 406,
+            "w": 54.6875,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "E′ = FNL(E)",
+            "x": 674.9921875,
+            "y": 487,
+            "w": 128.015625,
+            "h": 33.5,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "场图与数字均为示意；不代表实测响应或生成结果",
+            "x": 751,
+            "y": 534,
+            "w": 376,
+            "h": 22,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          }
+        ],
+        "cores": 100,
+        "stages": [
+          "smf-array",
+          "coherent-reemission",
+          "pre-field",
+          "fnl-film",
+          "post-field",
+          "decoder-d1",
+          "decoder-d2",
+          "detector-image"
+        ]
+      },
+      "png": {
+        "width": 4800,
+        "height": 1800,
+        "alpha": true
+      }
+    },
+    {
+      "variant": "clean",
+      "overlaps": [],
+      "clipped": [],
+      "geometry": {
+        "texts": [
+          {
+            "text": "目标机制 · 示意 / schematic",
+            "x": 48,
+            "y": 33,
+            "w": 227.328125,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "10×10 SMF-OLS",
+            "x": 22.125,
+            "y": 368,
+            "w": 171.75,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "z₁ … z₁₀₀",
+            "x": 63.234375,
+            "y": 152,
+            "w": 89.53125,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "相干重发",
+            "x": 273,
+            "y": 372,
+            "w": 73,
+            "h": 24,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "|E|",
+            "x": 481.5,
+            "y": 341,
+            "w": 29,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "φ",
+            "x": 575.453125,
+            "y": 341,
+            "w": 17.09375,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "EOLS(x,y)",
+            "x": 490.984375,
+            "y": 160,
+            "w": 98.03125,
+            "h": 33.5,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "FNL",
+            "x": 717.7890625,
+            "y": 159,
+            "w": 36.751953125,
+            "h": 34,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "物理非线性",
+            "x": 680,
+            "y": 368,
+            "w": 111,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "|E′|",
+            "x": 877.3984375,
+            "y": 341,
+            "w": 35.203125,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "φ′",
+            "x": 971.3515625,
+            "y": 341,
+            "w": 23.296875,
+            "h": 24,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "E′OLS(x,y)",
+            "x": 886.4921875,
+            "y": 160,
+            "w": 105.015625,
+            "h": 33.5,
+            "font": "\"Cambria Math\", Cambria, \"Times New Roman\", serif"
+          },
+          {
+            "text": "D1",
+            "x": 1129.1640625,
+            "y": 368,
+            "w": 29.671875,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "D2",
+            "x": 1241.1640625,
+            "y": 368,
+            "w": 29.671875,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          },
+          {
+            "text": "生成图像",
+            "x": 1385,
+            "y": 368,
+            "w": 88,
+            "h": 29,
+            "font": "\"Microsoft YaHei\", \"Noto Sans CJK SC\", Arial, sans-serif"
+          }
+        ],
+        "cores": 100,
+        "stages": [
+          "smf-array",
+          "coherent-reemission",
+          "pre-field",
+          "fnl-film",
+          "post-field",
+          "decoder-d1",
+          "decoder-d2",
+          "detector-image"
+        ]
+      },
+      "png": {
+        "width": 4800,
+        "height": 1800,
+        "alpha": true
+      }
+    }
+  ],
+  "visual_review": "PASS: main and clean renders inspected; slide preview inspected; readable Chinese, no label overlap, no glow, thin mother-style planes.",
+  "skill_validator_limitation": "Legacy facet validator demands named Te, a different stage order and no gradients. This user explicitly requests unspecified F_NL after a reconstructed field and allows soft Gaussian mode gradients; custom topology and scientific audits are required.",
+  "scientific_consistency_audit": {
+    "main": {
+      "distinct_array_and_diffraction": true,
+      "no_smf_pitch_claim": true,
+      "coefficients_distinct_from_2d_fields": true,
+      "single_physical_nonlinearity": true,
+      "no_relu_or_threshold": true,
+      "no_material_curve_or_named_material": true,
+      "correct_field_operator_decoder_order": true,
+      "mother_decoder_grammar": true,
+      "no_fmf_mmf": true,
+      "schematic_not_experiment": true,
+      "editable_text_and_no_raster_embed": true,
+      "gaussian_gradient_confined_to_modes": true
+    },
+    "_clean": {
+      "distinct_array_and_diffraction": true,
+      "no_smf_pitch_claim": true,
+      "coefficients_distinct_from_2d_fields": true,
+      "single_physical_nonlinearity": true,
+      "no_relu_or_threshold": true,
+      "no_material_curve_or_named_material": true,
+      "correct_field_operator_decoder_order": true,
+      "mother_decoder_grammar": true,
+      "no_fmf_mmf": true,
+      "schematic_not_experiment": true,
+      "editable_text_and_no_raster_embed": true,
+      "gaussian_gradient_confined_to_modes": true
+    }
+  },
+  "current_implementation_boundary": "Newest optional material forward modifies modal coefficients using lumped per-port peak intensity before re-emission; this figure is the requested target field-domain mechanism, not that current forward graph."
+}

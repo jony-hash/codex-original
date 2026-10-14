@@ -25,13 +25,18 @@ def _transfer_function(
     device: torch.device,
     real_dtype: torch.dtype,
 ) -> torch.Tensor:
-    fy = torch.fft.fftfreq(shape[0], d=pixel_pitch_m[0], device=device, dtype=real_dtype)
-    fx = torch.fft.fftfreq(shape[1], d=pixel_pitch_m[1], device=device, dtype=real_dtype)
+    # The propagation phase can be thousands of radians. Build the sampled
+    # frequencies and phase in float64 even for complex64 fields, then cast the
+    # completed transfer function once to the field's complex precision.
+    fy = torch.fft.fftfreq(shape[0], d=pixel_pitch_m[0], device=device, dtype=torch.float64)
+    fx = torch.fft.fftfreq(shape[1], d=pixel_pitch_m[1], device=device, dtype=torch.float64)
     grid_y, grid_x = torch.meshgrid(fy, fx, indexing="ij")
     argument = 1.0 - (wavelength_m * grid_x).square() - (wavelength_m * grid_y).square()
     phase = (2.0 * math.pi * distance_m / wavelength_m) * torch.sqrt(argument.clamp_min(0.0))
     transfer = torch.polar(torch.ones_like(phase), phase)
-    return torch.where(argument >= 0.0, transfer, torch.zeros_like(transfer))
+    transfer = torch.where(argument >= 0.0, transfer, torch.zeros_like(transfer))
+    complex_dtype = torch.complex64 if real_dtype == torch.float32 else torch.complex128
+    return transfer.to(dtype=complex_dtype)
 
 
 def angular_spectrum_propagate(field: ComplexField, distance_m: float, plane_id: str) -> ComplexField:

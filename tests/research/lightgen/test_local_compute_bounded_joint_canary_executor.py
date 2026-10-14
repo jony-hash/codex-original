@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 import torch
 
+from ldm_project.v2.application.research.shared.research_run_control import RunControlError
+
 from scripts.research.lightgen import execute_lightgen_2d_local_compute_bounded_joint_canary_v1 as canary
 from scripts.research.lightgen import execute_lightgen_2d_chen_bogt_phase_completion_repair_v1 as phase_repair
 from scripts.research.lightgen import execute_lightgen_2d_joint_structural_semantic_continuation_v1 as joint
@@ -101,8 +103,11 @@ def test_canary_resource_gate_rejects_oom_or_memory_overrun() -> None:
     assert overrun["resource_ok"] is False
 
 
-def test_canary_receipt_records_three_check_groups_and_resource_values() -> None:
+@pytest.mark.parametrize("rollback_case", ["valid", "empty", "failed", "ordinary_false_metadata"])
+def test_canary_receipt_requires_actual_rollback_results(rollback_case: str) -> None:
     preflight = {
+        "gradient_engine": canary.GRADIENT_ENGINE,
+        "training_backend": canary.SCALAR_REFERENCE_ENGINE,
         "negative_control": {"rejected": True},
         "semantic_batched_reference": {"all_equivalent": True, "batched_calls": 1},
         "one_step_adam_equivalence": {"passed": True},
@@ -110,6 +115,16 @@ def test_canary_receipt_records_three_check_groups_and_resource_values() -> None
         "rollback": {"runtime": True, "frozen": True, "adam": True, "rng": True, "sampler": True, "evaluator_grads": True},
         "resource_envelope": {"status": "READY", "resource_ok": True, "median_update_seconds": 1.5, "projected_300_update_hours": 0.125, "peak_memory": {"max_reserved_bytes": 10}},
     }
+    if rollback_case == "empty":
+        preflight["rollback"] = {}
+    elif rollback_case == "failed":
+        preflight["rollback"]["adam"] = False
+    elif rollback_case == "ordinary_false_metadata":
+        preflight["rollback"]["training_started"] = False
+    if rollback_case in {"empty", "failed"}:
+        with pytest.raises(RunControlError, match="did not pass"):
+            canary._preflight_receipt({"execution_source_semantics_id": "canary-source"}, preflight)
+        return
     receipt = canary._preflight_receipt({"execution_source_semantics_id": "canary-source"}, preflight)
     assert set(receipt.checks) == {canary.CORRECTNESS_INVARIANTS, canary.RESOURCE_ENVELOPE, canary.IMPLEMENTATION_SELECTION}
     assert receipt.checks[canary.RESOURCE_ENVELOPE]["median_update_seconds"] == 1.5
@@ -172,9 +187,9 @@ def test_post_open_invalid_harness_closeout_is_write_once(tmp_path: Path, monkey
         source_semantics_id="source",
         authorization_id=canary.AUTHORIZATION_ID,
         checks={
-            canary.CORRECTNESS_INVARIANTS: {},
-            canary.RESOURCE_ENVELOPE: {},
-            canary.IMPLEMENTATION_SELECTION: {},
+            canary.CORRECTNESS_INVARIANTS: {"passed": True},
+            canary.RESOURCE_ENVELOPE: {"passed": True},
+            canary.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": canary.SCALAR_REFERENCE_ENGINE},
         },
         selected_engine=canary.SCALAR_REFERENCE_ENGINE,
     )

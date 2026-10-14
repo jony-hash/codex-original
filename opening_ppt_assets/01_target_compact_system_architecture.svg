@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1800 600" width="270.93mm" height="90.31mm" role="img" aria-labelledby="figure-title figure-desc" data-figure-mode="architecture" data-scientific-status="TARGET">
+<title id="figure-title">目标紧凑 SMF–OLS 非线性光学语义生成架构</title>
+<desc id="figure-desc">目标架构示意，非已完成实物实验。两层衍射编码器，10×10单模光纤阵列的100个复通道，紧贴输出端面的待标定非线性复合器件，两层衍射解码器及CMOS。每个目标衍射层100×100格点、2 μm节距，活动区约200 μm×200 μm。数字为手绘矢量示意，不是实验样本。器件、膜厚、传播和阵列不按物理比例绘制。</desc>
+<defs><style>
+.label{fill:#203F72;font-family:Arial,"Noto Sans SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif;font-weight:400}.secondary{fill:#6B7280;font-family:Arial,"Noto Sans SC","Microsoft YaHei",sans-serif}.status{fill:#6B7280;font-family:Arial,"Noto Sans SC","Microsoft YaHei",sans-serif}.material-label{fill:#D98945;font-family:Arial,"Noto Sans SC","Microsoft YaHei",sans-serif}.beam{fill:#EDF2F7;fill-opacity:.9;stroke:none}.flow{fill:none;stroke:#6B7280;stroke-width:5.2;stroke-dasharray:12 9;stroke-linecap:round}.readout{stroke-width:3;stroke-dasharray:7 7}.ons-stroke{stroke:#203F72;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}.ons-thin{stroke:#7186A5;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+</style><marker id="ons-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="3" markerHeight="3" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#6B7280"/></marker>
+<pattern id="ons-phase-pixels" width="10" height="10" patternUnits="userSpaceOnUse"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="#EDF2F7" stroke="#7186A5" stroke-width=".45"/></pattern>
+<pattern id="ons-sensor-pixels" width="7" height="7" patternUnits="userSpaceOnUse"><rect x=".8" y=".8" width="5.4" height="5.4" fill="#EDF2F7" stroke="#7186A5" stroke-width=".55"/></pattern>
+<symbol id="ons-diffractive-plane" viewBox="0 0 80 230"><polygon points="10,25 70,8 70,208 10,225" fill="url(#ons-phase-pixels)" class="ons-stroke"/><polygon points="70,8 74,10 74,210 70,208" fill="#7186A5" opacity=".45"/><path d="M10 25L14 28M10 225L14 227" class="ons-thin"/></symbol>
+<symbol id="ons-cmos" viewBox="0 0 64 120"><rect x="18" y="8" width="25" height="104" rx="1.5" fill="url(#ons-sensor-pixels)" class="ons-stroke"/><rect x="43" y="16" width="6" height="88" rx="1" fill="#7186A5"/></symbol>
+</defs>
+<g id="proposal-tag"><text x="54" y="62" class="status" font-size="24">目标架构 / Proposed target architecture</text></g>
+<g id="optical-propagation" aria-label="拟定主光路">
+<polygon class="beam" points="285,230 360,215 360,285 285,270"/>
+<polygon class="beam" points="420,215 500,210 500,290 420,285"/>
+<polygon class="beam" points="565,216 710,206 710,294 565,284"/>
+<polygon class="beam" points="986,214 1150,206 1150,294 986,286"/>
+<polygon class="beam" points="1215,206 1270,206 1270,294 1215,294"/>
+<polygon class="beam" points="1335,208 1455,222 1455,278 1335,292"/>
+</g>
+<g data-stage="input" data-scientific-status="TARGET" data-symbolic-digits="true">
+<rect x="52" y="204" width="66" height="97" rx="3" fill="white" stroke="#EDF2F7" stroke-width="2"/>
+<g transform="translate(56 211) scale(0.94)"><path d="M12 12 C29 1 55 8 50 25 C48 35 36 38 25 40 C42 39 59 48 53 65 C47 84 18 84 9 70" fill="none" stroke="#6B7280" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="133" y="204" width="66" height="97" rx="3" fill="white" stroke="#EDF2F7" stroke-width="2"/>
+<g transform="translate(137 211) scale(0.94)"><path d="M51 10 L18 10 L13 37 C28 29 49 33 53 48 C61 76 28 86 10 69" fill="none" stroke="#6B7280" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="214" y="204" width="66" height="97" rx="3" fill="white" stroke="#EDF2F7" stroke-width="2"/>
+<g transform="translate(218 211) scale(0.94)"><path d="M30 40 C4 33 8 5 31 6 C58 7 59 31 30 40 C2 49 6 79 31 79 C60 80 62 49 30 40" fill="none" stroke="#6B7280" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="165" y="434" text-anchor="middle" class="label" font-size="36">输入 / 语义条件</text></g>
+<line class="flow" x1="286" y1="250" x2="338" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="encoder-e1" data-scientific-status="TARGET" data-neurons="100,100" data-pixel-pitch-m="0.000002"><use href="#ons-diffractive-plane" x="350" y="135" width="80" height="230" data-device="phase-plane"/></g>
+<line class="flow" x1="431" y1="250" x2="478" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="encoder-e2" data-scientific-status="TARGET" data-neurons="100,100" data-pixel-pitch-m="0.000002"><use href="#ons-diffractive-plane" x="490" y="135" width="80" height="230" data-device="phase-plane"/></g>
+<text x="455" y="434" text-anchor="middle" class="label" font-size="44">2L Encoder</text>
+<text x="455" y="484" text-anchor="middle" class="secondary" font-size="36">100×100 · 2 μm</text>
+<text x="455" y="530" text-anchor="middle" class="secondary" font-size="34">200 μm × 200 μm</text>
+<line class="flow" x1="584" y1="250" x2="695" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="smf-array" data-scientific-status="TARGET" data-channels="100" data-array-shape="10,10">
+<g data-device="smf-volume"><polygon points="715,155 785,137 975,137 905,155" fill="#EDF2F7" class="ons-thin"/><polygon points="905,155 975,137 975,327 905,345" fill="#EDF2F7" class="ons-stroke"/>
+<line x1="905" y1="164" x2="975" y2="146" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="182.1" x2="975" y2="164.1" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="200.2" x2="975" y2="182.2" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="218.3" x2="975" y2="200.3" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="236.4" x2="975" y2="218.4" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="254.5" x2="975" y2="236.5" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="272.6" x2="975" y2="254.60000000000002" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="290.70000000000005" x2="975" y2="272.70000000000005" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="308.8" x2="975" y2="290.8" class="ons-thin" opacity=".6"/>
+<line x1="905" y1="326.9" x2="975" y2="308.9" class="ons-thin" opacity=".6"/>
+<rect x="715" y="155" width="190" height="190" fill="white" class="ons-stroke"/>
+<circle cx="725.00" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="0" cx="725.00" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="1" cx="743.88" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="2" cx="762.76" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="3" cx="781.64" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="4" cx="800.52" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="5" cx="819.40" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="6" cx="838.28" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="7" cx="857.16" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="8" cx="876.04" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="165.00" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="0" data-column="9" cx="894.92" cy="165.00" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="0" cx="725.00" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="1" cx="743.88" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="2" cx="762.76" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="3" cx="781.64" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="4" cx="800.52" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="5" cx="819.40" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="6" cx="838.28" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="7" cx="857.16" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="8" cx="876.04" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="183.88" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="1" data-column="9" cx="894.92" cy="183.88" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="0" cx="725.00" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="1" cx="743.88" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="2" cx="762.76" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="3" cx="781.64" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="4" cx="800.52" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="5" cx="819.40" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="6" cx="838.28" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="7" cx="857.16" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="8" cx="876.04" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="202.76" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="2" data-column="9" cx="894.92" cy="202.76" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="0" cx="725.00" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="1" cx="743.88" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="2" cx="762.76" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="3" cx="781.64" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="4" cx="800.52" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="5" cx="819.40" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="6" cx="838.28" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="7" cx="857.16" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="8" cx="876.04" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="221.64" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="3" data-column="9" cx="894.92" cy="221.64" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="0" cx="725.00" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="1" cx="743.88" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="2" cx="762.76" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="3" cx="781.64" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="4" cx="800.52" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="5" cx="819.40" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="6" cx="838.28" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="7" cx="857.16" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="8" cx="876.04" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="240.52" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="4" data-column="9" cx="894.92" cy="240.52" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="0" cx="725.00" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="1" cx="743.88" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="2" cx="762.76" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="3" cx="781.64" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="4" cx="800.52" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="5" cx="819.40" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="6" cx="838.28" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="7" cx="857.16" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="8" cx="876.04" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="259.40" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="5" data-column="9" cx="894.92" cy="259.40" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="0" cx="725.00" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="1" cx="743.88" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="2" cx="762.76" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="3" cx="781.64" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="4" cx="800.52" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="5" cx="819.40" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="6" cx="838.28" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="7" cx="857.16" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="8" cx="876.04" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="278.28" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="6" data-column="9" cx="894.92" cy="278.28" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="0" cx="725.00" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="1" cx="743.88" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="2" cx="762.76" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="3" cx="781.64" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="4" cx="800.52" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="5" cx="819.40" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="6" cx="838.28" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="7" cx="857.16" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="8" cx="876.04" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="297.16" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="7" data-column="9" cx="894.92" cy="297.16" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="0" cx="725.00" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="1" cx="743.88" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="2" cx="762.76" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="3" cx="781.64" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="4" cx="800.52" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="5" cx="819.40" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="6" cx="838.28" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="7" cx="857.16" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="8" cx="876.04" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="316.04" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="8" data-column="9" cx="894.92" cy="316.04" r="2.25" fill="#203F72"/>
+<circle cx="725.00" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="0" cx="725.00" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="743.88" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="1" cx="743.88" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="762.76" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="2" cx="762.76" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="781.64" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="3" cx="781.64" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="800.52" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="4" cx="800.52" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="819.40" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="5" cx="819.40" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="838.28" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="6" cx="838.28" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="857.16" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="7" cx="857.16" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="876.04" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="8" cx="876.04" cy="334.92" r="2.25" fill="#203F72"/>
+<circle cx="894.92" cy="334.92" r="7.2" fill="#EDF2F7" stroke="#7186A5" stroke-width=".85"/>
+<circle class="smf-core" data-row="9" data-column="9" cx="894.92" cy="334.92" r="2.25" fill="#203F72"/>
+</g><text x="820" y="434" text-anchor="middle" class="label" font-size="42">10×10 SMF–OLS</text><text x="820" y="476" text-anchor="middle" class="secondary" font-size="34">100 complex channels</text></g>
+<g data-stage="smf-facet" data-scientific-status="TARGET"><line data-device="output-facet" x1="975" y1="137" x2="975" y2="327" class="ons-stroke"/></g>
+<g data-stage="fnl-film" data-scientific-status="TARGET" data-material-identity="unspecified" data-response="unmeasured">
+<rect data-device="functional-film" x="975" y="137" width="11" height="190" rx=".8" fill="#D98945" fill-opacity=".88" stroke="#D98945" stroke-width="2"/>
+<path d="M980 137V128H994" fill="none" stroke="#D98945" stroke-width="2.2"/>
+<text x="994" y="57" text-anchor="middle" fill="#D98945" font-family="Cambria Math,Times New Roman,serif" font-size="48"><tspan font-style="italic">F</tspan><tspan baseline-shift="sub" font-style="normal" font-size="31">NL</tspan></text>
+<text x="994" y="122" text-anchor="middle" class="material-label" font-size="34">SMF端面非线性复合器件</text></g>
+<line class="flow" x1="1008" y1="250" x2="1127" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="decoder-d1" data-scientific-status="TARGET" data-neurons="100,100" data-pixel-pitch-m="0.000002"><use href="#ons-diffractive-plane" x="1140" y="135" width="80" height="230" data-device="phase-plane"/></g>
+<line class="flow" x1="1221" y1="250" x2="1248" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="decoder-d2" data-scientific-status="TARGET" data-neurons="100,100" data-pixel-pitch-m="0.000002"><use href="#ons-diffractive-plane" x="1260" y="135" width="80" height="230" data-device="phase-plane"/></g>
+<text x="1250" y="434" text-anchor="middle" class="label" font-size="44">2L Decoder</text><text x="1250" y="484" text-anchor="middle" class="secondary" font-size="36">100×100 · 2 μm</text><text x="1250" y="530" text-anchor="middle" class="secondary" font-size="34">200 μm × 200 μm</text>
+<line class="flow" x1="1351" y1="250" x2="1434" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="cmos" data-scientific-status="TARGET"><use href="#ons-cmos" x="1438" y="143" width="102" height="215" data-device="sensor"/><text x="1504" y="434" text-anchor="middle" class="label" font-size="42">CMOS</text></g>
+<line class="flow readout" x1="1535" y1="250" x2="1590" y2="250" marker-end="url(#ons-arrow)"/>
+<g data-stage="output-image" data-scientific-status="TARGET" data-symbolic-digit="true"><rect x="1612" y="181" width="127" height="146" rx="2" fill="white" stroke="#7186A5" stroke-width="2"/>
+<g transform="translate(1629 199) scale(1.55)"><path d="M12 12 C29 1 55 8 50 25 C48 35 36 38 25 40 C42 39 59 48 53 65 C47 84 18 84 9 70" fill="none" stroke="#6B7280" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g><text x="1674" y="434" text-anchor="middle" class="label" font-size="36">生成图像</text><text x="1674" y="476" text-anchor="middle" class="secondary" font-size="28">示意</text></g>
+</svg>

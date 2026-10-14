@@ -1,0 +1,78 @@
+schema: compact_200um_ols_dimension_optimization.v1
+status: synthetic_diagnostic_only
+scope:
+  formal_training: forbidden
+  dataset_read: forbidden
+  task_evaluator: forbidden
+  fid: forbidden
+  task_loss: forbidden
+  material_nonlinearity_forward_model: forbidden
+  propagation_architecture_change: forbidden
+  production_geometry_mutation: forbidden
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  trainable_shape: [100, 100]
+  trainable_aperture_m: 2.0e-4
+  propagation_grid_size: 2048
+  inter_encoder_spacing_m: 1.5e-3
+  last_encoder_to_fiber_distance_m: 1.5e-3
+  layer_count: 2
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+  illumination: uniform_coherent_top_hat
+  propagation: production_angular_spectrum_finite_crop
+fiber:
+  reference_pitch_m: 1.25e-4
+  pitch_sweep_m: [1.25e-4, 1.0e-4, 7.5e-5, 5.0e-5]
+  cladding_diameter_m: 1.25e-4
+  mode_field_diameter_m: 1.4222e-5
+  lp01_v_number: 2.2
+  mode_basis: step_index_lp01_ports
+  channel_grid_sizes: [1, 2, 3, 4, 5, 6, 7, 8, 10]
+  pitch_sweep_grid_sizes: [4, 5, 6, 10]
+  layout_comparison_grid_sizes: [4, 5, 6, 10]
+  center_compact_pitch_fraction: 0.5
+  optimized_layout:
+    lattice_types: [square, hexagonal]
+    rotations_degrees: [0, 15, 30, 45]
+    translation_offsets_um: [-25.0, 0.0, 25.0]
+    maximum_abs_center_coordinate_um: 625.0
+    minimum_center_separation_m: 1.25e-4
+optimization:
+  phase_only: true
+  initialization: zero_phase_per_objective_and_architecture
+  optimizer: Adam
+  learning_rate: 0.04
+  steps_per_objective: 24
+  objective_names:
+    - maximize_total_coupling
+    - maximize_effective_dimension
+    - maximize_nonlinear_usability_at_1mW
+  nonlinear_input_power_w: 1.0e-3
+  nonlinear_sat_intensity_w_cm2: [10, 100, 520, 1000, 10000, 100000, 1000000, 30000000]
+  nonlinear_active_ratio_open_interval: [0.1, 10.0]
+  nonlinear_smooth_indicator_slope: 8.0
+  nonlinear_objective_definition: total_coupling_efficiency_times_mean_smooth_active_coverage_over_i_sat_sweep
+geometry:
+  regular_layout: centered_square_grid
+  center_compact_layout: centered_square_grid_at_half_reference_pitch
+  optimized_layout_objective: maximize_zero_phase_effective_dimension
+  optimized_layout_phase_independent: true
+  optimized_layout_domain: fixed_plus_minus_625um_square
+  optimized_layout_cladding_overlap_below_125um: report_as_custom_nonpackable_with_125um_cladding
+manufacturing:
+  relative_complexity_components:
+    - fiber_count
+    - array_footprint
+    - alignment_points
+    - nonlinear_coverage_area
+    - decoder_channel_matching
+  interpretation: relative_ranking_proxy_only_not_process_feasibility
+execution:
+  data_reads: 0
+  evaluator_calls: 0
+  formal_training_updates: 0
+  phase_optimization_updates_per_objective: 24
+  production_projection_relative_error_tolerance: 1.0e-5
+  preflight_real_phase_steps: 3

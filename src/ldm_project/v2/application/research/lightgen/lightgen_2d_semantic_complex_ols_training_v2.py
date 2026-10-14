@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 from ldm_project.v2.evidence import atomic_torch_save_new, file_sha256, safe_torch_load, tensor_sha256
-from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import ComplexOLSState, LightGen2DAlignmentRuntimeConfig, LightGen2DForwardResult, LightGen2DSemanticGenerationInputOLSAlignment, OLS_INTERFACE_ID, OLS_PORT_COUNT
+from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import GAUSSIAN_OLS_MODEL, LP01_OLS_MODEL, OLS_MODELS, ComplexOLSState, LightGen2DAlignmentRuntimeConfig, LightGen2DForwardResult, LightGen2DSemanticGenerationInputOLSAlignment, OLS_INTERFACE_ID, OLS_PORT_COUNT
 
 
 TASK_ID = "IMPLEMENT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONSUMER_V2"
@@ -315,6 +315,8 @@ class FrozenPhysicalOLSScale:
     classification: str = "SCIENTIFIC_TRAIN_ONLY"
     artifact_path: str | None = None
     artifact_sha256: str | None = None
+    basis_id: str = LP01_OLS_MODEL
+    mode_geometry: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.values, torch.Tensor) or self.values.ndim != 1 or self.values.shape[0] != OLS_PORT_COUNT:
@@ -328,6 +330,14 @@ class FrozenPhysicalOLSScale:
             raise ValueError("physical OLS scale contains a non-positive or below-epsilon port")
         if self.data_role not in {"train", SCALE_SMOKE_CLASSIFICATION}:
             raise DataRoleError("scale extraction accepts only train or NON_SCIENTIFIC_SMOKE")
+        _require(self.basis_id in OLS_MODELS, "physical OLS scale basis_id is unsupported")
+        if self.basis_id == GAUSSIAN_OLS_MODEL:
+            _require(isinstance(self.mode_geometry, Mapping), "Gaussian physical OLS scale requires mode geometry")
+            _require(self.mode_geometry.get("basis_id") == self.basis_id, "Gaussian physical OLS scale geometry/basis mismatch")
+            object.__setattr__(self, "mode_geometry", copy.deepcopy(dict(self.mode_geometry)))
+        elif self.mode_geometry is not None:
+            _require(isinstance(self.mode_geometry, Mapping) and self.mode_geometry.get("basis_id") == self.basis_id, "LP01 physical OLS scale geometry/basis mismatch")
+            object.__setattr__(self, "mode_geometry", copy.deepcopy(dict(self.mode_geometry)))
 
     @classmethod
     def from_tensor(
@@ -337,16 +347,18 @@ class FrozenPhysicalOLSScale:
         checkpoint_identity: Mapping[str, Any] | None = None,
         data_identity: Mapping[str, Any] | None = None,
         data_role: str = SCALE_SMOKE_CLASSIFICATION,
+        basis_id: str = LP01_OLS_MODEL,
+        mode_geometry: Mapping[str, Any] | None = None,
     ) -> "FrozenPhysicalOLSScale":
         value = values.detach().to(dtype=torch.float64, device="cpu").clone()
-        return cls(value, checkpoint_identity or {"role": "synthetic smoke"}, data_identity or {"role": "synthetic smoke"}, data_role=data_role, classification=SCALE_SMOKE_CLASSIFICATION if data_role == SCALE_SMOKE_CLASSIFICATION else "SCIENTIFIC_TRAIN_ONLY")
+        return cls(value, checkpoint_identity or {"role": "synthetic smoke"}, data_identity or {"role": "synthetic smoke"}, data_role=data_role, classification=SCALE_SMOKE_CLASSIFICATION if data_role == SCALE_SMOKE_CLASSIFICATION else "SCIENTIFIC_TRAIN_ONLY", basis_id=basis_id, mode_geometry=mode_geometry)
 
     @property
     def vector_sha256(self) -> str:
         return tensor_sha256(self.values)
 
     def identity(self) -> dict[str, Any]:
-        return {
+        identity = {
             "schema": SCALE_SCHEMA,
             "vector_sha256": self.vector_sha256,
             "data_role": self.data_role,
@@ -355,6 +367,10 @@ class FrozenPhysicalOLSScale:
             "artifact_path": self.artifact_path,
             "artifact_sha256": self.artifact_sha256,
         }
+        if self.basis_id == GAUSSIAN_OLS_MODEL:
+            identity["basis_id"] = self.basis_id
+            identity["mode_geometry"] = dict(self.mode_geometry or {})
+        return identity
 
     def with_artifact(self, path: str | Path, sha256: str) -> "FrozenPhysicalOLSScale":
         return FrozenPhysicalOLSScale(
@@ -366,6 +382,8 @@ class FrozenPhysicalOLSScale:
             self.classification,
             str(path),
             sha256,
+            self.basis_id,
+            self.mode_geometry,
         )
 
 
@@ -386,6 +404,9 @@ def save_scale_artifact(path: str | Path, scale: FrozenPhysicalOLSScale) -> Froz
         "stage_b_frozen": True,
         "artifact_self_hash": "not_embedded_to_avoid_self_reference",
     }
+    if scale.basis_id == GAUSSIAN_OLS_MODEL:
+        payload["basis_id"] = scale.basis_id
+        payload["mode_geometry"] = dict(scale.mode_geometry or {})
     atomic_torch_save_new(target, payload, artifact_kind="LightGen V2 physical OLS scale")
     return scale.with_artifact(target, file_sha256(target))
 
@@ -414,6 +435,8 @@ def load_scale_artifact(path: str | Path, *, expected_sha256: str | None = None)
         classification,
         str(target),
         actual,
+        str(payload.get("basis_id", LP01_OLS_MODEL)),
+        payload.get("mode_geometry"),
     )
     return scale
 
@@ -426,6 +449,8 @@ def extract_train_only_ols_scale(
     checkpoint_identity: Mapping[str, Any],
     data_identity: Mapping[str, Any],
     batch_size: int = LOGICAL_BATCH_SIZE,
+    basis_id: str = LP01_OLS_MODEL,
+    mode_geometry: Mapping[str, Any] | None = None,
 ) -> FrozenPhysicalOLSScale:
     """Extract ``s_j`` in canonical row order from an explicit data role.
 
@@ -447,6 +472,11 @@ def extract_train_only_ols_scale(
         raise DataRoleError("scientific train scale extraction requires exactly 55,000 rows")
     if data_role == SCALE_SMOKE_CLASSIFICATION and images.shape[0] == 0:
         raise ValueError("smoke scale extraction requires at least one row")
+    if basis_id != consumer.runtime.ols.basis_id:
+        raise TrainingContractError("scale extraction basis differs from the active OLS runtime")
+    active_geometry = consumer.runtime.ols.mode_identity()
+    if mode_geometry is not None and dict(mode_geometry) != active_geometry:
+        raise TrainingContractError("scale extraction geometry differs from the active OLS runtime")
 
     was_training = consumer.runtime.training
     consumer.runtime.eval()
@@ -469,7 +499,7 @@ def extract_train_only_ols_scale(
     if count != images.shape[0]:
         raise TrainingContractError("scale extraction row count changed")
     values = total / float(count)
-    return FrozenPhysicalOLSScale(values, checkpoint_identity, data_identity, data_role=data_role, classification="SCIENTIFIC_TRAIN_ONLY" if data_role == "train" else SCALE_SMOKE_CLASSIFICATION)
+    return FrozenPhysicalOLSScale(values, checkpoint_identity, data_identity, data_role=data_role, classification="SCIENTIFIC_TRAIN_ONLY" if data_role == "train" else SCALE_SMOKE_CLASSIFICATION, basis_id=basis_id, mode_geometry=active_geometry)
 
 
 def normalized_ols(z: torch.Tensor, scale: FrozenPhysicalOLSScale) -> torch.Tensor:
@@ -510,7 +540,11 @@ def sample_physical_prior(
         role=role,
     )
     physical = physical_ols_from_normalized(prior.coefficients, scale)
-    return ComplexOLSState.from_external(physical), prior
+    return ComplexOLSState.from_external(
+        physical,
+        basis_id=scale.basis_id,
+        mode_geometry=scale.mode_geometry,
+    ), prior
 
 
 def normalized_gauge_representation(z_tilde: torch.Tensor) -> torch.Tensor:
@@ -638,6 +672,7 @@ class LightGen2DComplexOLSTrainingConsumerV2(nn.Module):
         *,
         device: torch.device | str = "cpu",
         propagation_grid_size: int = PRODUCTION_PROPAGATION_GRID,
+        ols_model: str = LP01_OLS_MODEL,
     ) -> None:
         super().__init__()
         if not isinstance(contract, FrozenV2TrainingContract):
@@ -647,7 +682,7 @@ class LightGen2DComplexOLSTrainingConsumerV2(nn.Module):
         self.contract = contract
         self.device = torch.device(device)
         self.runtime = LightGen2DSemanticGenerationInputOLSAlignment(
-            LightGen2DAlignmentRuntimeConfig(propagation_grid_size=propagation_grid_size)
+            LightGen2DAlignmentRuntimeConfig(propagation_grid_size=propagation_grid_size, ols_model=ols_model)
         ).to(self.device)
         self.runtime.train()
         self._enforce_parameter_firewall()
@@ -655,7 +690,7 @@ class LightGen2DComplexOLSTrainingConsumerV2(nn.Module):
 
     @property
     def runtime_identity(self) -> dict[str, Any]:
-        return {
+        identity = {
             "identity": ALIGNMENT_RUNTIME_ID,
             "module": ALIGNMENT_RUNTIME_RELATIVE_PATH.as_posix(),
             "module_sha256": ALIGNMENT_RUNTIME_SHA256,
@@ -669,6 +704,10 @@ class LightGen2DComplexOLSTrainingConsumerV2(nn.Module):
             "production_propagation_grid": PRODUCTION_PROPAGATION_GRID,
             "active_propagation_grid": self.runtime.config.propagation_grid_size,
         }
+        if self.runtime.ols.basis_id == GAUSSIAN_OLS_MODEL:
+            identity["ols_model"] = GAUSSIAN_OLS_MODEL
+            identity["mode_geometry"] = self.runtime.ols.mode_identity()
+        return identity
 
     def _named_runtime_parameters(self) -> tuple[tuple[str, nn.Parameter], ...]:
         return tuple(self.runtime.named_parameters())
@@ -775,6 +814,8 @@ class LightGen2DComplexOLSTrainingConsumerV2(nn.Module):
             raise DataRoleError("V2 scale may only originate from train or explicit smoke")
         if scale.values.requires_grad:
             raise TrainingContractError("cannot bind a differentiable physical scale")
+        if scale.basis_id != self.runtime.ols.basis_id or (scale.basis_id == GAUSSIAN_OLS_MODEL and dict(scale.mode_geometry or {}) != self.runtime.ols.mode_identity()):
+            raise TrainingContractError("physical scale modal basis/geometry differs from the active OLS runtime")
         self._frozen_scale = scale
 
     @property
@@ -1177,6 +1218,9 @@ def checkpoint_payload(
     if stage_b:
         _require(scale is not None, "Stage-B checkpoint requires a frozen scale")
         _require(scale.artifact_sha256 is not None and scale.artifact_path is not None, "Stage-B checkpoint requires a published scale artifact identity")
+        _require(scale.basis_id == consumer.runtime.ols.basis_id, "Stage-B checkpoint scale basis differs from the active OLS runtime")
+        if scale.basis_id == GAUSSIAN_OLS_MODEL:
+            _require(dict(scale.mode_geometry or {}) == consumer.runtime.ols.mode_identity(), "Stage-B checkpoint scale geometry differs from the active OLS runtime")
         _require(optimizer_reset_marker is not None and optimizer_reset_marker.get("optimizer_reset") is True, "Stage-B checkpoint lacks optimizer-reset marker")
     return {
         "schema": CHECKPOINT_SCHEMA,
@@ -1208,6 +1252,7 @@ def checkpoint_payload(
             "vector_sha256": scale.vector_sha256,
             "epsilon_scale": EPSILON_SCALE,
             "data_role": scale.data_role,
+            **({"basis_id": scale.basis_id, "mode_geometry": dict(scale.mode_geometry or {})} if scale.basis_id == GAUSSIAN_OLS_MODEL else {}),
         } if scale is not None else None,
         "scale_vector": scale.values.detach().cpu().clone() if scale is not None else None,
         "normalized_prior": {
@@ -1258,19 +1303,16 @@ def load_checkpoint(
     _require(contract.get("schema") == V2_CONTRACT_SCHEMA and contract.get("path") == consumer.contract.path.relative_to(_repo_root()).as_posix(), "V2 checkpoint contract identity mismatch")
     runtime = _mapping(payload.get("runtime"), "V2 checkpoint runtime")
     _require(runtime.get("identity") == ALIGNMENT_RUNTIME_ID and runtime.get("module") == ALIGNMENT_RUNTIME_RELATIVE_PATH.as_posix() and runtime.get("transport") == "T=I_100 coefficient space", "V2 checkpoint runtime identity mismatch")
+    current_runtime = consumer.runtime_identity
+    for key in ("ols_model", "mode_geometry"):
+        _require(runtime.get(key) == current_runtime.get(key), f"V2 checkpoint OLS basis/geometry mismatch: {key}")
     stage = str(payload.get("stage"))
     _require(stage in V2TrainingStateMachine._transitions, "V2 checkpoint stage is invalid")
-    consumer.load_trainable_state_dict(_mapping(payload.get("trainable_parameter_state"), "V2 trainable parameter state"))
-    consumer.optimizer_manifest(optimizer)
-    optimizer_state = payload.get("optimizer_state")
-    _require(isinstance(optimizer_state, Mapping), "V2 optimizer state is missing")
-    optimizer.load_state_dict(dict(optimizer_state))
-    consumer.optimizer_manifest(optimizer)
-    restore_rng_state(_mapping(payload.get("rng_state"), "V2 RNG state"))
     scale: FrozenPhysicalOLSScale | None = None
+    marker_value = payload.get("optimizer_reset_marker")
     stage_b = stage in {STAGE_B_TRAIN, STAGE_B_SEMANTIC_CHECK, FINAL_SELECT, COMPLETE}
     if stage_b:
-        marker = _mapping(payload.get("optimizer_reset_marker"), "V2 optimizer reset marker")
+        marker = _mapping(marker_value, "V2 optimizer reset marker")
         _require(marker.get("optimizer_reset") is True and marker.get("stage_a_optimizer_moments_restored") is False, "V2 Stage-B optimizer reset semantics changed")
         artifact = _mapping(payload.get("scale_artifact"), "V2 scale artifact binding")
         values = payload.get("scale_vector")
@@ -1284,18 +1326,41 @@ def load_checkpoint(
         )
         scale = load_scale_artifact(artifact_path)
         _require(torch.equal(scale.values, values.detach().to(dtype=torch.float64, device="cpu")), "V2 checkpoint scale vector differs from artifact")
+        _require(artifact.get("basis_id", LP01_OLS_MODEL) == scale.basis_id, "V2 checkpoint scale artifact basis differs from artifact")
+        if scale.basis_id == GAUSSIAN_OLS_MODEL:
+            _require(artifact.get("mode_geometry") == dict(scale.mode_geometry or {}), "V2 checkpoint scale artifact geometry differs from artifact")
+        _require(scale.basis_id == consumer.runtime.ols.basis_id, "V2 checkpoint scale modal basis differs from the active runtime")
+        if scale.basis_id == GAUSSIAN_OLS_MODEL:
+            _require(dict(scale.mode_geometry or {}) == consumer.runtime.ols.mode_identity(), "V2 checkpoint scale geometry differs from the active runtime")
         if expected_scale is not None:
             _require(torch.equal(scale.values, expected_scale.values), "V2 checkpoint scale values differ from the expected scale")
+            _require(scale.basis_id == expected_scale.basis_id, "V2 checkpoint scale basis differs from the expected scale")
+            if scale.basis_id == GAUSSIAN_OLS_MODEL:
+                _require(dict(scale.mode_geometry or {}) == dict(expected_scale.mode_geometry or {}), "V2 checkpoint scale geometry differs from the expected scale")
+
+    # Reject modal and artifact mismatches before touching model, optimizer, RNG, or scale state.
+    trainable_state = _mapping(payload.get("trainable_parameter_state"), "V2 trainable parameter state")
+    optimizer_state = payload.get("optimizer_state")
+    _require(isinstance(optimizer_state, Mapping), "V2 optimizer state is missing")
+    rng_state = _mapping(payload.get("rng_state"), "V2 RNG state")
+    sampler_state = _mapping(payload.get("sampler_state"), "V2 sampler state")
+    selection_state = _mapping(payload.get("checkpoint_selection_state"), "V2 selection state")
+    consumer.optimizer_manifest(optimizer)
+    consumer.load_trainable_state_dict(trainable_state)
+    optimizer.load_state_dict(dict(optimizer_state))
+    consumer.optimizer_manifest(optimizer)
+    restore_rng_state(rng_state)
+    if scale is not None:
         consumer.set_scale(scale)
     return LoadedV2Checkpoint(
         stage=stage,
         global_step=int(payload.get("global_step")),
         stage_local_step=int(payload.get("stage_local_step")),
-        sampler_state=_mapping(payload.get("sampler_state"), "V2 sampler state"),
-        checkpoint_selection_state=_mapping(payload.get("checkpoint_selection_state"), "V2 selection state"),
+        sampler_state=sampler_state,
+        checkpoint_selection_state=selection_state,
         selected_stage_a_checkpoint=payload.get("selected_stage_a_checkpoint"),
         scale=scale,
-        optimizer_reset_marker=payload.get("optimizer_reset_marker"),
+        optimizer_reset_marker=marker_value,
     )
 
 

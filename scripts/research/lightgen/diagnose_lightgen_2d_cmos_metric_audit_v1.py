@@ -610,13 +610,24 @@ def _run(root: Path, output_dir: Path) -> dict[str, Any]:
     batch_before = visual._state_digest(consumer.runtime.state_dict())
     with torch.inference_mode():
         batch_result = consumer.runtime.forward_from_image(dev_images[:FORWARD_BATCH_SIZE].to(device))
-    _require(batch_result.raw_intensity.shape == (FORWARD_BATCH_SIZE, 1, 200, 200), "batch-10 CUDA preflight geometry changed")
-    _require(bool(torch.isfinite(batch_result.raw_intensity).all()), "batch-10 CUDA preflight produced nonfinite intensity")
-    _require(batch_result.image_input is not None and batch_result.image_input.slm_intensity.shape == batch_result.raw_intensity.shape, "batch-10 CMOS target geometry changed")
+    batch_geometry_valid = batch_result.raw_intensity.shape == (FORWARD_BATCH_SIZE, 1, 200, 200)
+    batch_finite = bool(torch.isfinite(batch_result.raw_intensity).all())
+    batch_target_geometry_valid = batch_result.image_input is not None and batch_result.image_input.slm_intensity.shape == batch_result.raw_intensity.shape
+    _require(batch_geometry_valid, "batch-10 CUDA preflight geometry changed")
+    _require(batch_finite, "batch-10 CUDA preflight produced nonfinite intensity")
+    _require(batch_target_geometry_valid, "batch-10 CMOS target geometry changed")
     batch_after = visual._state_digest(consumer.runtime.state_dict())
-    _require(batch_before == batch_after, "batch-10 CUDA preflight mutated the model runtime")
+    runtime_unchanged = batch_before == batch_after
+    _require(runtime_unchanged, "batch-10 CUDA preflight mutated the model runtime")
+    evaluators_unchanged = True
     for name, model in models.items():
-        _require(model_states_before[name] == visual._state_digest(model.state_dict()), f"preflight changed frozen evaluator {name}")
+        unchanged = model_states_before[name] == visual._state_digest(model.state_dict())
+        evaluators_unchanged = evaluators_unchanged and unchanged
+        _require(unchanged, f"preflight changed frozen evaluator {name}")
+    replay_valid = bool(
+        len(replay_check["step_replays"]) == len(STEPS)
+        and all(item.get("rows") == 50 and item.get("matches_prior_raw_replay") is True for item in replay_check["step_replays"].values())
+    )
     torch.cuda.synchronize(device)
     preflight_seconds = time.perf_counter() - preflight_started
     memory_free_after, _ = torch.cuda.mem_get_info(device)
@@ -626,6 +637,7 @@ def _run(root: Path, output_dir: Path) -> dict[str, Any]:
         authorization_id=AUTHORIZATION_ID,
         checks={
             CORRECTNESS_INVARIANTS: {
+                "passed": bool(replay_valid and batch_geometry_valid and batch_finite and batch_target_geometry_valid and runtime_unchanged and evaluators_unchanged),
                 "status": "PASS",
                 "four_checkpoint_hashes_and_reports_validated": True,
                 "canonical_DEV_exactly_500_per_class": True,
@@ -634,6 +646,7 @@ def _run(root: Path, output_dir: Path) -> dict[str, Any]:
                 "model_and_evaluator_state_unchanged": True,
             },
             RESOURCE_ENVELOPE: {
+                "passed": int(memory_total) > 0 and 0 <= int(memory_free_after) <= int(memory_total),
                 "status": "PASS",
                 "device": str(device),
                 "cuda_free_bytes_before": int(memory_free_before),
@@ -645,6 +658,7 @@ def _run(root: Path, output_dir: Path) -> dict[str, Any]:
                 "cuda_runtime_dll_search": cuda_runtime,
             },
             IMPLEMENTATION_SELECTION: {
+                "passed": device.type == "cuda" and FORWARD_BATCH_SIZE == 10,
                 "status": "PASS",
                 "selected_engine": "CUDA inference batch 10",
                 "steps": list(STEPS),
@@ -652,7 +666,7 @@ def _run(root: Path, output_dir: Path) -> dict[str, Any]:
                 "optimizer_or_training": False,
             },
         },
-        selected_engine="cuda:0",
+        selected_engine="CUDA inference batch 10",
         resource={"device": str(device), "free_bytes_before": int(memory_free_before), "free_bytes_after_preflight": int(memory_free_after), "total_bytes": int(memory_total), "batch_size": FORWARD_BATCH_SIZE, "peak_allocated_bytes": allocated_peak, "cuda_runtime_dll_search": cuda_runtime},
     )
     _require(receipt.status == PREFLIGHT_READY, "metric audit preflight did not produce READY")

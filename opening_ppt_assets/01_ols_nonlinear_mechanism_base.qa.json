@@ -1,0 +1,87 @@
+{
+  "status": "PASS",
+  "checks": {
+    "no_text_or_formula": true,
+    "no_raster_or_heatmap": true,
+    "exact_100_fiber_cores": true,
+    "short_2_5d_array_block": true,
+    "six_gaussian_modes_from_selected_cores": true,
+    "near_field_modes_remain_discrete": true,
+    "midfield_modes_overlap": true,
+    "far_field_modes_form_continuous_overlap": true,
+    "smoothly_diverging_gaussian_envelopes": true,
+    "no_hard_triangular_edges_or_black_gaps": true,
+    "single_thin_orange_material": true,
+    "decoder_and_detector_preserved": true,
+    "editable_independent_groups": true,
+    "transparent_png": true,
+    "png_width_at_least_2400": true,
+    "aspect_ratio_2_5": true,
+    "no_clipping": true
+  },
+  "geometry": [
+    {
+      "id": "smf_array",
+      "x": 58,
+      "y": 168,
+      "w": 205,
+      "h": 264
+    },
+    {
+      "id": "emitted_modes",
+      "x": 251,
+      "y": 173.04598999023438,
+      "w": 560,
+      "h": 245.7080078125
+    },
+    {
+      "id": "nonlinear_material",
+      "x": 800,
+      "y": 139,
+      "w": 6,
+      "h": 322
+    },
+    {
+      "id": "post_nonlinear_field",
+      "x": 806,
+      "y": 165,
+      "w": 333,
+      "h": 262.3711853027344
+    },
+    {
+      "id": "decoder_propagation",
+      "x": 1151,
+      "y": 193,
+      "w": 320,
+      "h": 215
+    },
+    {
+      "id": "decoder_layer_1",
+      "x": 1139,
+      "y": 180,
+      "w": 12,
+      "h": 240
+    },
+    {
+      "id": "decoder_layer_2",
+      "x": 1319,
+      "y": 180,
+      "w": 12,
+      "h": 240
+    },
+    {
+      "id": "detector",
+      "x": 1471,
+      "y": 192,
+      "w": 17,
+      "h": 216
+    }
+  ],
+  "png": {
+    "width": 4800,
+    "height": 1920,
+    "alpha": true
+  },
+  "scientific_status": "Target schematic; beam envelopes and wavefronts are illustrative rather than measured or simulated.",
+  "visual_review": "PASS: final render inspected. Distinct Gaussian-like outputs emerge from six selected cores, widen smoothly and overlap by mid-propagation, forming a low-opacity continuous field before the material. No triangular cones, hard black gaps, text, heatmaps or output symbols. The post-material field uses a faint envelope and gently redistributed wavefronts. Decoder and detector vector geometry retained."
+}

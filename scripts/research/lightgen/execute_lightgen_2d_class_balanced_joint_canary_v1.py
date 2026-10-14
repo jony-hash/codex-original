@@ -476,8 +476,23 @@ def _preflight_receipt(source_manifest: Mapping[str, Any], preflight: Mapping[st
     negative = _mapping(preflight["negative_control"], "class-balanced negative control")
     semantic_reference = _mapping(preflight["semantic_batched_reference"], "class-balanced semantic reference")
     rollback = _mapping(preflight["rollback"], "class-balanced rollback")
+    rollback_passed = all(rollback.get(name) is True for name in ("runtime", "frozen", "adam", "rng", "sampler", "evaluator_grads"))
     adam = _mapping(preflight["one_step_adam_equivalence"], "class-balanced Adam equivalence")
-    return PreflightReceipt(source_semantics_id=str(source_manifest["execution_source_semantics_id"]), authorization_id=AUTHORIZATION_ID, checks={CORRECTNESS_INVARIANTS: {"classwise_finite_and_nondegenerate": True, "equal_class_weight": float(preflight["class_weight"]) == CLASS_WEIGHT, "gradient_equivalence": bool(semantic_reference["all_equivalent"]), "adam_one_step_equivalence": bool(adam["passed"]), "three_step_update_and_restore": bool(_mapping(preflight["three_step_real_update"], "three-step update")["updates"] == 3 and all(bool(value) for value in rollback.values())), "negative_control": bool(negative["rejected"])}, RESOURCE_ENVELOPE: {"status": resource["status"], "resource_ok": bool(resource["resource_ok"]), "median_update_seconds": resource["median_update_seconds"], "projected_300_update_hours": resource["projected_300_update_hours"], "peak_memory": resource["peak_memory"], "cuda": True}, IMPLEMENTATION_SELECTION: {"selected_engine": SCALAR_REFERENCE_ENGINE, "training_backend": SCALAR_REFERENCE_ENGINE, "structural_aggregation_mode": STRUCTURAL_AGGREGATION_MODE, "batched_reference_calls": semantic_reference["batched_calls"], "fixed": True}}, selected_engine=SCALAR_REFERENCE_ENGINE, resource={"budget": "bounded_canary", "median_update_seconds": resource["median_update_seconds"], "projected_300_update_hours": resource["projected_300_update_hours"], "peak_memory": resource["peak_memory"], "resource_ok": bool(resource["resource_ok"])}, created_at=time.time())
+    correctness = {
+        "classwise_finite_and_nondegenerate": bool(preflight["balanced_aggregate"]["finite"] and preflight["balanced_aggregate"]["nondegenerate"]),
+        "equal_class_weight": float(preflight["class_weight"]) == CLASS_WEIGHT,
+        "gradient_equivalence": bool(semantic_reference["all_equivalent"]),
+        "adam_one_step_equivalence": bool(adam["passed"]),
+        "three_step_update_and_restore": bool(_mapping(preflight["three_step_real_update"], "three-step update")["updates"] == 3 and rollback_passed),
+        "negative_control": bool(negative["rejected"]),
+    }
+    resource_passed = bool(resource["resource_ok"] and str(resource["status"]).upper() in {"READY", "PASS", "PASSED"})
+    implementation_passed = bool(
+        preflight.get("gradient_engine") == SCALAR_REFERENCE_ENGINE
+        and preflight.get("training_backend") == SCALAR_REFERENCE_ENGINE
+        and preflight.get("structural_aggregation_mode") == STRUCTURAL_AGGREGATION_MODE
+    )
+    return PreflightReceipt(source_semantics_id=str(source_manifest["execution_source_semantics_id"]), authorization_id=AUTHORIZATION_ID, checks={CORRECTNESS_INVARIANTS: {"passed": all(correctness.values()), **correctness}, RESOURCE_ENVELOPE: {"passed": resource_passed, "status": resource["status"], "resource_ok": bool(resource["resource_ok"]), "median_update_seconds": resource["median_update_seconds"], "projected_300_update_hours": resource["projected_300_update_hours"], "peak_memory": resource["peak_memory"], "cuda": True}, IMPLEMENTATION_SELECTION: {"passed": implementation_passed, "selected_engine": SCALAR_REFERENCE_ENGINE, "training_backend": SCALAR_REFERENCE_ENGINE, "structural_aggregation_mode": STRUCTURAL_AGGREGATION_MODE, "batched_reference_calls": semantic_reference["batched_calls"], "fixed": True}}, selected_engine=SCALAR_REFERENCE_ENGINE, resource={"budget": "bounded_canary", "median_update_seconds": resource["median_update_seconds"], "projected_300_update_hours": resource["projected_300_update_hours"], "peak_memory": resource["peak_memory"], "resource_ok": bool(resource["resource_ok"])}, created_at=time.time())
 
 
 def _failure_state_dir(target: Path) -> Path:

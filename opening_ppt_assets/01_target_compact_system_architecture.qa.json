@@ -1,0 +1,275 @@
+{
+  "status": "PASS",
+  "figure_mode": "architecture",
+  "scientific_status": "TARGET",
+  "aspect_ratio": 3,
+  "png": {
+    "width": 2400,
+    "height": 800,
+    "hasAlpha": true,
+    "alpha_min": 0,
+    "alpha_max": 255
+  },
+  "rendered_fonts": {
+    "chinese": true,
+    "latin": true
+  },
+  "text_geometry": [
+    {
+      "index": 0,
+      "text": "目标架构 / Proposed target architecture",
+      "x": 72,
+      "y": 53.66667175292969,
+      "width": 558.453125,
+      "height": 35.99999237060547,
+      "fontSize": 24,
+      "className": "status"
+    },
+    {
+      "index": 1,
+      "text": "输入 / 语义条件",
+      "x": 55.9921875,
+      "y": 535.6666870117188,
+      "width": 328.015625,
+      "height": 53,
+      "fontSize": 36,
+      "className": "label"
+    },
+    {
+      "index": 2,
+      "text": "2L Encoder",
+      "x": 457.7369689941406,
+      "y": 525.6666870117188,
+      "width": 299.3199157714844,
+      "height": 65,
+      "fontSize": 44,
+      "className": "label"
+    },
+    {
+      "index": 3,
+      "text": "100×100 · 2 μm",
+      "x": 437.4010314941406,
+      "y": 602.3333740234375,
+      "width": 338.5312805175781,
+      "height": 53,
+      "fontSize": 36,
+      "className": "secondary"
+    },
+    {
+      "index": 4,
+      "text": "200 μm × 200 μm",
+      "x": 428.7291564941406,
+      "y": 665.6666870117188,
+      "width": 355.8750305175781,
+      "height": 51,
+      "fontSize": 34,
+      "className": "secondary"
+    },
+    {
+      "index": 5,
+      "text": "10×10 SMF–OLS",
+      "x": 876.2083129882812,
+      "y": 527.6666870117188,
+      "width": 434.25006103515625,
+      "height": 63,
+      "fontSize": 42,
+      "className": "label"
+    },
+    {
+      "index": 6,
+      "text": "100 complex channels",
+      "x": 867.7942504882812,
+      "y": 593.6666870117188,
+      "width": 451.07818603515625,
+      "height": 51,
+      "fontSize": 34,
+      "className": "secondary"
+    },
+    {
+      "index": 7,
+      "text": "FNL",
+      "x": 1283.0052490234375,
+      "y": 26,
+      "width": 84.65625,
+      "height": 79.5,
+      "fontSize": 48,
+      "className": "math"
+    },
+    {
+      "index": 8,
+      "text": "SMF端面非线性复合器件",
+      "x": 1073.5052490234375,
+      "y": 121.66666412353516,
+      "width": 503.65625,
+      "height": 51.00000762939453,
+      "fontSize": 34,
+      "className": "material-label"
+    },
+    {
+      "index": 9,
+      "text": "2L Decoder",
+      "x": 1516.1197509765625,
+      "y": 525.6666870117188,
+      "width": 302.556396484375,
+      "height": 65,
+      "fontSize": 44,
+      "className": "label"
+    },
+    {
+      "index": 10,
+      "text": "100×100 · 2 μm",
+      "x": 1497.4010009765625,
+      "y": 602.3333740234375,
+      "width": 338.53125,
+      "height": 53,
+      "fontSize": 36,
+      "className": "secondary"
+    },
+    {
+      "index": 11,
+      "text": "200 μm × 200 μm",
+      "x": 1488.7291259765625,
+      "y": 665.6666870117188,
+      "width": 355.875,
+      "height": 51,
+      "fontSize": 34,
+      "className": "secondary"
+    },
+    {
+      "index": 12,
+      "text": "CMOS",
+      "x": 1921.3333740234375,
+      "y": 527.6666870117188,
+      "width": 167.9998779296875,
+      "height": 63,
+      "fontSize": 42,
+      "className": "label"
+    },
+    {
+      "index": 13,
+      "text": "生成图像",
+      "x": 2136,
+      "y": 535.6666870117188,
+      "width": 192,
+      "height": 53,
+      "fontSize": 36,
+      "className": "label"
+    },
+    {
+      "index": 14,
+      "text": "示意",
+      "x": 2194.6640625,
+      "y": 600.6666870117188,
+      "width": 74.671875,
+      "height": 42,
+      "fontSize": 28,
+      "className": "secondary"
+    }
+  ],
+  "text_collisions": [],
+  "scientific_consistency_audit": {
+    "target_architecture_explicit": true,
+    "diffractive_neurons_not_fiber_array": true,
+    "ols_exactly_10_by_10": true,
+    "two_micrometers_only_on_diffraction_labels": true,
+    "no_historical_relu": true,
+    "no_current_result_claim": true,
+    "no_fmf_mmf": true,
+    "no_named_material_performance": true,
+    "fnl_correct_order": true,
+    "film_attached_to_output_facet": true,
+    "no_independent_channel_relu": true,
+    "symbolic_output_not_experiment": true,
+    "core_coordinates_exact_10_by_10": true,
+    "pixel_pitch_labels_attached_to_encoder_decoder_columns": true
+  },
+  "ppt_placement": {
+    "slide_aspect": "16:9",
+    "slide_inches": [
+      13.333333,
+      7.5
+    ],
+    "figure_width_fraction": 0.8,
+    "width_inches": 10.666667,
+    "rendered_slide_px": [
+      1920,
+      1080
+    ],
+    "effective_main_arrow_pt": 2.218666666666667,
+    "labels": [
+      {
+        "text": "输入 / 语义条件",
+        "final_ppt_font_pt": 15.36
+      },
+      {
+        "text": "2L Encoder",
+        "final_ppt_font_pt": 18.773333333333333
+      },
+      {
+        "text": "100×100 · 2 μm",
+        "final_ppt_font_pt": 15.36
+      },
+      {
+        "text": "200 μm × 200 μm",
+        "final_ppt_font_pt": 14.506666666666666
+      },
+      {
+        "text": "10×10 SMF–OLS",
+        "final_ppt_font_pt": 17.92
+      },
+      {
+        "text": "100 complex channels",
+        "final_ppt_font_pt": 14.506666666666666
+      },
+      {
+        "text": "SMF端面非线性复合器件",
+        "final_ppt_font_pt": 14.506666666666666
+      },
+      {
+        "text": "2L Decoder",
+        "final_ppt_font_pt": 18.773333333333333
+      },
+      {
+        "text": "100×100 · 2 μm",
+        "final_ppt_font_pt": 15.36
+      },
+      {
+        "text": "200 μm × 200 μm",
+        "final_ppt_font_pt": 14.506666666666666
+      },
+      {
+        "text": "CMOS",
+        "final_ppt_font_pt": 17.92
+      },
+      {
+        "text": "生成图像",
+        "final_ppt_font_pt": 15.36
+      }
+    ]
+  },
+  "legacy_skill_validator": {
+    "status": "NOT_APPLICABLE_AS_TOPOLOGY_GATE",
+    "reason": "Its fixed architecture requires an SLM, named Te film, 1.5 mm text and aspect <=2.8. The explicitly requested target omits those labels/elements and uses F_NL, ratio 3. The exact requested topology is audited above; the skill files were not modified."
+  },
+  "visual_review": {
+    "status": "PASS",
+    "review_files": [
+      "white_background_preview.png",
+      "ppt_80percent_width_preview.png"
+    ],
+    "chinese_glyphs_readable": true,
+    "main_labels_readable_at_80percent_slide_width": true,
+    "film_attachment_unambiguous": true,
+    "component_order_correct": true,
+    "no_text_or_arrow_occlusion_observed": true,
+    "not_to_scale_and_symbolic_digits_recorded_in_notes": true
+  },
+  "source_data_note": "Hand-drawn vector digit icons; no MNIST, model sampling, measured material curve or invented result.",
+  "svg_editability": {
+    "editable_text_elements": 15,
+    "external_assets": false,
+    "embedded_raster": false
+  },
+  "automated_status": "PASS",
+  "delivery_status": "PASS"
+}

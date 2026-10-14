@@ -1,0 +1,62 @@
+schema: compact_ols_architecture_scaling.v1
+status: diagnostic_only
+scope:
+  formal_training: forbidden
+  task_evaluator: forbidden
+  dataset_read: forbidden
+  task_loss: forbidden
+  material_nonlinearity: forbidden
+  production_geometry_mutation: forbidden
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  inter_encoder_spacing_m: 1.5e-3
+  encoder_layers: 2
+  layer_power_transmission: 0.889
+  layer_power_transmission_status: reference_scenario_not_measured_for_current_device
+  input_power_w: 0.0002493
+  input_power_status: synthetic_reference_scenario
+  illumination: uniform_coherent_top_hat_expanding_with_trainable_aperture
+  aperture_pixels: [100, 150, 200, 250, 300, 400, 500]
+  last_encoder_to_fiber_distance_m: [0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.010, 0.015]
+  current_reference_distance_m: 0.0015
+fiber:
+  rows: 10
+  columns: 10
+  pitch_m: [0.000125, 0.0001, 0.000075, 0.0000625, 0.00005]
+  pitch_status:
+    0.000125: commercial_reference_geometry_not_measured_in_this_project
+    other: sensitivity_only_not_an_experimental_claim
+  cladding_diameter_m: 0.000125
+  mfd_m: 0.000014222
+  length_m: 0.0085
+  attenuation_db_per_km: 0.0
+  mode_model: step_index_lp01_ports
+  v_number: 2.2
+  fill: 0.8
+optimization:
+  optimizer: Adam
+  learning_rate: 0.04
+  steps_per_objective: 24
+  objective_names: [maximize_total_coupling, maximize_uniform_distribution, maximize_effective_dimension]
+  phase_only: true
+  initialization: zero_phase_for_every_case
+  uniform_target: 0.01
+  random_seed: 20261013
+screen:
+  effective_dimension_min: 80.0
+  total_coupling_efficiency_min: 0.2
+  edge_retention_min: 0.001
+  interpretation: engineering_screen_only_not_a_physical_acceptance_gate
+nonlinearity:
+  input_power_w: [0.0002493, 0.001, 0.01, 0.1, 0.3]
+  i_sat_w_cm2: [10.0, 100.0, 520.0, 1000.0, 10000.0, 100000.0, 1000000.0, 30000000.0]
+  active_ratio_open_interval: [0.1, 10.0]
+  device_claims_allowed: false
+execution:
+  required_propagation_grid: 2048
+  phase_patterns_per_architecture: 3
+  data_reads: 0
+  evaluator_calls: 0
+  formal_training_updates: 0

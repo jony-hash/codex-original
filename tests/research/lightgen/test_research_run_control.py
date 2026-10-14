@@ -44,7 +44,7 @@ def _receipt(identity: control.ResearchRunIdentity, *, authorization: str = "aut
         checks={
             control.CORRECTNESS_INVARIANTS: {"passed": True},
             control.RESOURCE_ENVELOPE: {"passed": True},
-            control.IMPLEMENTATION_SELECTION: {"selected_engine": "scalar"},
+            control.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "scalar"},
         },
         selected_engine="scalar",
         resource={"estimated_hours": 1.0, "memory_fraction": 0.5},
@@ -62,7 +62,7 @@ class _Clock:
 def test_one_authorization_flows_from_preflight_to_execution() -> None:
     identity = _identity()
     run = control.ResearchRunControl(identity, "authorization-001")
-    run.mark_preflight_ready()
+    run.mark_preflight_ready(_receipt(identity))
     run.start_execution()
 
     assert run.authorization_id == "authorization-001"
@@ -76,7 +76,7 @@ def test_engineering_failure_is_rechecked_in_place() -> None:
     identity = _identity()
     run = control.ResearchRunControl(identity, "authorization-001")
     run.mark_preflight_blocked()
-    run.mark_preflight_ready()
+    run.mark_preflight_ready(_receipt(identity))
     run.start_execution()
 
     assert run.identity == identity
@@ -90,7 +90,7 @@ def test_strict_preflight_blocks_without_creating_a_scientific_attempt() -> None
     with tempfile.TemporaryDirectory(prefix="research-blocked-") as temporary:
         target = Path(temporary) / "attempt_01"
         with pytest.raises(control.RunControlError):
-            run.open_scientific_attempt(target, "attempt-001")
+            run.open_scientific_attempt(target, "attempt-001", _receipt(identity))
         assert not target.exists()
     assert run.preflight_status == control.PREFLIGHT_BLOCKED
 
@@ -100,7 +100,7 @@ def test_repeated_preflight_failure_is_recorded_without_retry_quota() -> None:
     assert run.record_preflight_failure("correctness", "gradient-mismatch") == control.PREFLIGHT_RECHECK_ALLOWED
     assert run.record_preflight_failure("correctness", "gradient-mismatch") == control.PREFLIGHT_RECHECK_ALLOWED
     assert run.preflight_status == control.PREFLIGHT_BLOCKED
-    run.mark_preflight_ready()
+    run.mark_preflight_ready(_receipt(run.identity))
     assert run.preflight_status == control.PREFLIGHT_READY
     assert run.recheck_count == 2
 
@@ -112,6 +112,85 @@ def test_ready_receipt_binds_authorization_but_not_source_digest() -> None:
     run = control.ResearchRunControl(identity, "authorization-001")
     run.mark_preflight_ready(_receipt(identity, source="different-source"))
     assert run.preflight_status == control.PREFLIGHT_READY
+
+
+@pytest.mark.parametrize(
+    "checks",
+    [
+        {
+            control.RESOURCE_ENVELOPE: {"passed": True},
+            control.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "scalar"},
+        },
+        {
+            control.CORRECTNESS_INVARIANTS: {"passed": False},
+            control.RESOURCE_ENVELOPE: {"passed": True},
+            control.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "scalar"},
+        },
+        {
+            control.CORRECTNESS_INVARIANTS: {"passed": True, "status": "BLOCKED"},
+            control.RESOURCE_ENVELOPE: {"passed": True},
+            control.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "scalar"},
+        },
+        {
+            control.CORRECTNESS_INVARIANTS: {"passed": True},
+            control.RESOURCE_ENVELOPE: {"passed": True},
+            control.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "batched"},
+        },
+    ],
+)
+def test_ready_receipt_rejects_missing_failed_or_inconsistent_check_groups(checks: dict[str, object]) -> None:
+    with pytest.raises(control.RunControlError):
+        control.PreflightReceipt(
+            authorization_id="authorization-001",
+            checks=checks,
+            selected_engine="scalar",
+        )
+
+
+def test_ready_receipt_is_immutable_after_validation() -> None:
+    source_checks = {
+        control.CORRECTNESS_INVARIANTS: {"passed": True, "metadata": {"held_out": False}},
+        control.RESOURCE_ENVELOPE: {"passed": True},
+        control.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "scalar"},
+    }
+    receipt = control.PreflightReceipt(authorization_id="authorization-001", checks=source_checks)
+    source_checks[control.CORRECTNESS_INVARIANTS]["passed"] = False
+    assert receipt.checks[control.CORRECTNESS_INVARIANTS]["passed"] is True
+    assert receipt.checks[control.CORRECTNESS_INVARIANTS]["metadata"]["held_out"] is False
+    with pytest.raises(TypeError):
+        receipt.checks[control.CORRECTNESS_INVARIANTS]["passed"] = False
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda receipt: receipt["check_groups"][control.CORRECTNESS_INVARIANTS].update(passed=False),
+        lambda receipt: _set_disagreeing_engine_aliases(receipt),
+        lambda receipt: receipt.update(resource_envelope={"different": True}),
+        lambda receipt: receipt.update(execution_source_semantics_id="different-source"),
+        lambda receipt: receipt.update(authorization="different-authorization"),
+        lambda receipt: receipt.update(selected_engine="batched"),
+    ],
+)
+def test_ready_receipt_rejects_conflicting_compatibility_aliases(mutate) -> None:
+    receipt = _receipt(_identity()).to_dict()
+    mutate(receipt)
+
+    with pytest.raises(control.ResumeCompatibilityError):
+        control.PreflightReceipt.from_mapping(receipt)
+
+
+def _set_disagreeing_engine_aliases(receipt) -> None:
+    group = control.IMPLEMENTATION_SELECTION
+    for key in ("checks", "check_groups"):
+        receipt[key][group]["engine"] = "batched"
+
+
+def test_ready_transition_requires_a_complete_receipt() -> None:
+    run = control.ResearchRunControl(_identity(), "authorization-001")
+    with pytest.raises(TypeError):
+        run.mark_preflight_ready()  # type: ignore[call-arg]
+    assert run.preflight_status == control.PREFLIGHT_PENDING
 
 
 def test_interruption_resume_keeps_the_same_attempt_identity() -> None:
@@ -127,6 +206,23 @@ def test_interruption_resume_keeps_the_same_attempt_identity() -> None:
     assert opened.scientific_attempt_id == "attempt-001"
     assert resumed == opened
     assert run.state == control.RUN_SCIENTIFIC_ACTIVE
+
+
+def test_scientific_open_requires_the_task_receipt_and_rejects_a_different_one() -> None:
+    identity = _identity()
+    receipt = _receipt(identity)
+    run = control.ResearchRunControl(identity, "authorization-001")
+    run.mark_preflight_ready(receipt)
+    with tempfile.TemporaryDirectory(prefix="research-receipt-boundary-") as temporary:
+        target = Path(temporary) / "attempt_01"
+        different = _receipt(identity, source="different-source")
+        with pytest.raises(control.ResumeCompatibilityError):
+            run.open_scientific_attempt(target, "attempt-001", different)
+        assert not target.exists()
+        run.start_execution()
+        with pytest.raises(control.RunControlError):
+            run.begin_scientific_attempt("attempt-001", receipt)
+        assert run.state == control.RUNNING
 
 
 def test_valid_failed_is_terminal_and_cannot_restart() -> None:

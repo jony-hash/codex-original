@@ -1,0 +1,68 @@
+schema: ols_gaussian_lp01_model_alignment.v1
+scope:
+  purpose: synthetic_physical_interface_validation
+  task_training: forbidden
+  dataset_read: forbidden
+  task_evaluator: forbidden
+  fid: forbidden
+  task_loss_change: forbidden
+  formal_model_default_change: forbidden
+  architecture_change: forbidden
+  material_nonlinearity: forbidden
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  encoder_shape: [100, 100]
+  encoder_aperture_m: 2.0e-4
+  global_grid_size: 2048
+  inter_encoder_spacing_m: 1.5e-3
+  last_encoder_to_fiber_m: 1.5e-3
+  phase_screen_count: 2
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+  illumination: coherent_uniform_square_200um
+fiber:
+  array_shape: [10, 10]
+  pitch_m: 1.25e-4
+  cladding_diameter_m: 1.25e-4
+  mode_field_diameter_m: 1.4222e-5
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  transport: ideal_identity
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+diagnostics:
+  phase_cases:
+    - zero
+    - last_layer_x_1deg
+    - last_layer_xy_1deg
+  input_tilt_angles_deg: [0, 1, -1, 3, -3, 5, -5]
+  input_tilt_axes: [x, y]
+  coefficient_error_over_sqrt_input_power_max: 1.0e-4
+  power_error_over_input_power_max: 1.0e-4
+  relative_complex_error_max: 1.0e-4
+  passivity_relative_tolerance: 1.0e-5
+  gradient_finite_difference_step_rad: 3.0e-2
+  gradient_relative_error_max: 2.0e-3
+  lp01_independent_eigen_solution_abs_tolerance: 1.0e-8
+  mp_dps: 40
+execution:
+  task_training_updates: 0
+  phase_optimizer_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  required_device: cuda
+  output_files:
+    - plan.json
+    - preflight.json
+    - report.json
+    - report.md
+    - fixed_phase_screens.pt
+    - complex_field_readouts.pt
+    - coefficients_and_power.pt
+    - gram_matrices.pt
+    - cpu_reference_validation.json
+    - gradient_validation.json
+    - module_sources.json
+    - executed_config.yaml
+    - executed_runner.py
+    - resource_telemetry.csv

@@ -652,9 +652,45 @@ def run_successor(*, repo_root: Path | None = None, output_dir: str | Path = DEF
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
     _write_json(target / "source_manifest.json", source_manifest)
     _write_json(target / "preflight.json", {**preflight, "independent_confirmation": authorities["independent"], "data_firewall": {"protected": False, "test": False, "sealed": False}})
-    control.mark_preflight_ready()
+    free_bytes, total_bytes = torch.cuda.mem_get_info(consumer.device)
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and preflight.get("three_step_real_update", {}).get("updates") == 3
+        and preflight.get("negative_control", {}).get("passed") is True
+        and preflight.get("no_dev_in_updates") is True
+        and preflight.get("independent_confirmation_resolved") is True
+        and preflight.get("independent_confirmation_in_backward") is False
+        and all(value is True for value in preflight.get("frozen_parameter_probe", {}).values())
+        and preflight.get("protected_test_sealed") == {"protected": False, "test": False, "sealed": False}
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+            "negative_control_rejected": preflight.get("negative_control", {}).get("passed"),
+            "no_dev_in_updates": preflight.get("no_dev_in_updates"),
+            "independent_confirmation_excluded_from_backward": preflight.get("independent_confirmation_in_backward") is False,
+            "frozen_parameter_probe": preflight.get("frozen_parameter_probe"),
+            "protected_test_sealed": preflight.get("protected_test_sealed"),
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+        },
+        implementation={
+            "passed": preflight.get("optimizer_mode") is not None,
+            "selected_engine": "canonical_semantic_alignment_cuda_generator_phase",
+            "optimizer_mode": preflight.get("optimizer_mode"),
+            "independent_confirmation_in_backward": preflight.get("independent_confirmation_in_backward"),
+        },
+        selected_engine="canonical_semantic_alignment_cuda_generator_phase",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    _write_json(target / "preflight_receipt.json", receipt.to_dict())
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    effective_identity = control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
     _write_json(target / "execution_manifest.json", {"schema": "canonical_semantic_alignment_independent_confirmation_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization_id": AUTHORIZATION_ID, "authorization_token": AUTHORIZATION_TOKEN, "input_authorities": ["M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION", "CONFLICT_AWARE_GENERATOR_SEMANTIC_RECOVERY_V1_STEP0", "CANONICAL_SEMANTIC_REALIZATION_FAILURE_ATTRIBUTED", "SMOOTH_MNIST_EVALUATOR_V2_1", "INDEPENDENT_FROZEN_MNIST_EVALUATOR_20260724_114819"], "source_manifest": source_manifest, "run_identity": effective_identity.to_dict(), "data_identity": authorities["data_identity"], "git_before": start_git, "cuda_runtime": cuda_runtime, "scope": {"bounded_updates": SCIENTIFIC_UPDATES, "trainable": ["generator.phase"], "frozen": ["encoder.phase", "OLS", "scale", "T=I_100", "W_OLS", "latent normalization", "P2", "Q2", "SmoothMNISTEvaluator", "independent confirmation evaluator"], "protected": False, "test": False, "sealed": False}})
 
     optimizer, optimizer_mode = _restore_authoritative_optimizer(consumer, authorities["step0"], authorities["accepted_report"])

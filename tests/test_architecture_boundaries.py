@@ -5,6 +5,8 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from ldm_project.application.stages import StageRequest, _build_stage_context
 from ldm_project.config import PhysicsConfig, TrainingConfig
 from ldm_project.student.model import FormalOneShotOpticalGenerator
@@ -56,27 +58,129 @@ def _request(mode: str) -> StageRequest:
     )
 
 
+def _python_files_under(root: Path) -> tuple[Path, ...]:
+    assert root.is_dir(), f"canonical implementation directory is missing: {root}"
+    paths = tuple(sorted(root.rglob("*.py")))
+    assert paths, f"canonical implementation directory is empty: {root}"
+    return paths
+
+
+def _package_name(path: Path) -> str:
+    parts = path.resolve().parts
+    source_index = max(index for index, part in enumerate(parts) if part == "src")
+    relative = Path(*parts[source_index + 1 :]).with_suffix("")
+    parts = list(relative.parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
 def _imports_in(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imported: set[str] = set()
+    package = _package_name(path)
+    current_package = package if path.name == "__init__.py" else package.rpartition(".")[0]
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                parts = current_package.split(".")
+                base = parts[: len(parts) - (node.level - 1)]
+                module = ".".join((*base, *(node.module.split(".") if node.module else ())))
+            else:
+                module = node.module or ""
+            if module:
+                imported.add(module)
+            # `from package import child` can be a submodule import. Preserve
+            # the full candidate so package-boundary rules see it as well.
+            imported.update(f"{module}.{alias.name}" for alias in node.names if module and alias.name != "*")
     return imported
 
 
+def _matches(imported: set[str], forbidden: tuple[str, ...]) -> bool:
+    return any(
+        name == prefix or name.startswith(f"{prefix}.")
+        for name in imported
+        for prefix in forbidden
+    )
+
+
+def _canonical_runtime_files(runtime: str) -> tuple[Path, ...]:
+    return _python_files_under(ROOT / "src" / "ldm_project" / runtime)
+
+
+def _assert_import_boundary(paths: tuple[Path, ...], forbidden: tuple[str, ...]) -> None:
+    assert paths, "architecture scan must not be empty"
+    for path in paths:
+        assert not _matches(_imports_in(path), forbidden), path
+
+
 def test_formal_domain_import_boundaries() -> None:
-    for path in (ROOT / "src" / "ldm_project" / "optics").glob("*.py"):
-        imports = _imports_in(path)
-        assert not any(name.startswith(("student", "teacher", "application", "diagnostics")) for name in imports), path
-    for path in (ROOT / "src" / "ldm_project" / "teacher").glob("*.py"):
-        imports = _imports_in(path)
-        assert not any(name.startswith("student") for name in imports), path
-    for path in (ROOT / "src" / "ldm_project" / "student").glob("*.py"):
-        imports = _imports_in(path)
-        assert not any(name.startswith("teacher") for name in imports), path
+    v1_root = ROOT / "src" / "ldm_project" / "v1"
+    for runtime in ("v1", "v2"):
+        optics = ROOT / "src" / "ldm_project" / runtime / "optics"
+        _assert_import_boundary(_python_files_under(optics), (
+            "ldm_project.v1.student", "ldm_project.v1.teacher", "ldm_project.v1.application", "ldm_project.v1.diagnostics",
+            "ldm_project.v2.student", "ldm_project.v2.application",
+            "ldm_project.student", "ldm_project.teacher", "ldm_project.application", "ldm_project.diagnostics",
+        ))
+    _assert_import_boundary(_python_files_under(v1_root / "teacher"), ("ldm_project.v1.student", "ldm_project.student"))
+    _assert_import_boundary(_python_files_under(v1_root / "student"), ("ldm_project.v1.teacher", "ldm_project.teacher"))
+
+
+def test_canonical_runtime_scan_is_nonempty_and_v2_stays_teacher_free() -> None:
+    v1_files = _canonical_runtime_files("v1")
+    v2_files = _canonical_runtime_files("v2")
+    assert v1_files and v2_files
+    _assert_import_boundary(v1_files, ("ldm_project.v2",))
+    _assert_import_boundary(v2_files, ("ldm_project.v1.teacher", "ldm_project.teacher", "ldm_project.first_stage", "ldm_project.diffusion"))
+
+    current_v2_boundaries = _python_files_under(ROOT / "src/ldm_project/v2/application/current") + (
+        ROOT / "src/ldm_project/v2/student/identity_generator.py",
+        ROOT / "src/ldm_project/v2/student/spatial_quadrature_generator.py",
+        ROOT / "src/ldm_project/v2/student/checkpoints.py",
+        ROOT / "src/ldm_project/v2/student/conditional.py",
+        ROOT / "src/ldm_project/v2/student/evaluator.py",
+    )
+    forbidden_current_v2 = (
+        "ldm_project.v2.teacher",
+        "ldm_project.v2.application.diagnostic",
+        "ldm_project.v2.application.legacy.teacher",
+        "ldm_project.v2.application.research",
+        "ldm_project.v2.student.direct_template",
+        "ldm_project.v2.student.capacity",
+        "ldm_project.v2.student.conditional_generator",
+        "ldm_project.v2.student.generator.LabelPrototypeBasisGenerator",
+    )
+    for path in current_v2_boundaries:
+        assert path.is_file(), f"current v2 boundary is missing: {path}"
+    _assert_import_boundary(current_v2_boundaries, forbidden_current_v2)
+
+
+def test_import_resolver_handles_absolute_relative_and_empty_scans(tmp_path: Path) -> None:
+    package = tmp_path / "src" / "ldm_project" / "v2" / "application"
+    package.mkdir(parents=True)
+    source = package / "sample.py"
+    source.write_text(
+        "from ldm_project.v1.teacher import targets\nfrom ..student import capacity\n",
+        encoding="utf-8",
+    )
+    imported = _imports_in(source)
+    assert "ldm_project.v1.teacher.targets" in imported
+    assert "ldm_project.v2.student.capacity" in imported
+    with pytest.raises(AssertionError):
+        _assert_import_boundary((source,), ("ldm_project.v1.teacher",))
+    with pytest.raises(AssertionError):
+        _assert_import_boundary((source,), ("ldm_project.v2.student.capacity",))
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(AssertionError, match="empty"):
+        _python_files_under(empty)
+    with pytest.raises(AssertionError, match="missing"):
+        _python_files_under(tmp_path / "missing")
+    with pytest.raises(AssertionError, match="empty"):
+        _assert_import_boundary((), ("ldm_project.v1.teacher",))
 
 
 def test_student_layer_shim_contains_no_implementation() -> None:
@@ -95,17 +199,15 @@ def test_generator_and_legacy_imports_share_identity() -> None:
 
 
 def test_neutral_domains_do_not_depend_on_execution_domains() -> None:
-    forbidden = ("student", "teacher", "application", "diagnostics")
+    forbidden = tuple(f"ldm_project.{prefix}{domain}" for prefix in ("", "v1.", "v2.") for domain in ("student", "teacher", "application", "diagnostics"))
     for domain in ("distillation", "generation", "evaluation"):
-        for path in (ROOT / "src" / "ldm_project" / domain).glob("*.py"):
-            imports = _imports_in(path)
-            assert not any(name.startswith(forbidden) for name in imports), path
+        _assert_import_boundary(_python_files_under(ROOT / "src" / "ldm_project" / "v1" / domain), forbidden)
 
 
 def test_teacher_workflows_do_not_depend_on_common_facade() -> None:
     for name in ("export.py", "label_audit.py", "filter.py", "readable.py"):
         imports = _imports_in(ROOT / "src" / "ldm_project" / "v1" / "teacher" / name)
-        assert "common" not in imports, name
+        assert not _matches(imports, ("ldm_project.v1.teacher.common", "ldm_project.teacher.common")), name
     common_tree = ast.parse(
         (ROOT / "src" / "ldm_project" / "v1" / "teacher" / "common.py").read_text(
             encoding="utf-8"
@@ -118,9 +220,8 @@ def test_teacher_workflows_do_not_depend_on_common_facade() -> None:
 
 
 def test_objective_terms_do_not_depend_on_objective_facade() -> None:
-    terms_root = ROOT / "src" / "ldm_project" / "student" / "objective_terms"
-    for path in terms_root.glob("*.py"):
-        assert "objectives" not in _imports_in(path), path
+    terms_root = ROOT / "src" / "ldm_project" / "v1" / "student" / "objective_terms"
+    _assert_import_boundary(_python_files_under(terms_root), ("ldm_project.v1.student.objectives", "ldm_project.student.objectives"))
 
 
 def test_filter_stage_constructs_no_model_or_dataset() -> None:
@@ -170,9 +271,7 @@ assert 'ldm_project.student.model' not in sys.modules
 
 
 def test_student_has_no_diagnostics_imports() -> None:
-    for path in (ROOT / "src" / "ldm_project" / "student").rglob("*.py"):
-        imports = _imports_in(path)
-        assert not any(name.startswith("diagnostics") for name in imports), path
+    _assert_import_boundary(_python_files_under(ROOT / "src" / "ldm_project" / "v1" / "student"), ("ldm_project.v1.diagnostics", "ldm_project.diagnostics"))
 
 
 def test_teacher_scoped_modules_use_public_support_symbols() -> None:

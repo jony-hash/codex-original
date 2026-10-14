@@ -48,10 +48,19 @@ def test_gradient_engine_selection_falls_back_to_scalar_when_batched_is_not_ten_
     assert result["selected_engine"] == continuation.SCALAR_REFERENCE_ENGINE
 
 
-def test_gradient_engine_selection_blocks_when_both_memory_limits_fail() -> None:
+def test_gradient_engine_selection_does_not_block_on_high_memory_or_duration() -> None:
     result = continuation._select_gradient_engine(
         speedup_fraction=0.50,
         **_selection_inputs(scalar_hours=13.0, batched_hours=13.0, scalar_memory=0.95, batched_memory=0.95),
+    )
+    assert result["status"] == "READY"
+    assert result["selected_engine"] == continuation.GRADIENT_ENGINE
+
+
+def test_gradient_engine_selection_rejects_invalid_resource_measurements() -> None:
+    result = continuation._select_gradient_engine(
+        speedup_fraction=0.50,
+        **_selection_inputs(scalar_memory=float("nan"), batched_memory=-0.1),
     )
     assert result["status"] == "BLOCKED"
     assert result["selected_engine"] is None
@@ -64,6 +73,37 @@ def test_estimated_duration_is_reported_but_does_not_block_selection() -> None:
     )
     assert result["status"] == "READY"
     assert result["selected_engine"] == continuation.GRADIENT_ENGINE
+
+
+@pytest.mark.parametrize("defect", [None, "resource", "negative_control", "engine_choice"])
+def test_receipt_consumes_production_benchmark_shape_and_required_results(defect: str | None) -> None:
+    performance = continuation._select_gradient_engine(speedup_fraction=0.10, **_selection_inputs(scalar_memory=0.99, batched_memory=0.99))
+    selected = performance["selected_engine"]
+    preflight = {
+        "status": "READY", "performance": performance,
+        "selected_engine": selected, "gradient_engine": selected,
+        "scalar_reference_engine": continuation.SCALAR_REFERENCE_ENGINE,
+        "three_step_real_update": {"updates": 3, "persistent_updates": 0},
+        "negative_control": {"rejected": True},
+        "one_step_adam_equivalence": {"passed": True},
+        "directional_sanity": {"q_joint_finite": True},
+        "stored_rng_restored": True, "E_D_in_backward": False,
+        "protected_test_sealed": {"protected": 0, "test": 0, "sealed": 0},
+    }
+    if defect == "resource":
+        performance["resource_ok"][selected] = False
+    elif defect == "negative_control":
+        preflight["negative_control"]["rejected"] = False
+    elif defect == "engine_choice":
+        performance["selected_engine"] = continuation.SCALAR_REFERENCE_ENGINE
+    if defect is not None:
+        with pytest.raises(run_control.RunControlError, match="did not pass"):
+            continuation._preflight_receipt({"execution_source_semantics_id": "unit"}, preflight)
+        return
+    receipt = continuation._preflight_receipt({"execution_source_semantics_id": "unit"}, preflight)
+    assert receipt.selected_engine == selected
+    assert receipt.checks[run_control.RESOURCE_ENVELOPE]["passed"] is True
+    assert receipt.checks[run_control.CORRECTNESS_INVARIANTS]["evaluator_isolated"] is True
 
 
 def test_gradient_engine_numeric_mismatch_is_fail_closed() -> None:
@@ -209,7 +249,15 @@ def _running_report_control(target: continuation.Path) -> tuple[run_control.Hear
     )
     heartbeat = run_control.HeartbeatWriter(target, identity.run_id, total_steps=continuation.TOTAL_STEPS, interval_seconds=0.0)
     control = run_control.ResearchRunControl(identity, "authorization")
-    control.mark_preflight_ready()
+    control.mark_preflight_ready(continuation.PreflightReceipt(
+        authorization_id="authorization",
+        checks={
+            continuation.CORRECTNESS_INVARIANTS: {"passed": True},
+            continuation.RESOURCE_ENVELOPE: {"passed": True},
+            continuation.IMPLEMENTATION_SELECTION: {"passed": True, "selected_engine": "test"},
+        },
+        selected_engine="test",
+    ))
     control.start_execution()
     heartbeat.update(state=run_control.RUNNING, phase="TRAINING", step=9300, force=True)
     return heartbeat, control

@@ -1187,9 +1187,33 @@ def run_repair(output_dir: Path, *, resume: bool = False) -> dict[str, Any]:
     heartbeat = HeartbeatWriter(target, RUN_ID, total_steps=4 + N_OPTICAL, interval_seconds=60.0)
     heartbeat.update(state=RUN_PREPARING, phase="STATISTICS", step=0, latest_losses={"stage": "CPU_PREFLIGHT_READY"}, force=True)
     control = ResearchRunControl(identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    cpu_inputs_valid = bool(
+        context.get("report", {}).get("result") == "VALID_COMPLETED_GENERATION_BUNDLE_READY"
+        and context.get("bundle", {}).get("selected_step") == 300
+        and context.get("final_payload", {}).get("selected_step") == 300
+        and tuple(context.get("z_final", torch.empty(0)).shape) == (TRAIN_COUNT, OLS_PORT_COUNT)
+        and tuple(context.get("u_final", torch.empty(0)).shape) == (TRAIN_COUNT, OLS_PORT_COUNT)
+        and context.get("phase_model") is not None
+    )
+    cpu_execution_valid = bool(cpu_inputs_valid and context["z_final"].device.type == "cpu" and context["u_final"].device.type == "cpu")
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": cpu_inputs_valid,
+            "frozen_inputs_validated": cpu_inputs_valid,
+            "data_reads": {"raw_images": 0, "labels": 0, "protected": 0, "test": 0, "sealed": 0},
+        },
+        resource={"passed": cpu_execution_valid, "phase": "CPU_PHASE_SUPPORT_ANALYSIS", "cuda_allocations_before_stage_two": 0},
+        implementation={
+            "passed": cpu_execution_valid,
+            "selected_engine": "phase_completion_repair_cpu_support_and_frozen_cuda_diagnostics",
+            "training": False,
+            "optimizer": False,
+        },
+        selected_engine="phase_completion_repair_cpu_support_and_frozen_cuda_diagnostics",
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
 
     heartbeat.update(state=RUNNING, phase="STATISTICS", step=0, latest_losses={"stage": "STAGE_1_CPU_PHASE_SUPPORT"}, force=True)
     if not resume:

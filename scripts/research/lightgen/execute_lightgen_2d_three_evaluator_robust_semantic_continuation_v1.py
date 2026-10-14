@@ -1042,7 +1042,44 @@ def run_training(*, repo_root: Path | None = None, output_dir: str | Path = DEFA
     target.mkdir(parents=True, exist_ok=False)
     run_identity = _make_identity(source_manifest, authorities["data_identity"])
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready(); control.start_execution(); effective_identity = control.begin_scientific_attempt(run_identity.scientific_attempt_id)
+    free_bytes, total_bytes = torch.cuda.mem_get_info(consumer.device)
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and preflight.get("three_step_real_update", {}).get("updates") == 3
+        and preflight.get("stored_rng_restored") is True
+        and preflight.get("sign", {}).get("temporary_runtime_restored") is True
+        and preflight.get("E_D_absent_from_backward") is True
+        and preflight.get("protected_test_sealed") == {"protected": 0, "test": 0, "sealed": 0}
+        and preflight.get("sign", {}).get("status") == "READY"
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+            "stored_rng_restored": preflight.get("stored_rng_restored"),
+            "runtime_restored": preflight.get("sign", {}).get("temporary_runtime_restored"),
+            "independent_evaluator_excluded_from_backward": preflight.get("E_D_absent_from_backward"),
+            "sign_preflight": preflight.get("sign"),
+            "protected_test_sealed": preflight.get("protected_test_sealed"),
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+        },
+        implementation={
+            "passed": preflight.get("trainable_parameter_names") == ["generator.phase"],
+            "selected_engine": "three_evaluator_robust_continuation_cuda_generator_phase",
+            "trainable_parameter_names": preflight.get("trainable_parameter_names"),
+            "optimizer_step": preflight.get("adam_internal_step"),
+        },
+        selected_engine="three_evaluator_robust_continuation_cuda_generator_phase",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    _write_json(target / "preflight_receipt.json", receipt.to_dict(), kind="SIC continuation preflight receipt")
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    effective_identity = control.open_scientific_attempt(target, run_identity.scientific_attempt_id, receipt, resume=True)
     _write_json(target / "source_manifest.json", source_manifest, kind="SIC continuation source manifest")
     _write_json(target / "preflight.json", preflight, kind="SIC continuation preflight")
     _write_json(target / "execution_manifest.json", {"schema": "three_evaluator_robust_semantic_continuation_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorization": {"id": AUTHORIZATION_ID, "token": AUTHORIZATION_TOKEN}, "input_authorities": authorities["authority_hashes"], "source_manifest": source_manifest, "run_identity": effective_identity.to_dict(), "local_state": authorities["local_state"], "cuda_runtime": cuda_runtime, "scope": {"stage1": [START_STEP, STAGE1_END], "stage2": [STAGE1_END, TOTAL_STEPS], "trainable": ["generator.phase"], "frozen": ["Encoder", "OLS", "W_OLS", "T", "scale", "S1", "P2", "Q2", "E_S", "E_I", "E_C", "E_D"], "protected": False, "test": False, "sealed": False}}, kind="SIC continuation execution manifest")

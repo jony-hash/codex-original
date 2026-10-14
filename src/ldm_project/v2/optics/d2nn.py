@@ -20,6 +20,8 @@ class FiniteCropPhaseStack(nn.Module):
         active_shape: tuple[int, int],
         propagation_shape: tuple[int, int],
         spacing_m: float,
+        layer_power_transmission: float = 1.0,
+        preserve_global_output: bool = False,
     ) -> None:
         super().__init__()
         if layers <= 0 or any(
@@ -30,6 +32,10 @@ class FiniteCropPhaseStack(nn.Module):
         self.active_shape = active_shape
         self.propagation_shape = propagation_shape
         self.spacing_m = spacing_m
+        if not torch.isfinite(torch.tensor(layer_power_transmission)) or not 0.0 <= layer_power_transmission <= 1.0:
+            raise ValueError("layer_power_transmission must be finite and within [0,1]")
+        self.layer_power_transmission = float(layer_power_transmission)
+        self.preserve_global_output = bool(preserve_global_output)
         self.phase = nn.Parameter(torch.zeros(layers, 1, *active_shape))
 
     def forward(
@@ -39,10 +45,14 @@ class FiniteCropPhaseStack(nn.Module):
             raise ValueError("finite-crop D2NN field does not match active shape")
         records: list[ComplexField] = []
         retention: list[torch.Tensor] = []
+        layer_power: list[torch.Tensor] = []
         current = field
         for index in range(self.layers):
+            input_power = current.tensor.abs().square().reshape(current.tensor.shape[0], -1).sum(dim=1) * (
+                current.plane.pixel_pitch_m[0] * current.plane.pixel_pitch_m[1]
+            )
             transfer = torch.polar(
-                torch.ones_like(self.phase[index]), self.phase[index]
+                torch.full_like(self.phase[index], self.layer_power_transmission**0.5), self.phase[index]
             ).to(current.tensor.dtype)
             modulated = ComplexField(
                 current.tensor * transfer,
@@ -77,38 +87,58 @@ class FiniteCropPhaseStack(nn.Module):
             propagated = angular_spectrum_propagate(
                 padded, self.spacing_m, f"{prefix}_layer_{index + 1}_propagated"
             )
+            propagated_power = propagated.tensor.abs().square().reshape(propagated.tensor.shape[0], -1).sum(dim=1) * (
+                propagated.plane.pixel_pitch_m[0] * propagated.plane.pixel_pitch_m[1]
+            )
             crop_y = (self.propagation_shape[0] - self.active_shape[0]) // 2
             crop_x = (self.propagation_shape[1] - self.active_shape[1]) // 2
-            cropped_tensor = propagated.tensor[
-                ...,
-                crop_y : crop_y + self.active_shape[0],
-                crop_x : crop_x + self.active_shape[1],
-            ]
-            active_plane = current.plane.with_plane(
-                f"{prefix}_layer_{index + 1}", z_m=propagated.plane.z_m
-            )
-            current = ComplexField(
-                cropped_tensor,
-                active_plane,
-                OperationProvenance(
-                    "finite_crop_hard_aperture",
-                    propagated.plane.plane_id,
-                    self.spacing_m,
-                    {"layer": index + 1, "active_shape": list(self.active_shape)},
-                ),
-            )
-            retention.append(
-                current.tensor.abs().square().sum(dim=(-3, -2, -1))
-                / propagated.tensor.abs()
-                .square()
-                .sum(dim=(-3, -2, -1))
-                .clamp_min(1.0e-12)
-            )
+            keep_global = self.preserve_global_output and index == self.layers - 1
+            if keep_global:
+                current = ComplexField(
+                    propagated.tensor,
+                    propagated.plane,
+                    OperationProvenance(
+                        "finite_mask_global_propagation_output",
+                        propagated.plane.plane_id,
+                        self.spacing_m,
+                        {"layer": index + 1, "active_shape": list(self.active_shape)},
+                    ),
+                )
+                retained_power = propagated_power
+            else:
+                cropped_tensor = propagated.tensor[
+                    ...,
+                    crop_y : crop_y + self.active_shape[0],
+                    crop_x : crop_x + self.active_shape[1],
+                ]
+                active_plane = current.plane.with_plane(
+                    f"{prefix}_layer_{index + 1}", z_m=propagated.plane.z_m
+                )
+                current = ComplexField(
+                    cropped_tensor,
+                    active_plane,
+                    OperationProvenance(
+                        "finite_crop_hard_aperture",
+                        propagated.plane.plane_id,
+                        self.spacing_m,
+                        {"layer": index + 1, "active_shape": list(self.active_shape)},
+                    ),
+                )
+                retained_power = current.tensor.abs().square().reshape(current.tensor.shape[0], -1).sum(dim=1) * (
+                    current.plane.pixel_pitch_m[0] * current.plane.pixel_pitch_m[1]
+                )
+            retention.append(retained_power / propagated_power.clamp_min(1.0e-30))
+            device_power = input_power * self.layer_power_transmission
+            layer_power.append(torch.stack((input_power, device_power, propagated_power, retained_power), dim=-1))
             records.append(current)
         return (
             current,
             tuple(records),
-            {"crop_retention": torch.stack(retention, dim=1), "phase": self.phase},
+            {
+                "crop_retention": torch.stack(retention, dim=1),
+                "layer_power": torch.stack(layer_power, dim=1),
+                "phase": self.phase,
+            },
         )
 
 

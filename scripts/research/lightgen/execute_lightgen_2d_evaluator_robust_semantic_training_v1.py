@@ -1294,9 +1294,41 @@ def run_training(*, repo_root: Path | None = None, output_dir: str | Path = DEFA
     target.mkdir(parents=True, exist_ok=False)
     run_identity = _make_identity(source_manifest, authorities["data_identity"])
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    free_bytes, total_bytes = torch.cuda.mem_get_info(consumer.device)
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and preflight.get("three_step_real_update", {}).get("updates") == 3
+        and preflight.get("negative_control", {}).get("passed") is True
+        and preflight.get("joint_sign_convention", {}).get("runtime_restored") is True
+        and preflight.get("optical_validity", {}).get("finite") is True
+        and preflight.get("protected_test_sealed") == {"protected": False, "test": False, "sealed": False}
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+            "frozen_optimizer_negative_control_rejected": preflight.get("negative_control", {}).get("passed"),
+            "runtime_restored": preflight.get("joint_sign_convention", {}).get("runtime_restored"),
+            "optical_validity": preflight.get("optical_validity"),
+            "protected_test_sealed": preflight.get("protected_test_sealed"),
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+        },
+        implementation={
+            "passed": preflight.get("trainable_parameter_names") == ["generator.phase"],
+            "selected_engine": "evaluator_robust_semantic_cuda_generator_phase",
+            "trainable_parameter_names": preflight.get("trainable_parameter_names"),
+            "optimizer_mode": preflight.get("optimizer_mode"),
+        },
+        selected_engine="evaluator_robust_semantic_cuda_generator_phase",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    effective_identity = control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
     _write_json(target / "source_manifest.json", source_manifest, kind="evaluator-robust source manifest")
     _write_json(target / "preflight.json", preflight, kind="evaluator-robust preflight")
     _write_json(target / "execution_manifest.json", {"schema": "evaluator_robust_semantic_training_execution_manifest.v1", "task_id": TASK_ID, "outer_gate": OUTER_GATE, "authorizations": [{"id": AUTHORIZATION_ID, "token": AUTHORIZATION_TOKEN}, {"id": CONDITIONAL_AUTHORIZATION_ID, "token": CONDITIONAL_AUTHORIZATION_TOKEN}], "input_authorities": authorities["authority_hashes"], "source_manifest": source_manifest, "run_identity": effective_identity.to_dict(), "local_state": start_git, "cuda_runtime": cuda_runtime, "scope": {"stage1_updates": STAGE_1_UPDATES, "total_updates": TOTAL_UPDATES, "trainable": ["generator.phase"], "frozen": ["Encoder", "OLS", "W_OLS", "scale", "T", "P2", "Q2", "E_S", "E_I", "E_C"], "protected": False, "test": False, "sealed": False}}, kind="evaluator-robust execution manifest")

@@ -1,0 +1,44 @@
+{
+  "conda_channels": [
+    "conda-forge",
+    "nvidia",
+    "pytorch"
+  ],
+  "conda_lock_file": "environment-win-explicit.lock.txt",
+  "conda_package_count": 169,
+  "credential_data_recorded": false,
+  "cuda_available_on_export_host": true,
+  "cuda_device_count_on_export_host": 1,
+  "key_packages": {
+    "PyYAML": "6.0.3",
+    "matplotlib": "3.10.8",
+    "numpy": "2.2.6",
+    "pydantic": "2.11.7",
+    "pytest": "9.0.3",
+    "ruff": "0.15.12",
+    "torch": "2.5.1",
+    "torchvision": "0.20.1"
+  },
+  "local_install_path_recorded": false,
+  "pip_lock_file": "requirements-win-pip.lock.txt",
+  "pip_only_package_count": 2,
+  "pip_lock_integrity": {
+    "algorithm": "sha256",
+    "package_count": 2
+  },
+  "platform": "win-64",
+  "python": "3.11.16",
+  "schema": "windows_environment_lock_summary.v1",
+  "torch_cuda_build": "12.1",
+  "conda_lock_integrity": {
+    "algorithm": "sha256",
+    "package_count": 169,
+    "verified_against": "per-package Conda metadata URL, filename, version, build, channel and SHA-256"
+  },
+  "conda_owned_distributions": {
+    "shiboken6": {
+      "owner": "pyside6",
+      "version": "6.11.2"
+    }
+  }
+}

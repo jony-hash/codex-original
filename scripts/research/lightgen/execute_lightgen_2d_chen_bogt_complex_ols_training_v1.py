@@ -1,14 +1,18 @@
 """Chen BOGT complex-OLS consumer, preflight, and bounded execution entrypoint.
 
 The scientific arm is explicit: ``--execute`` is required.  ``--dry-run``
-only prints the frozen execution graph and ``--preflight`` remains the
-synthetic/CPU engineering check used before scientific authorization.
+only prints the frozen execution graph, ``--preflight`` is the synthetic/CPU
+engineering check, and ``--production-preflight`` runs an isolated production
+CUDA check for one explicit checkpoint without opening a scientific attempt.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
+import math
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -17,10 +21,11 @@ from typing import Any, Callable, Iterable, Mapping
 import torch
 from torch.nn import functional as F
 
-from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import ALLOWED_TRAINABLE_PARAMETER_NAMES, ADAM_BETAS, ADAM_EPSILON, AMSGRAD, BogtLossWeights, CHECKPOINT_SCHEMA, CHECKPOINT_STEPS, DataReadLedger, DEV_ROLE, DeterministicTrainRoleSampler, FrozenBogtReferences, LightGen2DChenBOGTComplexOLSTrainingConsumer, SCIENTIFIC_UPDATES, SYNTHETIC_ROLE, TRAIN_ROLE, PRODUCTION_PROPAGATION_GRID, SCHEDULE_SEED, TrainingContractError, WEIGHT_DECAY, calibrate_initial_gradient_weights, checkpoint_payload, collect_bogt_train_references, construct_sampled_ols, contracted_plane_powers, fit_wrapped_conditional_phase_model, fixed_prior, frozen_contract_identity, git_identity, load_checkpoint, save_checkpoint, statistical_variable, WrappedConditionalPhaseModel
-from ldm_project.v2.application.research.shared.research_run_control import HEARTBEAT_INTERVAL_SECONDS, PREFLIGHT_BLOCKED, PREFLIGHT_READY, RECOVERY_INTERVAL_SECONDS, RECOVERY_INTERVAL_STEPS, RecoveryCheckpointManager, ResearchRunControl, ResearchRunIdentity, RunControlError, HeartbeatWriter, InterruptController, RUN_COMPLETED, RUN_INTERRUPTED, RUNNING, RUN_PREPARING, capture_execution_source_manifest, recovery_due
+from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import ALLOWED_TRAINABLE_PARAMETER_NAMES, ADAM_BETAS, ADAM_EPSILON, AMSGRAD, BogtLossWeights, CHECKPOINT_SCHEMA, CHECKPOINT_STEPS, DataReadLedger, DEV_ROLE, DeterministicTrainRoleSampler, FrozenBogtReferences, LightGen2DChenBOGTComplexOLSTrainingConsumer, LoadedCheckpoint, PROTECTED_ROLE, SCIENTIFIC_UPDATES, SEALED_ROLE, SYNTHETIC_ROLE, TEST_ROLE, TRAIN_ROLE, PRODUCTION_PROPAGATION_GRID, SCHEDULE_SEED, TrainingContractError, WEIGHT_DECAY, calibrate_initial_gradient_weights, checkpoint_payload, collect_bogt_train_references, construct_sampled_ols, contracted_plane_powers, fit_wrapped_conditional_phase_model, fixed_prior, frozen_contract_identity, git_identity, load_checkpoint, restore_rng_state, save_checkpoint, statistical_variable, WrappedConditionalPhaseModel
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, HEARTBEAT_INTERVAL_SECONDS, IMPLEMENTATION_SELECTION, PREFLIGHT_BLOCKED, PREFLIGHT_READY, RECOVERY_INTERVAL_SECONDS, RECOVERY_INTERVAL_STEPS, RESOURCE_ENVELOPE, PreflightReceipt, RecoveryCheckpointManager, ResearchRunControl, ResearchRunIdentity, RunControlError, HeartbeatWriter, InterruptController, RUN_COMPLETED, RUN_INTERRUPTED, RUN_SCIENTIFIC_ACTIVE, RUNNING, RUN_PREPARING, capture_execution_source_manifest, recovery_due
 from ldm_project.v2.evidence import (
     atomic_torch_save_new,
+    atomic_write_json,
     atomic_write_new_json,
     file_sha256,
     safe_torch_load,
@@ -62,6 +67,8 @@ OUTER_GATE = "CHEN_BOGT_ON_COMPLEX_OLS_BOUNDED_TRAINING_V1_RESOLVED"
 RUN_MANIFEST_SCHEMA = "chen_bogt_scientific_execution_manifest.v1"
 PHASE0_SCHEMA = "chen_bogt_phase0_lightweight_runtime_checks.v1"
 DEV_DIAGNOSTIC_SCHEMA = "chen_bogt_dev_diagnostic.v1"
+PRODUCTION_PREFLIGHT_DIAGNOSTIC_SCHEMA = "chen_bogt_production_preflight_diagnostic.v1"
+PRODUCTION_PREFLIGHT_DIAGNOSTIC_AUTHORIZATION = "BOGT_ENGINEERING_DIAGNOSTIC_ONLY_V1"
 
 
 def _repo_root() -> Path:
@@ -203,6 +210,500 @@ def _synthetic_phase_bank(references: FrozenBogtReferences) -> torch.Tensor:
     return torch.complex(amplitude * phase.cos(), amplitude * phase.sin()).to(torch.complex64)
 
 
+def _tree_close(left: Any, right: Any, *, atol: float = 1.0e-6, rtol: float = 1.0e-5) -> bool:
+    if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
+        if left.shape != right.shape or left.dtype != right.dtype:
+            return False
+        if left.is_floating_point() or left.is_complex():
+            return bool(torch.allclose(left, right, atol=atol, rtol=rtol))
+        return torch.equal(left, right)
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return set(left) == set(right) and all(_tree_close(left[key], right[key], atol=atol, rtol=rtol) for key in left)
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return len(left) == len(right) and all(_tree_close(a, b, atol=atol, rtol=rtol) for a, b in zip(left, right, strict=True))
+    if isinstance(left, float) or isinstance(right, float):
+        try:
+            return math.isclose(float(left), float(right), rel_tol=rtol, abs_tol=atol)
+        except (TypeError, ValueError):
+            return False
+    return left == right
+
+
+def _rng_snapshot() -> dict[str, Any]:
+    cuda_available = bool(torch.cuda.is_available())
+    return {
+        "cpu": torch.random.get_rng_state().clone(),
+        "cuda": [state.cpu().clone() for state in torch.cuda.get_rng_state_all()] if cuda_available else [],
+    }
+
+
+def _production_cuda_memory(device: torch.device) -> dict[str, int]:
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise RunControlError("PREFLIGHT_BLOCKED(resource): production BOGT preflight requires CUDA")
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    envelope = {"free_bytes_before": int(free_bytes), "total_bytes": int(total_bytes)}
+    if total_bytes <= 0 or not 0 <= free_bytes <= total_bytes:
+        raise RunControlError("PREFLIGHT_BLOCKED(resource): CUDA reported invalid device memory")
+    return envelope
+
+
+def _run_isolated_preflight_trial(
+    *,
+    consumer: LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Optimizer,
+    sampler: DeterministicTrainRoleSampler,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    train_indices: torch.Tensor,
+    run_identity: ResearchRunIdentity,
+    source_manifest: Mapping[str, Any],
+    authorization_id: str,
+    data_role: str,
+    engineering_only: bool,
+    completed_updates: int = 0,
+    training_history: Iterable[Mapping[str, Any]] = (),
+    ledger: DataReadLedger | None = None,
+) -> dict[str, Any]:
+    """Check real updates and recovery, then restore the loaded state on every exit.
+
+    The isolated trial continues from the loaded TRAIN sampler, update count,
+    and history. Its three diagnostic updates are always rolled back.
+    """
+    device = consumer.device
+    references = consumer.references
+    weights = consumer.weights
+    if references is None or weights is None:
+        raise TrainingContractError("isolated preflight requires frozen references and weights")
+    if references.data_role != data_role or weights.data_role != data_role:
+        raise TrainingContractError("isolated preflight data roles differ from the loaded references and weights")
+    if references.engineering_only is not engineering_only or weights.engineering_only is not engineering_only:
+        raise TrainingContractError("isolated preflight engineering scope differs from the loaded inputs")
+    consumer.optimizer_manifest(optimizer)
+    actual_sampler_state = copy.deepcopy(sampler.state_dict())
+    actual_model_state = consumer.trainable_state_dict()
+    actual_runtime_state = {name: value.detach().cpu().clone() for name, value in consumer.runtime.state_dict().items()}
+    actual_gradients = {
+        name: None if parameter.grad is None else parameter.grad.detach().cpu().clone()
+        for name, parameter in consumer.runtime.named_parameters()
+    }
+    actual_optimizer_state = copy.deepcopy(optimizer.state_dict())
+    actual_rng_state = _rng_snapshot()
+    if type(completed_updates) is not int or not 0 <= completed_updates <= SCIENTIFIC_UPDATES:
+        raise TrainingContractError("loaded checkpoint update count is outside the fixed schedule")
+    actual_completed_updates = completed_updates
+    actual_history = list(training_history)
+    actual_frozen_identity = consumer.frozen_state_sha256
+    actual_references_identity = references.identity()
+    actual_weights_identity = weights.identity()
+    if sampler.cursor != actual_completed_updates or len(actual_history) != actual_completed_updates:
+        raise TrainingContractError("loaded checkpoint sampler/history does not match its update count")
+    if actual_completed_updates + 3 > SCIENTIFIC_UPDATES or sampler.cursor + 3 > sampler.steps:
+        raise TrainingContractError("loaded checkpoint has fewer than three updates remaining in the fixed schedule")
+    for name, parameter in consumer._named_runtime_parameters():
+        state = optimizer.state.get(parameter, {})
+        if actual_completed_updates == 0:
+            if state:
+                raise TrainingContractError(f"unstarted checkpoint contains Adam state: {name}")
+            continue
+        step = state.get("step")
+        if not isinstance(step, torch.Tensor) or step.numel() != 1 or not bool(torch.isfinite(step).all()) or float(step) != actual_completed_updates:
+            raise TrainingContractError(f"loaded checkpoint Adam step differs from completed updates: {name}")
+        for key in ("exp_avg", "exp_avg_sq"):
+            value = state.get(key)
+            if not isinstance(value, torch.Tensor) or value.shape != parameter.shape or not bool(torch.isfinite(value).all()):
+                raise TrainingContractError(f"loaded checkpoint Adam {key} is missing or invalid: {name}")
+            if key == "exp_avg_sq" and bool((value < 0).any()):
+                raise TrainingContractError(f"loaded checkpoint Adam second moment is negative: {name}")
+    baseline_payload = checkpoint_payload(
+        consumer,
+        optimizer,
+        completed_updates=actual_completed_updates,
+        sampler_state=actual_sampler_state,
+        training_history=actual_history,
+        engineering_only=engineering_only,
+        recovery=not engineering_only,
+        run_identity=run_identity,
+        source_manifest=source_manifest,
+        authorization_id=authorization_id,
+    )
+    trial_sampler = DeterministicTrainRoleSampler(train_indices, labels)
+    trial_sampler.load_state_dict(actual_sampler_state)
+    traces: list[dict[str, Any]] = []
+    replay_traces: list[dict[str, Any]] = []
+    negative_control_rejected = False
+    recovery_equivalent = False
+    trainable_changed = False
+    frozen_unchanged = False
+    sampled_batches: list[list[int]] = []
+    trial_error: BaseException | None = None
+    trial_traceback = None
+    restoration_report: dict[str, Any] = {"verified": False, "checks": {}, "errors": {}}
+    with tempfile.TemporaryDirectory(prefix="chen-bogt-production-preflight-") as temporary:
+        baseline_path = Path(temporary) / "actual_state.pt"
+        recovery_path = Path(temporary) / "after_first_update.pt"
+        save_checkpoint(baseline_path, baseline_payload)
+        try:
+            for parameter in consumer.runtime.parameters():
+                parameter.grad = None
+            expected_parameters = [parameter for _, parameter in consumer._named_runtime_parameters()]
+            extra = torch.nn.Parameter(torch.ones(1, dtype=torch.float32, device=device))
+            try:
+                consumer.create_optimizer([*expected_parameters, extra])
+            except TrainingContractError:
+                negative_control_rejected = True
+            if not negative_control_rejected:
+                raise TrainingContractError("frozen-parameter optimizer negative control was accepted")
+
+            initial_trainable = consumer.trainable_state_dict()
+            initial_frozen = consumer.frozen_state_sha256
+            for step in range(3):
+                indices, batch_labels = trial_sampler.next_batch()
+                sampled_batches.append([int(index) for index in indices.detach().cpu().tolist()])
+                if not torch.equal(labels.index_select(0, indices), batch_labels):
+                    raise TrainingContractError(f"production preflight TRAIN labels changed at update {step + 1}")
+                batch = images.index_select(0, indices).to(device)
+                update = consumer.bogt_training_step(
+                    batch,
+                    optimizer,
+                    global_step=actual_completed_updates + step,
+                    data_role=data_role,
+                    ledger=ledger,
+                )
+                metrics = update.metrics()
+                losses = metrics.get("loss", {})
+                if not isinstance(losses, Mapping) or not all(math.isfinite(float(value)) for value in losses.values()):
+                    raise TrainingContractError(f"production preflight update {step + 1} produced nonfinite losses")
+                traces.append(metrics)
+                del batch, update
+                if step == 0:
+                    recovery_payload = checkpoint_payload(
+                        consumer,
+                        optimizer,
+                        completed_updates=actual_completed_updates + 1,
+                        sampler_state=trial_sampler.state_dict(),
+                        training_history=[*actual_history, *traces],
+                        engineering_only=engineering_only,
+                        recovery=not engineering_only,
+                        run_identity=run_identity,
+                        source_manifest=source_manifest,
+                        authorization_id=authorization_id,
+                    )
+                    save_checkpoint(recovery_path, recovery_payload)
+            trainable_changed = all(
+                not torch.equal(initial_trainable[name], consumer.trainable_state_dict()[name])
+                for name in ALLOWED_TRAINABLE_PARAMETER_NAMES
+            )
+            frozen_unchanged = consumer.frozen_state_sha256 == initial_frozen
+            uninterrupted_model = consumer.trainable_state_dict()
+            uninterrupted_optimizer = copy.deepcopy(optimizer.state_dict())
+            uninterrupted_sampler = copy.deepcopy(trial_sampler.state_dict())
+            uninterrupted_rng = _rng_snapshot()
+            loaded_midpoint = load_checkpoint(
+                recovery_path,
+                consumer,
+                optimizer,
+                expected_engineering_only=engineering_only,
+                expected_run_identity=run_identity,
+                expected_authorization_id=authorization_id,
+            )
+            trial_sampler.load_state_dict(loaded_midpoint.sampler_state)
+            midpoint_optimizer_steps_match = all(
+                isinstance(optimizer.state.get(parameter, {}).get("step"), torch.Tensor)
+                and float(optimizer.state[parameter]["step"]) == actual_completed_updates + 1
+                for _, parameter in consumer._named_runtime_parameters()
+            )
+            midpoint_progress_match = bool(
+                loaded_midpoint.completed_updates == actual_completed_updates + 1
+                and trial_sampler.cursor == actual_completed_updates + 1
+                and len(loaded_midpoint.training_history) == actual_completed_updates + 1
+                and midpoint_optimizer_steps_match
+            )
+            if not midpoint_progress_match:
+                raise TrainingContractError("reloaded checkpoint step, Adam, sampler, and history do not agree")
+            replay_traces = list(loaded_midpoint.training_history[actual_completed_updates:])
+            for step in range(1, 3):
+                indices, batch_labels = trial_sampler.next_batch()
+                if not torch.equal(labels.index_select(0, indices), batch_labels):
+                    raise TrainingContractError(f"recovered preflight TRAIN labels changed at update {step + 1}")
+                batch = images.index_select(0, indices).to(device)
+                update = consumer.bogt_training_step(
+                    batch,
+                    optimizer,
+                    global_step=actual_completed_updates + step,
+                    data_role=data_role,
+                    ledger=ledger,
+                )
+                replay_traces.append(update.metrics())
+                del batch, update
+            recovery_checks = {
+                "checkpoint_step_sampler_adam_history_consistent": midpoint_progress_match,
+                "checkpoint_model_state_equivalent": _tree_close(uninterrupted_model, consumer.trainable_state_dict()),
+                "checkpoint_optimizer_state_equivalent": _tree_close(uninterrupted_optimizer, optimizer.state_dict()),
+                "checkpoint_sampler_state_equivalent": _tree_close(uninterrupted_sampler, trial_sampler.state_dict()),
+                "checkpoint_rng_state_equivalent": _tree_close(uninterrupted_rng, _rng_snapshot()),
+                "checkpoint_loss_trace_equivalent": _tree_close(traces, replay_traces),
+            }
+            recovery_equivalent = all(recovery_checks.values())
+            if not recovery_equivalent:
+                raise TrainingContractError("production preflight recovery did not preserve model, optimizer, RNG, sampler, and loss trace")
+        except BaseException as error:
+            trial_error = error
+            trial_traceback = error.__traceback__
+        finally:
+            restore_errors: dict[str, str] = {}
+            baseline_reload_passed = False
+            try:
+                loaded_baseline = load_checkpoint(
+                    baseline_path,
+                    consumer,
+                    optimizer,
+                    expected_engineering_only=engineering_only,
+                    expected_run_identity=run_identity,
+                    expected_authorization_id=authorization_id,
+                )
+                baseline_reload_passed = bool(
+                    loaded_baseline.completed_updates == actual_completed_updates
+                    and _tree_close(loaded_baseline.sampler_state, actual_sampler_state)
+                    and _tree_close(loaded_baseline.training_history, actual_history)
+                )
+                if not baseline_reload_passed:
+                    restore_errors["baseline_checkpoint"] = "reloaded baseline progress differs from the captured state"
+            except BaseException as error:
+                restore_errors["baseline_checkpoint"] = f"{type(error).__name__}: {error}"
+
+            restore_actions = (
+                ("model", lambda: consumer.runtime.load_state_dict(actual_runtime_state)),
+                ("references", lambda: consumer.bind_references(references, for_scientific=not engineering_only)),
+                ("weights", lambda: consumer.bind_weights(weights, for_scientific=not engineering_only)),
+                ("optimizer", lambda: optimizer.load_state_dict(actual_optimizer_state)),
+                ("sampler", lambda: sampler.load_state_dict(actual_sampler_state)),
+                ("rng", lambda: restore_rng_state(actual_rng_state)),
+            )
+            for name, restore in restore_actions:
+                try:
+                    restore()
+                except BaseException as error:
+                    restore_errors[name] = f"{type(error).__name__}: {error}"
+            for name, parameter in consumer.runtime.named_parameters():
+                try:
+                    gradient = actual_gradients[name]
+                    parameter.grad = None if gradient is None else gradient.to(device=parameter.device, dtype=parameter.dtype)
+                except BaseException as error:
+                    restore_errors[f"gradient:{name}"] = f"{type(error).__name__}: {error}"
+
+            current_runtime_state = {
+                name: value.detach().cpu() for name, value in consumer.runtime.state_dict().items()
+            }
+            current_gradients = {
+                name: None if parameter.grad is None else parameter.grad.detach().cpu()
+                for name, parameter in consumer.runtime.named_parameters()
+            }
+            restoration_checks = {
+                "baseline_checkpoint_reload": baseline_reload_passed,
+                "runtime_model_and_frozen_state": _tree_close(actual_runtime_state, current_runtime_state),
+                "gradient_state": _tree_close(actual_gradients, current_gradients),
+                "optimizer_state": _tree_close(actual_optimizer_state, optimizer.state_dict()),
+                "sampler_state_and_cursor": _tree_close(actual_sampler_state, sampler.state_dict())
+                and sampler.cursor == actual_completed_updates,
+                "rng_state": _tree_close(actual_rng_state, _rng_snapshot()),
+                "frozen_state_identity": consumer.frozen_state_sha256 == actual_frozen_identity,
+                "references_identity": consumer.references is not None
+                and consumer.references.identity() == actual_references_identity,
+                "weights_identity": consumer.weights is not None
+                and consumer.weights.identity() == actual_weights_identity,
+                "checkpoint_progress": len(actual_history) == actual_completed_updates,
+            }
+            restoration_report = {
+                "verified": bool(all(restoration_checks.values()) and not restore_errors),
+                "checks": restoration_checks,
+                "errors": restore_errors,
+            }
+            if trial_error is not None:
+                setattr(trial_error, "production_preflight_restoration", restoration_report)
+                trial_error.add_note(
+                    f"production preflight rollback verified={restoration_report['verified']}"
+                )
+
+    if trial_error is not None:
+        raise trial_error.with_traceback(trial_traceback)
+
+    restored = restoration_report["verified"]
+    if not restored:
+        error = TrainingContractError("production preflight did not verify restoration of the complete loaded state")
+        setattr(error, "production_preflight_restoration", restoration_report)
+        raise error
+    if not (negative_control_rejected and len(traces) == 3 and trainable_changed and frozen_unchanged and recovery_equivalent):
+        raise TrainingContractError("isolated preflight update, frozen-scope, or recovery check failed")
+    return {
+        "updates": traces,
+        "recovery_replay": replay_traces,
+        "loaded_completed_updates": actual_completed_updates,
+        "trial_completed_updates": actual_completed_updates + len(traces),
+        "optimizer_global_step_indices": list(range(actual_completed_updates, actual_completed_updates + len(traces))),
+        "completed_update_steps": list(range(actual_completed_updates + 1, actual_completed_updates + len(traces) + 1)),
+        "sampler_cursor_start": actual_completed_updates,
+        "sampler_cursor_end": actual_completed_updates + len(traces),
+        "first_sampler_batch_indices": sampled_batches[0],
+        "restoration": restoration_report,
+        "checks": {
+            "passed": bool(negative_control_rejected and len(traces) == 3 and trainable_changed and frozen_unchanged and recovery_equivalent and restored),
+            "three_real_updates": len(traces),
+            "all_trainable_groups_changed": trainable_changed,
+            "frozen_runtime_unchanged": frozen_unchanged,
+            "frozen_parameter_negative_control_rejected": negative_control_rejected,
+            "recovery_model_optimizer_rng_sampler_and_losses_equivalent": recovery_equivalent,
+            "loaded_state_restored": restored,
+            **recovery_checks,
+        },
+    }
+
+
+def _run_production_preflight(
+    *,
+    consumer: LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Optimizer,
+    sampler: DeterministicTrainRoleSampler,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    train_indices: torch.Tensor,
+    run_identity: ResearchRunIdentity,
+    source_manifest: Mapping[str, Any],
+    authorization_id: str,
+    completed_updates: int = 0,
+    training_history: Iterable[Mapping[str, Any]] = (),
+    ledger: DataReadLedger | None = None,
+    initial_resource: Mapping[str, Any] | None = None,
+) -> tuple[PreflightReceipt, dict[str, Any]]:
+    """Exercise and roll back three real production updates before the attempt opens."""
+    device = consumer.device
+    memory_before = _production_cuda_memory(device)
+    references = consumer.references
+    weights = consumer.weights
+    if references is None or weights is None:
+        raise TrainingContractError("production preflight requires the loaded frozen TRAIN references and weights")
+    if references.data_role != TRAIN_ROLE or references.count != train_indices.numel() or references.engineering_only:
+        raise TrainingContractError("production preflight loaded references do not match the current TRAIN population")
+    if weights.data_role != TRAIN_ROLE or weights.engineering_only:
+        raise TrainingContractError("production preflight loaded weights do not match the current TRAIN role")
+    if consumer.runtime.config.propagation_grid_size != PRODUCTION_PROPAGATION_GRID:
+        raise TrainingContractError("production preflight model is not using the configured production grid")
+    if not torch.equal(labels.index_select(0, train_indices).unique(sorted=True), torch.arange(10, dtype=torch.long)):
+        raise TrainingContractError("production preflight TRAIN rows do not cover the registered labels")
+
+    optimizer_manifest = consumer.optimizer_manifest(optimizer)
+    torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    trial = _run_isolated_preflight_trial(
+        consumer=consumer, optimizer=optimizer, sampler=sampler,
+        images=images, labels=labels, train_indices=train_indices,
+        run_identity=run_identity, source_manifest=source_manifest,
+        authorization_id=authorization_id, data_role=TRAIN_ROLE,
+        engineering_only=False, completed_updates=completed_updates,
+        training_history=training_history, ledger=ledger,
+    )
+    torch.cuda.synchronize(device)
+    observed_memory = _production_cuda_memory(device)
+    memory_after = {"free_bytes_after": observed_memory["free_bytes_before"], "total_bytes": observed_memory["total_bytes"]}
+    elapsed = time.perf_counter() - started
+    peak_reserved = int(torch.cuda.max_memory_reserved(device))
+    resource_passed = bool(
+        trial["checks"]["passed"]
+        and memory_after["total_bytes"] == memory_before["total_bytes"]
+    )
+    implementation_passed = bool(
+        consumer.runtime.config.propagation_grid_size == PRODUCTION_PROPAGATION_GRID
+        and optimizer_manifest["parameter_names"] == list(ALLOWED_TRAINABLE_PARAMETER_NAMES)
+        and consumer.parameter_manifest()["optimizer_parameter_names"] == list(ALLOWED_TRAINABLE_PARAMETER_NAMES)
+    )
+    correctness_passed = trial["checks"]["passed"]
+    if not resource_passed:
+        raise RunControlError("PREFLIGHT_BLOCKED(resource): production BOGT resource envelope did not pass")
+    if not correctness_passed or not implementation_passed:
+        raise TrainingContractError("production BOGT preflight invariants did not pass")
+    receipt = PreflightReceipt(
+        source_semantics_id=run_identity.execution_source_semantics_id,
+        authorization_id=authorization_id,
+        checks={
+            CORRECTNESS_INVARIANTS: trial["checks"],
+            RESOURCE_ENVELOPE: {
+                "passed": resource_passed,
+                **memory_before,
+                **memory_after,
+                "peak_reserved_bytes": peak_reserved,
+                "preflight_seconds_observed": elapsed,
+            },
+            IMPLEMENTATION_SELECTION: {
+                "passed": implementation_passed,
+                "selected_engine": "bogt_complex_ols_cuda_2048",
+                "propagation_grid_size": consumer.runtime.config.propagation_grid_size,
+                "optimizer_parameter_names": optimizer_manifest["parameter_names"],
+            },
+        },
+        selected_engine="bogt_complex_ols_cuda_2048",
+        resource={
+            **({} if initial_resource is None else {"before_model_construction": dict(initial_resource)}),
+            **memory_before,
+            **memory_after,
+            "peak_reserved_bytes": peak_reserved,
+            "preflight_seconds_observed": elapsed,
+        },
+        created_at=time.time(),
+    )
+    return receipt, {
+        "status": PREFLIGHT_READY,
+        "updates": trial["updates"],
+        "recovery_replay": trial["recovery_replay"],
+        "negative_control_rejected": trial["checks"]["frozen_parameter_negative_control_rejected"],
+        "model_optimizer_rng_sampler_restored": trial["checks"]["loaded_state_restored"],
+        "loaded_completed_updates": trial["loaded_completed_updates"],
+        "optimizer_global_step_indices": trial["optimizer_global_step_indices"],
+        "completed_update_steps": trial["completed_update_steps"],
+        "sampler_cursor_start": trial["sampler_cursor_start"],
+        "sampler_cursor_end": trial["sampler_cursor_end"],
+        "first_sampler_batch_indices": trial["first_sampler_batch_indices"],
+        "midpoint_checkpoint_progress_verified": trial["checks"]["checkpoint_step_sampler_adam_history_consistent"],
+        "restoration": trial["restoration"],
+        "loaded_sampler_cursor": sampler.cursor,
+        "train_rows": train_indices[:10].tolist(),
+        "train_labels": labels.index_select(0, train_indices[:10]).tolist(),
+        "resource": dict(receipt.resource),
+    }
+
+
+def _discard_unopened_fresh_attempt_after_preflight_failure(
+    *, repo_root: Path, target: Path, error: BaseException
+) -> None:
+    """Remove artifacts from a fresh attempt that never passed its production gate."""
+    outputs_root = (repo_root.resolve() / "outputs").resolve()
+    resolved_target = target.resolve()
+    if target.is_symlink() or outputs_root not in resolved_target.parents:
+        raise RunControlError("refusing to remove a preflight target outside the new outputs run") from error
+    failure_dir = target.with_name(f"{target.name}.preflight_failures")
+    resolved_failure_dir = failure_dir.resolve()
+    if failure_dir.is_symlink() or outputs_root not in resolved_failure_dir.parents:
+        raise RunControlError("preflight failure record path is outside outputs") from error
+
+    if target.exists():
+        shutil.rmtree(resolved_target)
+    failure_dir.mkdir(parents=True, exist_ok=True)
+    error_message = str(error)
+    resource_failure = isinstance(error, torch.cuda.OutOfMemoryError) or "PREFLIGHT_BLOCKED(resource)" in error_message
+    status = "PREFLIGHT_BLOCKED(resource)" if resource_failure else "INVALID_HARNESS"
+    _save_new_json(
+        failure_dir / f"preflight_failure_{time.time_ns()}.json",
+        {
+            "schema": "chen_bogt_preflight_failure.v1",
+            "status": status,
+            "phase": "PRODUCTION_PREFLIGHT",
+            "error_type": type(error).__name__,
+            "message": error_message,
+            "scientific_updates": 0,
+            "scientific_attempt_opened": False,
+            "fresh_attempt_artifacts_removed": True,
+        },
+    )
+
+
 def run_engineering_preflight(*, repo_root: Path | None = None) -> dict[str, Any]:
     """Run only synthetic/three-step CPU engineering checks."""
     root = _repo_root() if repo_root is None else repo_root.resolve()
@@ -283,104 +784,50 @@ def run_engineering_preflight(*, repo_root: Path | None = None) -> dict[str, Any
         if not negative_control:
             raise TrainingContractError("frozen optimizer candidate negative control was accepted")
 
-        control.mark_preflight_ready()
-        control.start_execution()
         heartbeat.update(state=RUNNING, phase="TRAINING", step=0, force=True)
         optimizer_a = consumer_a.create_optimizer()
         sampler_a = DeterministicTrainRoleSampler(
             torch.arange(55_000, dtype=torch.long),
             torch.arange(60_000, dtype=torch.long).remainder(10),
         )
-        trace_a: list[dict[str, Any]] = []
-        for step in range(3):
-            sampler_a.next_batch()
-            update = consumer_a.bogt_training_step(
-                images,
+        initial_model_a = consumer_a.trainable_state_dict()
+        initial_optimizer_a = copy.deepcopy(optimizer_a.state_dict())
+        initial_sampler_a = copy.deepcopy(sampler_a.state_dict())
+        initial_rng_a = _rng_snapshot()
+        initial_frozen_a = consumer_a.frozen_state_sha256
+        initial_references_a = consumer_a.references.identity()
+        initial_weights_a = consumer_a.weights.identity()
+        baseline_checkpoint = Path(run_temp.name) / "engineering_baseline.pt"
+        save_checkpoint(
+            baseline_checkpoint,
+            checkpoint_payload(
+                consumer_a,
                 optimizer_a,
-                global_step=step,
-                data_role=SYNTHETIC_ROLE,
-                ledger=ledger,
-            )
-            trace_a.append(update.metrics())
-            heartbeat.update(
-                state=RUNNING,
-                phase="TRAINING",
-                step=step + 1,
-                latest_losses=update.metrics().get("loss"),
-                force=True,
-            )
-
-        consumer_b = LightGen2DChenBOGTComplexOLSTrainingConsumer(
-            device="cpu", propagation_grid_size=128
+                completed_updates=0,
+                sampler_state=initial_sampler_a,
+                training_history=(),
+                engineering_only=True,
+                run_identity=run_identity,
+                source_manifest=source_manifest.to_dict(),
+                authorization_id=control.authorization_id,
+            ),
         )
-        consumer_b.bind_references(references)
-        consumer_b.bind_weights(weights)
-        optimizer_b = consumer_b.create_optimizer()
-        sampler_b = DeterministicTrainRoleSampler(
-            torch.arange(55_000, dtype=torch.long),
-            torch.arange(60_000, dtype=torch.long).remainder(10),
+        fixture_labels = torch.arange(60_000, dtype=torch.long).remainder(10)
+        fixture_population = images.repeat(6_000, 1, 1, 1)
+        trial = _run_isolated_preflight_trial(
+            consumer=consumer_a, optimizer=optimizer_a, sampler=sampler_a,
+            images=fixture_population, labels=fixture_labels,
+            train_indices=torch.arange(55_000, dtype=torch.long),
+            run_identity=run_identity, source_manifest=source_manifest.to_dict(),
+            authorization_id=control.authorization_id,
+            data_role=SYNTHETIC_ROLE, engineering_only=True, ledger=ledger,
         )
-        sampler_b.next_batch()
-        first_update = consumer_b.bogt_training_step(
-            images,
-            optimizer_b,
-            global_step=0,
-            data_role=SYNTHETIC_ROLE,
-            ledger=ledger,
-        )
-        with tempfile.TemporaryDirectory(prefix="chen-bogt-preflight-") as temporary:
-            checkpoint = Path(temporary) / "step_000001.engineering.pt"
-            save_checkpoint(
-                checkpoint,
-                checkpoint_payload(
-                    consumer_b,
-                    optimizer_b,
-                    completed_updates=1,
-                    sampler_state=sampler_b.state_dict(),
-                    training_history=[first_update.metrics()],
-                    engineering_only=True,
-                    git=git_identity(root),
-                    authorization_id=control.authorization_id,
-                ),
-            )
-            consumer_c = LightGen2DChenBOGTComplexOLSTrainingConsumer(
-                device="cpu", propagation_grid_size=128
-            )
-            optimizer_c = consumer_c.create_optimizer()
-            loaded = load_checkpoint(
-                checkpoint,
-                consumer_c,
-                optimizer_c,
-                expected_engineering_only=True,
-            )
-            sampler_c = DeterministicTrainRoleSampler(
-                torch.arange(55_000, dtype=torch.long),
-                torch.arange(60_000, dtype=torch.long).remainder(10),
-            )
-            sampler_c.load_state_dict(loaded.sampler_state)
-            trace_c = [first_update.metrics()]
-            for step in range(1, 3):
-                sampler_c.next_batch()
-                trace_c.append(
-                    consumer_c.bogt_training_step(
-                        images,
-                        optimizer_c,
-                        global_step=step,
-                        data_role=SYNTHETIC_ROLE,
-                        ledger=ledger,
-                    ).metrics()
-                )
-        for name, value in consumer_a.trainable_state_dict().items():
-            if not torch.allclose(value, consumer_c.trainable_state_dict()[name], rtol=1.0e-5, atol=1.0e-6):
-                raise TrainingContractError(f"checkpoint resume state mismatch: {name}")
-        if [record["loss"] for record in trace_a] != [record["loss"] for record in trace_c]:
-            for left, right in zip(trace_a, trace_c, strict=True):
-                for key in left["loss"]:
-                    if abs(left["loss"][key] - right["loss"][key]) > 1.0e-6:
-                        raise TrainingContractError("checkpoint resume loss trace mismatch")
-        if sampler_a.state_dict()["cursor"] != sampler_c.state_dict()["cursor"]:
-            raise TrainingContractError("checkpoint resume sampler cursor mismatch")
-
+        del fixture_population
+        trace_a = trial["updates"]
+        three_step_model_equivalent = trial["checks"]["checkpoint_model_state_equivalent"]
+        three_step_optimizer_equivalent = trial["checks"]["checkpoint_optimizer_state_equivalent"]
+        three_step_sampler_equivalent = trial["checks"]["checkpoint_sampler_state_equivalent"]
+        three_step_loss_trace_equivalent = trial["checks"]["checkpoint_loss_trace_equivalent"]
         try:
             collect_bogt_train_references(
                 consumer_a,
@@ -431,6 +878,76 @@ def run_engineering_preflight(*, repo_root: Path | None = None) -> dict[str, Any
         ):
             raise TrainingContractError("real/generated W_OLS parity failed")
 
+        loaded_baseline = load_checkpoint(
+            baseline_checkpoint,
+            consumer_a,
+            optimizer_a,
+            expected_engineering_only=True,
+            expected_run_identity=run_identity,
+            expected_authorization_id=control.authorization_id,
+        )
+        sampler_a.load_state_dict(loaded_baseline.sampler_state)
+        full_restore_passed = bool(
+            loaded_baseline.completed_updates == 0
+            and _tree_close(initial_model_a, consumer_a.trainable_state_dict())
+            and _tree_close(initial_optimizer_a, optimizer_a.state_dict())
+            and _tree_close(initial_sampler_a, sampler_a.state_dict())
+            and _tree_close(initial_rng_a, _rng_snapshot())
+            and consumer_a.frozen_state_sha256 == initial_frozen_a
+            and consumer_a.references.identity() == initial_references_a
+            and consumer_a.weights.identity() == initial_weights_a
+        )
+        if not full_restore_passed:
+            raise TrainingContractError("CPU engineering preflight did not restore the original model, optimizer, RNG, and sampler")
+
+        correctness_checks = {
+            "passed": bool(
+                trial["checks"]["passed"]
+                and len(trace_a) == 3
+                and negative_control
+                and three_step_model_equivalent
+                and three_step_sampler_equivalent
+                and three_step_optimizer_equivalent
+                and three_step_loss_trace_equivalent
+                and full_restore_passed
+                and ledger.counts.get(DEV_ROLE, 0) == 0
+                and ledger.counts.get("protected", 0) == 0
+                and ledger.counts.get("test", 0) == 0
+                and ledger.counts.get("sealed", 0) == 0
+            ),
+            "three_real_updates": len(trace_a),
+            "frozen_parameter_negative_control_rejected": negative_control,
+            "checkpoint_optimizer_state_equivalent": three_step_optimizer_equivalent,
+            "checkpoint_model_state_equivalent": three_step_model_equivalent,
+            "checkpoint_sampler_state_equivalent": three_step_sampler_equivalent,
+            "checkpoint_loss_trace_equivalent": three_step_loss_trace_equivalent,
+            "loaded_model_optimizer_rng_sampler_restored": full_restore_passed,
+            "forbidden_reads_zero": ledger.counts.get(DEV_ROLE, 0) == 0
+            and ledger.counts.get("protected", 0) == 0
+            and ledger.counts.get("test", 0) == 0
+            and ledger.counts.get("sealed", 0) == 0,
+        }
+        if not correctness_checks["passed"]:
+            raise TrainingContractError("synthetic CPU BOGT preflight correctness checks failed")
+        cpu_resource_passed = consumer_a.device.type == "cpu"
+        cpu_engine_passed = bool(
+            consumer_a.runtime.config.propagation_grid_size == 128
+            and consumer_a.optimizer_manifest(optimizer_a)["parameter_names"] == list(ALLOWED_TRAINABLE_PARAMETER_NAMES)
+        )
+        receipt = control.make_ready_receipt(
+            correctness=correctness_checks,
+            resource={"passed": cpu_resource_passed, "device": str(consumer_a.device), "engineering_only": True},
+            implementation={
+                "passed": cpu_engine_passed,
+                "selected_engine": "bogt_complex_ols_cpu_128_engineering",
+                "propagation_grid_size": 128,
+            },
+            selected_engine="bogt_complex_ols_cpu_128_engineering",
+            resource_envelope={"device": "cpu", "engineering_only": True},
+        )
+        control.mark_preflight_ready(receipt)
+        control.start_execution()
+
         recovery_checkpoint = recovery.save({"preflight": True, "completed_updates": 3}, step=3)
         control.complete()
         heartbeat.update(
@@ -447,6 +964,7 @@ def run_engineering_preflight(*, repo_root: Path | None = None) -> dict[str, Any
             "engineering_only": True,
             "authorization_id": control.authorization_id,
             "run_state": control.state,
+            "preflight_receipt": receipt.to_dict(),
             "run_identity": run_identity.to_dict(),
             "source_manifest": source_manifest.to_dict(),
             "scientific_updates": 0,
@@ -479,7 +997,9 @@ def run_engineering_preflight(*, repo_root: Path | None = None) -> dict[str, Any
 
 def run_bogt_scientific_trajectory(
     *,
+    control: ResearchRunControl,
     consumer: LightGen2DChenBOGTComplexOLSTrainingConsumer,
+    optimizer: torch.optim.Optimizer,
     references: FrozenBogtReferences,
     weights: BogtLossWeights,
     sampler: DeterministicTrainRoleSampler,
@@ -489,7 +1009,9 @@ def run_bogt_scientific_trajectory(
     source_manifest: Mapping[str, Any],
     authorization_id: str,
     preflight_status: str,
+    preflight_receipt: PreflightReceipt,
     resume_checkpoint: str | Path | None = None,
+    loaded_resume_state: LoadedCheckpoint | None = None,
     repo_root: Path | None = None,
     ledger: DataReadLedger | None = None,
     on_checkpoint: Callable[
@@ -521,18 +1043,15 @@ def run_bogt_scientific_trajectory(
         raise RunControlError("scientific trajectory requires one explicit authorization")
     if resuming and run_identity.scientific_attempt_id is None:
         raise RunControlError("resume requires the existing scientific attempt identity")
-
-    control = ResearchRunControl(run_identity, authorization_id)
-    control.mark_preflight_ready()
-    control.start_execution()
-    consumer.bind_references(references, for_scientific=True)
-    consumer.bind_weights(weights, for_scientific=True)
-    optimizer = consumer.create_optimizer()
-    # The scientific attempt is created only after the TRAIN consumer and its
-    # exact optimizer are ready, immediately before the first scientific
-    # checkpoint/update.  A resume carries this same attempt identity.
-    effective_identity = control.begin_scientific_attempt(run_identity.scientific_attempt_id)
-    target.mkdir(parents=True, exist_ok=True)
+    if (
+        control.authorization_id != authorization_id
+        or control.preflight_status != PREFLIGHT_READY
+        or control.receipt != preflight_receipt
+        or control.state != RUN_SCIENTIFIC_ACTIVE
+        or control.identity != run_identity
+    ):
+        raise RunControlError("scientific trajectory did not receive the active READY task identity")
+    effective_identity = control.identity
     heartbeat = HeartbeatWriter(
         target,
         effective_identity.run_id,
@@ -586,17 +1105,10 @@ def run_bogt_scientific_trajectory(
             resume_path = requested
         if resume_path.parent != target:
             raise RunControlError("resume checkpoint must be inside the named run directory")
-        loaded = load_checkpoint(
-            resume_path,
-            consumer,
-            optimizer,
-            expected_engineering_only=False,
-            expected_run_identity=effective_identity,
-            expected_authorization_id=authorization_id,
-        )
-        sampler.load_state_dict(loaded.sampler_state)
-        completed = loaded.completed_updates
-        history = list(loaded.training_history)
+        if loaded_resume_state is None:
+            raise RunControlError("resume checkpoint was not loaded and checked before production preflight")
+        completed = loaded_resume_state.completed_updates
+        history = list(loaded_resume_state.training_history)
         if sampler.cursor != completed:
             raise RunControlError("resume sampler cursor does not equal completed updates")
         heartbeat.update(
@@ -606,12 +1118,14 @@ def run_bogt_scientific_trajectory(
             latest_losses=history[-1].get("loss", {}) if history else {},
             force=True,
         )
-        last_recovery_step = completed if loaded.recovery else max(0, completed - 1)
+        last_recovery_step = completed if loaded_resume_state.recovery else max(0, completed - 1)
         if on_checkpoint is not None and completed in CHECKPOINT_STEPS:
             diagnostic = on_checkpoint(completed, consumer, history)
             if diagnostic is not None:
                 checkpoint_diagnostics[str(completed)] = dict(diagnostic)
     else:
+        if loaded_resume_state is not None:
+            raise RunControlError("fresh scientific execution received a loaded resume checkpoint")
         if sampler.cursor != 0:
             raise RunControlError("a fresh scientific run requires a zeroed sampler")
         save_scientific_checkpoint(0)
@@ -777,6 +1291,45 @@ def _phase_change(initial: Mapping[str, torch.Tensor], current: Mapping[str, tor
         name: float((current[name].to(torch.float64) - value.to(torch.float64)).square().sum().sqrt().cpu())
         for name, value in initial.items()
     }
+
+
+def _bind_resume_inputs(
+    target: Path,
+    *,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    train_indices: torch.Tensor,
+    development_indices: torch.Tensor,
+    evaluator: torch.nn.Module,
+    resume: bool,
+) -> None:
+    """Bind recovery to actual data/roles and evaluator state, never source hashes."""
+    snapshot_path = target / "resume_inputs.pt"
+    current = {
+        "images": images.detach().cpu(),
+        "labels": labels.detach().cpu(),
+        "train_indices": train_indices.detach().cpu(),
+        "development_indices": development_indices.detach().cpu(),
+        "evaluator_state": {name: value.detach().cpu() for name, value in evaluator.state_dict().items()},
+    }
+    if not resume:
+        atomic_torch_save_new(snapshot_path, {"schema": "chen_bogt_resume_inputs.v1", **current}, artifact_kind="actual resume input snapshot")
+        return
+    if not snapshot_path.is_file():
+        raise RunControlError("resume input snapshot is missing; cannot establish historical data/evaluator equality")
+    stored = safe_torch_load(snapshot_path, map_location="cpu")
+    if not isinstance(stored, Mapping) or stored.get("schema") != "chen_bogt_resume_inputs.v1" or set(stored) != {"schema", *current}:
+        raise RunControlError("resume input snapshot schema is invalid")
+    for name, value in current.items():
+        observed = stored[name]
+        left = value if isinstance(value, Mapping) else {name: value}
+        right = observed if isinstance(observed, Mapping) else {name: observed}
+        if set(left) != set(right) or any(
+            not torch.is_tensor(right[key]) or left[key].shape != right[key].shape
+            or left[key].dtype != right[key].dtype or not torch.equal(left[key], right[key])
+            for key in left
+        ):
+            raise RunControlError(f"resume actual input changed: {name}")
 
 
 def _load_scientific_dataset(root: Path) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
@@ -1843,6 +2396,8 @@ def run_scientific_execution(
             raise RunControlError(f"fresh scientific output target already exists: {target}")
     else:
         resume_target = _resolve_under_root(root, resume)
+        if not resume_target.exists():
+            raise RunControlError(f"explicit resume input is missing: {resume_target}")
         target = resume_target if resume_target.is_dir() else resume_target.parent
         if not target.is_dir():
             raise RunControlError(f"resume run directory is missing: {target}")
@@ -1851,10 +2406,13 @@ def run_scientific_execution(
         raise RunControlError("scientific output must remain below a specific outputs run directory")
     if "final_pt" in target.parts or "_wsl_restore_metadata_v4" in target.parts:
         raise RunControlError("restored/final output namespace is forbidden")
+    if not fresh and (target / "report.json").is_file():
+        raise RunControlError("completed scientific run is terminal and cannot be restarted")
 
     if not torch.cuda.is_available():
         raise RunControlError("the formal bounded run requires CUDA")
     device = torch.device("cuda", torch.cuda.current_device())
+    initial_cuda_memory = _production_cuda_memory(device)
     ledger = DataReadLedger()
     images, labels, train_indices, development_indices, data_identity = _load_scientific_dataset(root)
     evaluator, evaluator_identity = _load_evaluator(root, device)
@@ -1862,246 +2420,342 @@ def run_scientific_execution(
     source_repair: dict[str, Any] | None = None
     source_repair_pinned = False
 
-    if fresh:
-        git_before = git_identity(root)
-        source_manifest_object = capture_execution_source_manifest(
-            root,
-            task_id=NEXT_TASK,
-            semantic_authority_id=SEMANTIC_AUTHORITY_ID,
-            relevant_paths=_execution_source_paths(root),
-            config_identity=run_config,
+    control: ResearchRunControl | None = None
+    fresh_attempt_created = False
+    try:
+        if fresh:
+            git_before = git_identity(root)
+            source_manifest_object = capture_execution_source_manifest(
+                root,
+                task_id=NEXT_TASK,
+                semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+                relevant_paths=_execution_source_paths(root),
+                config_identity=run_config,
+            )
+            source_manifest = source_manifest_object.to_dict()
+            target.mkdir(parents=True, exist_ok=False)
+            fresh_attempt_created = True
+            identity = ResearchRunIdentity(
+                task_id=NEXT_TASK,
+                run_id=SCIENTIFIC_RUN_ID,
+                trajectory_id=SCIENTIFIC_TRAJECTORY_ID,
+                semantic_authority_id=SEMANTIC_AUTHORITY_ID,
+                data_role=TRAIN_ROLE,
+                config_identity=run_config,
+                model_identity="LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1",
+                optimizer_identity={
+                    "name": "Adam",
+                    "learning_rate": 1.0e-3,
+                    "betas": list(ADAM_BETAS),
+                    "eps": ADAM_EPSILON,
+                    "weight_decay": WEIGHT_DECAY,
+                    "amsgrad": AMSGRAD,
+                },
+                sampler_identity={
+                    "seed": SCHEDULE_SEED,
+                    "steps": SCIENTIFIC_UPDATES,
+                    "batch_size": 10,
+                    "class_balanced": True,
+                },
+                execution_source_semantics_id=source_manifest["execution_source_semantics_id"],
+                source_manifest_id=source_manifest["source_manifest_id"],
+                scientific_attempt_id=f"{SCIENTIFIC_RUN_ID}:attempt_01",
+            )
+            authorization_id = f"{NEXT_TASK}:authorization:01"
+            _save_new_json(target / "source_manifest.json", source_manifest)
+            _save_new_json(
+                target / "execution_manifest.json",
+                {
+                    "schema": RUN_MANIFEST_SCHEMA,
+                    "task_id": NEXT_TASK,
+                    "outer_gate": OUTER_GATE,
+                    "input_authorities": [
+                        "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION",
+                        "CHEN_BOGT_ON_COMPLEX_OLS_MODEL_CONTRACT_V1",
+                        "CHEN_BOGT_ON_COMPLEX_OLS_TRAINING_CONSUMER_CONTRACT_V1",
+                        "RESEARCH_FAST_PATH_AND_LONG_RUN_RESILIENCE_V1",
+                    ],
+                    "authorization_id": authorization_id,
+                    "source_manifest": source_manifest,
+                    "run_identity": identity.to_dict(),
+                    "run_config": run_config,
+                    "data_identity": data_identity,
+                    "evaluator_identity": evaluator_identity,
+                    "git_before": git_before,
+                    "scope": {
+                        "bounded_updates": SCIENTIFIC_UPDATES,
+                        "generation_executed": False,
+                        "promotion_authorized": False,
+                    },
+                },
+            )
+        else:
+            repaired_manifests = sorted(target.glob("execution_manifest_repaired*.json"))
+            manifest_path = repaired_manifests[-1] if repaired_manifests else target / "execution_manifest.json"
+            manifest_payload = _read_json_mapping(manifest_path)
+            if manifest_payload.get("schema") != RUN_MANIFEST_SCHEMA:
+                raise RunControlError("execution manifest schema is invalid")
+            stored_repair = manifest_payload.get("engineering_repair")
+            if isinstance(stored_repair, Mapping):
+                source_repair = dict(stored_repair)
+            source_manifest = manifest_payload.get("source_manifest")
+            if not isinstance(source_manifest, Mapping):
+                raise RunControlError("execution manifest source manifest is missing")
+            source_manifest = dict(source_manifest)
+            identity_payload = manifest_payload.get("run_identity")
+            if not isinstance(identity_payload, Mapping):
+                raise RunControlError("execution manifest run identity is missing")
+            identity = ResearchRunIdentity.from_mapping(identity_payload)
+            authorization_id = manifest_payload.get("authorization_id")
+            if not isinstance(authorization_id, str) or not authorization_id:
+                raise RunControlError("execution manifest authorization is missing")
+            stored_data_identity = manifest_payload.get("data_identity")
+            stored_evaluator_identity = manifest_payload.get("evaluator_identity")
+            stored_run_config = manifest_payload.get("run_config")
+            if not isinstance(stored_data_identity, Mapping) or not isinstance(stored_evaluator_identity, Mapping) or not isinstance(stored_run_config, Mapping):
+                raise RunControlError("execution manifest input identities are incomplete")
+            if (
+                _resume_identity(dict(stored_data_identity)) != _resume_identity(data_identity)
+                or _resume_identity(dict(stored_evaluator_identity)) != _resume_identity(evaluator_identity)
+                or _resume_identity(dict(stored_run_config)) != _resume_identity(run_config)
+            ):
+                raise RunControlError("resume input identity changed")
+            git_before = manifest_payload.get("git_before")
+            if not isinstance(git_before, Mapping):
+                git_before = {
+                    "branch": source_manifest.get("branch"),
+                    "head": source_manifest.get("head"),
+                    "worktree_dirty": bool(source_manifest.get("dirty")),
+                }
+
+        if identity.task_id != NEXT_TASK or identity.semantic_authority_id != SEMANTIC_AUTHORITY_ID or identity.data_role != TRAIN_ROLE:
+            raise RunControlError("execution identity does not match the declared TRAIN task")
+        if identity.scientific_attempt_id is None:
+            raise RunControlError("scientific attempt identity is missing")
+        _bind_resume_inputs(
+            target, images=images, labels=labels, train_indices=train_indices,
+            development_indices=development_indices, evaluator=evaluator, resume=not fresh,
         )
-        source_manifest = source_manifest_object.to_dict()
-        target.mkdir(parents=True, exist_ok=False)
-        identity = ResearchRunIdentity(
-            task_id=NEXT_TASK,
-            run_id=SCIENTIFIC_RUN_ID,
-            trajectory_id=SCIENTIFIC_TRAJECTORY_ID,
-            semantic_authority_id=SEMANTIC_AUTHORITY_ID,
-            data_role=TRAIN_ROLE,
-            config_identity=run_config,
-            model_identity="LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1",
-            optimizer_identity={
-                "name": "Adam",
-                "learning_rate": 1.0e-3,
-                "betas": list(ADAM_BETAS),
-                "eps": ADAM_EPSILON,
-                "weight_decay": WEIGHT_DECAY,
-                "amsgrad": AMSGRAD,
-            },
-            sampler_identity={
+        control = ResearchRunControl(identity, authorization_id)
+        effective_identity = identity
+        recovery = RecoveryCheckpointManager(
+            target,
+            identity,
+            source_manifest_id=source_manifest["source_manifest_id"],
+            authorization_id=authorization_id,
+        )
+
+        consumer = LightGen2DChenBOGTComplexOLSTrainingConsumer(device=device)
+        consumer.assert_theta0()
+        parameter_manifest = consumer.parameter_manifest()
+        if parameter_manifest["optimizer_parameter_names"] != list(ALLOWED_TRAINABLE_PARAMETER_NAMES):
+            raise RunControlError("runtime optimizer allowlist changed")
+        if consumer.runtime.config.propagation_grid_size != PRODUCTION_PROPAGATION_GRID:
+            raise RunControlError("formal execution did not construct the production 2048 grid")
+
+        phase0_checks = {
+            "schema": PHASE0_SCHEMA,
+            "cuda_available": True,
+            "cuda_device": torch.cuda.get_device_name(device),
+            "cuda_device_index": torch.cuda.current_device(),
+            "theta0": True,
+            "trainable_parameter_names": list(ALLOWED_TRAINABLE_PARAMETER_NAMES),
+            "parameter_manifest": parameter_manifest,
+            "data_role": TRAIN_ROLE,
+            "protected_test_read": False,
+            "sealed_read": False,
+            "output_dir": str(target.relative_to(root).as_posix()),
+            "output_writeable": True,
+            "large_preflight_repeated": False,
+            "scientific_tests_repeated": False,
+        }
+        phase0_path = target / "phase0_checks.json"
+        if not phase0_path.exists():
+            _save_new_json(phase0_path, phase0_checks)
+        else:
+            recorded_phase0 = _read_json_mapping(phase0_path)
+            # Older records wrote READY before the production checks. That value is
+            # provenance only; this invocation always performs and records a new
+            # production preflight before opening the scientific attempt.
+            recorded_phase0.pop("upstream_preflight_status", None)
+            if _resume_identity(recorded_phase0) != _resume_identity(phase0_checks):
+                raise RunControlError("phase-0 lightweight checks changed across resume")
+
+        references_path = target / "frozen_references.pt"
+        if references_path.exists():
+            references = _load_references(references_path, expected_data_identity=data_identity)
+            reference_phase = {"resumed_from_artifact": True, "artifact": _artifact_ref(root, references_path, role="frozen TRAIN statistics")}
+        else:
+            statistics_resume, statistics_recovery_path = _latest_recovery_payload(recovery, kind=STATISTICS_RECOVERY_KIND)
+            statistics = _collect_statistics_with_resilience(
+                consumer=consumer,
+                images=images,
+                train_indices=train_indices,
+                data_identity=data_identity,
+                target=target,
+                run_identity=effective_identity,
+                recovery=recovery,
+                ledger=ledger,
+                resume_payload=statistics_resume,
+            )
+            if statistics.get("interrupted"):
+                return {
+                    "result": "INTERRUPTED",
+                    "phase": "STATISTICS",
+                    "completed_rows": statistics["completed_rows"],
+                    "recovery_checkpoint": statistics["recovery_checkpoint"],
+                    "run_id": identity.run_id,
+                    "trajectory_id": identity.trajectory_id,
+                    "scientific_attempt_id": identity.scientific_attempt_id,
+                    "output_dir": str(target.relative_to(root).as_posix()),
+                    "resume_command": f"--execute --resume {target.relative_to(root).as_posix()}",
+                }
+            references = statistics["references"]
+            _write_frozen_references(
+                references_path,
+                references,
+                source_manifest=source_manifest,
+                run_identity=effective_identity,
+            )
+            reference_phase = {
+                "resumed_from_artifact": False,
+                "recovery_checkpoint": None if statistics_recovery_path is None else statistics_recovery_path.name,
+                "artifact": _artifact_ref(root, references_path, role="frozen TRAIN statistics"),
+                "s_summary": statistics["s_summary"],
+                "r_power_summary": statistics["r_power_summary"],
+            }
+        consumer.bind_references(references, for_scientific=True)
+
+        weights_path = target / "frozen_weights.pt"
+        if weights_path.exists():
+            weights = _load_weights(weights_path)
+        else:
+            calibration_sampler = DeterministicTrainRoleSampler(train_indices, labels)
+            calibration_indices, calibration_labels = calibration_sampler.next_batch()
+            calibration_identity = {
+                "source": data_identity["source_path"],
                 "seed": SCHEDULE_SEED,
-                "steps": SCIENTIFIC_UPDATES,
                 "batch_size": 10,
                 "class_balanced": True,
-            },
-            execution_source_semantics_id=source_manifest["execution_source_semantics_id"],
-            source_manifest_id=source_manifest["source_manifest_id"],
-            scientific_attempt_id=f"{SCIENTIFIC_RUN_ID}:attempt_01",
-        )
-        authorization_id = f"{NEXT_TASK}:authorization:01"
-        _save_new_json(target / "source_manifest.json", source_manifest)
-        _save_new_json(
-            target / "execution_manifest.json",
-            {
-                "schema": RUN_MANIFEST_SCHEMA,
-                "task_id": NEXT_TASK,
-                "outer_gate": OUTER_GATE,
-                "input_authorities": [
-                    "M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION",
-                    "CHEN_BOGT_ON_COMPLEX_OLS_MODEL_CONTRACT_V1",
-                    "CHEN_BOGT_ON_COMPLEX_OLS_TRAINING_CONSUMER_CONTRACT_V1",
-                    "RESEARCH_FAST_PATH_AND_LONG_RUN_RESILIENCE_V1",
-                ],
-                "authorization_id": authorization_id,
-                "source_manifest": source_manifest,
-                "run_identity": identity.to_dict(),
-                "run_config": run_config,
-                "data_identity": data_identity,
-                "evaluator_identity": evaluator_identity,
-                "git_before": git_before,
-                "scope": {
-                    "bounded_updates": SCIENTIFIC_UPDATES,
-                    "generation_executed": False,
-                    "promotion_authorized": False,
-                },
-            },
-        )
-    else:
-        repaired_manifests = sorted(target.glob("execution_manifest_repaired*.json"))
-        manifest_path = repaired_manifests[-1] if repaired_manifests else target / "execution_manifest.json"
-        manifest_payload = _read_json_mapping(manifest_path)
-        if manifest_payload.get("schema") != RUN_MANIFEST_SCHEMA:
-            raise RunControlError("execution manifest schema is invalid")
-        stored_repair = manifest_payload.get("engineering_repair")
-        if isinstance(stored_repair, Mapping):
-            source_repair = dict(stored_repair)
-        source_manifest = manifest_payload.get("source_manifest")
-        if not isinstance(source_manifest, Mapping):
-            raise RunControlError("execution manifest source manifest is missing")
-        source_manifest = dict(source_manifest)
-        identity_payload = manifest_payload.get("run_identity")
-        if not isinstance(identity_payload, Mapping):
-            raise RunControlError("execution manifest run identity is missing")
-        identity = ResearchRunIdentity.from_mapping(identity_payload)
-        authorization_id = manifest_payload.get("authorization_id")
-        if not isinstance(authorization_id, str) or not authorization_id:
-            raise RunControlError("execution manifest authorization is missing")
-        stored_data_identity = manifest_payload.get("data_identity")
-        stored_evaluator_identity = manifest_payload.get("evaluator_identity")
-        stored_run_config = manifest_payload.get("run_config")
-        if not isinstance(stored_data_identity, Mapping) or not isinstance(stored_evaluator_identity, Mapping) or not isinstance(stored_run_config, Mapping):
-            raise RunControlError("execution manifest input identities are incomplete")
-        if (
-            _resume_identity(dict(stored_data_identity)) != _resume_identity(data_identity)
-            or _resume_identity(dict(stored_evaluator_identity)) != _resume_identity(evaluator_identity)
-            or _resume_identity(dict(stored_run_config)) != _resume_identity(run_config)
-        ):
-            raise RunControlError("resume input identity changed")
-        git_before = manifest_payload.get("git_before")
-        if not isinstance(git_before, Mapping):
-            git_before = {
-                "branch": source_manifest.get("branch"),
-                "head": source_manifest.get("head"),
-                "worktree_dirty": bool(source_manifest.get("dirty")),
+                "rows_per_class": 1,
+                "labels": [int(value) for value in calibration_labels.tolist()],
+                "source_indices": [int(value) for value in calibration_indices.tolist()],
+                "source_indices_sha256": tensor_sha256(calibration_indices),
+                "train_indices_sha256": data_identity["train_indices_sha256"],
             }
+            calibration_heartbeat = HeartbeatWriter(target, effective_identity.run_id, total_steps=300)
+            calibration_heartbeat.update(state=RUNNING, phase="CALIBRATION", step=0, force=True)
+            calibration_batch = images.index_select(0, calibration_indices).to(device)
+            weights = calibrate_initial_gradient_weights(
+                consumer,
+                calibration_batch,
+                references,
+                data_role=TRAIN_ROLE,
+                calibration_batch_identity=calibration_identity,
+                engineering_only=False,
+                ledger=ledger,
+            )
+            consumer.bind_weights(weights, for_scientific=True)
+            _write_frozen_weights(
+                weights_path,
+                weights,
+                source_manifest=source_manifest,
+                run_identity=effective_identity,
+            )
+            calibration_heartbeat.update(
+                state=RUNNING,
+                phase="CALIBRATION",
+                step=0,
+                latest_losses={"gradient_norms": weights.gradient_norms},
+                force=True,
+            )
+        consumer.bind_weights(weights, for_scientific=True)
 
-    if identity.task_id != NEXT_TASK or identity.semantic_authority_id != SEMANTIC_AUTHORITY_ID or identity.data_role != TRAIN_ROLE:
-        raise RunControlError("execution identity does not match the declared TRAIN task")
-    if identity.scientific_attempt_id is None:
-        raise RunControlError("scientific attempt identity is missing")
+        sampler = DeterministicTrainRoleSampler(train_indices, labels)
+        optimizer = consumer.create_optimizer()
+        consumer.optimizer_manifest(optimizer)
+        theta0_trainable = consumer.trainable_state_dict()
+        training_resume: Path | None = None
+        loaded_resume_state: LoadedCheckpoint | None = None
+        if not fresh:
+            requested_resume = _resolve_under_root(root, resume) if resume is not None else target
+            if requested_resume.is_file():
+                training_resume = requested_resume
+            else:
+                selected_checkpoint = target / "scientific_step_000300.pt"
+                training_resume = selected_checkpoint if selected_checkpoint.exists() else _latest_training_resume_path(recovery)
+            if training_resume is None and tuple(target.glob("scientific_step_*.pt")):
+                raise RunControlError("resume requested but no training checkpoint/recovery is available")
+            if training_resume is not None:
+                if training_resume.parent.resolve() != target:
+                    raise RunControlError("resume checkpoint must be inside the named run directory")
+                loaded_resume_state = load_checkpoint(
+                    training_resume,
+                    consumer,
+                    optimizer,
+                    expected_engineering_only=False,
+                    expected_run_identity=identity,
+                    expected_authorization_id=authorization_id,
+                )
+                sampler.load_state_dict(loaded_resume_state.sampler_state)
+                if sampler.cursor != loaded_resume_state.completed_updates:
+                    raise RunControlError("loaded checkpoint sampler cursor does not equal completed updates")
+                if len(loaded_resume_state.training_history) != loaded_resume_state.completed_updates:
+                    raise RunControlError("loaded checkpoint history does not match its completed update count")
 
-    consumer = LightGen2DChenBOGTComplexOLSTrainingConsumer(device=device)
-    consumer.assert_theta0()
-    parameter_manifest = consumer.parameter_manifest()
-    if parameter_manifest["optimizer_parameter_names"] != list(ALLOWED_TRAINABLE_PARAMETER_NAMES):
-        raise RunControlError("runtime optimizer allowlist changed")
-    if consumer.runtime.config.propagation_grid_size != PRODUCTION_PROPAGATION_GRID:
-        raise RunControlError("formal execution did not construct the production 2048 grid")
-
-    phase0_checks = {
-        "schema": PHASE0_SCHEMA,
-        "upstream_preflight_status": PREFLIGHT_READY,
-        "cuda_available": True,
-        "cuda_device": torch.cuda.get_device_name(device),
-        "cuda_device_index": torch.cuda.current_device(),
-        "theta0": True,
-        "trainable_parameter_names": list(ALLOWED_TRAINABLE_PARAMETER_NAMES),
-        "parameter_manifest": parameter_manifest,
-        "data_role": TRAIN_ROLE,
-        "protected_test_read": False,
-        "sealed_read": False,
-        "output_dir": str(target.relative_to(root).as_posix()),
-        "output_writeable": True,
-        "large_preflight_repeated": False,
-        "scientific_tests_repeated": False,
-    }
-    phase0_path = target / "phase0_checks.json"
-    if not phase0_path.exists():
-        _save_new_json(phase0_path, phase0_checks)
-    elif _resume_identity(_read_json_mapping(phase0_path)) != _resume_identity(phase0_checks):
-        raise RunControlError("phase-0 lightweight checks changed across resume")
-
-    control = ResearchRunControl(identity, authorization_id)
-    control.mark_preflight_ready()
-    control.start_execution()
-    effective_identity = control.begin_scientific_attempt(identity.scientific_attempt_id)
+        preflight_receipt, preflight_measurements = _run_production_preflight(
+            consumer=consumer,
+            optimizer=optimizer,
+            sampler=sampler,
+            images=images,
+            labels=labels,
+            train_indices=train_indices,
+            run_identity=identity,
+            source_manifest=source_manifest,
+            authorization_id=authorization_id,
+            completed_updates=0 if loaded_resume_state is None else loaded_resume_state.completed_updates,
+            training_history=() if loaded_resume_state is None else loaded_resume_state.training_history,
+            ledger=ledger,
+            initial_resource=initial_cuda_memory,
+        )
+        receipt_path = target / "production_preflight_receipt.json"
+        if receipt_path.exists():
+            receipt_path = target / f"production_preflight_recheck_{time.time_ns()}.json"
+        _save_new_json(
+            receipt_path,
+            {
+                "schema": "chen_bogt_production_preflight_record.v1",
+                "receipt": preflight_receipt.to_dict(),
+                "measurements": preflight_measurements,
+            },
+        )
+        control.mark_preflight_ready(preflight_receipt)
+        control.start_execution()
+        effective_identity = control.open_scientific_attempt(
+            target,
+            identity.scientific_attempt_id,
+            preflight_receipt,
+            resume=True,
+        )
+    except BaseException as error:
+        if fresh_attempt_created and (control is None or control.state != RUN_SCIENTIFIC_ACTIVE):
+            _discard_unopened_fresh_attempt_after_preflight_failure(repo_root=root, target=target, error=error)
+        raise
     recovery = RecoveryCheckpointManager(
         target,
         effective_identity,
         source_manifest_id=source_manifest["source_manifest_id"],
         authorization_id=authorization_id,
     )
-
-    references_path = target / "frozen_references.pt"
-    if references_path.exists():
-        references = _load_references(references_path, expected_data_identity=data_identity)
-        reference_phase = {"resumed_from_artifact": True, "artifact": _artifact_ref(root, references_path, role="frozen TRAIN statistics")}
-    else:
-        statistics_resume, statistics_recovery_path = _latest_recovery_payload(recovery, kind=STATISTICS_RECOVERY_KIND)
-        statistics = _collect_statistics_with_resilience(
-            consumer=consumer,
-            images=images,
-            train_indices=train_indices,
-            data_identity=data_identity,
-            target=target,
-            run_identity=effective_identity,
-            recovery=recovery,
-            ledger=ledger,
-            resume_payload=statistics_resume,
-        )
-        if statistics.get("interrupted"):
-            return {
-                "result": "INTERRUPTED",
-                "phase": "STATISTICS",
-                "completed_rows": statistics["completed_rows"],
-                "recovery_checkpoint": statistics["recovery_checkpoint"],
-                "run_id": identity.run_id,
-                "trajectory_id": identity.trajectory_id,
-                "scientific_attempt_id": identity.scientific_attempt_id,
-                "output_dir": str(target.relative_to(root).as_posix()),
-                "resume_command": f"--execute --resume {target.relative_to(root).as_posix()}",
-            }
-        references = statistics["references"]
-        _write_frozen_references(
-            references_path,
-            references,
-            source_manifest=source_manifest,
-            run_identity=effective_identity,
-        )
-        reference_phase = {
-            "resumed_from_artifact": False,
-            "recovery_checkpoint": None if statistics_recovery_path is None else statistics_recovery_path.name,
-            "artifact": _artifact_ref(root, references_path, role="frozen TRAIN statistics"),
-            "s_summary": statistics["s_summary"],
-            "r_power_summary": statistics["r_power_summary"],
-        }
-    consumer.bind_references(references, for_scientific=True)
-
-    weights_path = target / "frozen_weights.pt"
-    if weights_path.exists():
-        weights = _load_weights(weights_path)
-    else:
-        calibration_sampler = DeterministicTrainRoleSampler(train_indices, labels)
-        calibration_indices, calibration_labels = calibration_sampler.next_batch()
-        calibration_identity = {
-            "source": data_identity["source_path"],
-            "seed": SCHEDULE_SEED,
-            "batch_size": 10,
-            "class_balanced": True,
-            "rows_per_class": 1,
-            "labels": [int(value) for value in calibration_labels.tolist()],
-            "source_indices": [int(value) for value in calibration_indices.tolist()],
-            "source_indices_sha256": tensor_sha256(calibration_indices),
-            "train_indices_sha256": data_identity["train_indices_sha256"],
-        }
-        calibration_heartbeat = HeartbeatWriter(target, effective_identity.run_id, total_steps=300)
-        calibration_heartbeat.update(state=RUNNING, phase="CALIBRATION", step=0, force=True)
-        calibration_batch = images.index_select(0, calibration_indices).to(device)
-        weights = calibrate_initial_gradient_weights(
-            consumer,
-            calibration_batch,
-            references,
-            data_role=TRAIN_ROLE,
-            calibration_batch_identity=calibration_identity,
-            engineering_only=False,
-            ledger=ledger,
-        )
-        consumer.bind_weights(weights, for_scientific=True)
-        _write_frozen_weights(
-            weights_path,
-            weights,
-            source_manifest=source_manifest,
-            run_identity=effective_identity,
-        )
-        calibration_heartbeat.update(
-            state=RUNNING,
-            phase="CALIBRATION",
-            step=0,
-            latest_losses={"gradient_norms": weights.gradient_norms},
-            force=True,
-        )
-    consumer.bind_weights(weights, for_scientific=True)
+    _save_new_json(
+        target / f"production_preflight_gate_{time.time_ns()}.json",
+        {
+            "status": PREFLIGHT_READY,
+            "receipt": receipt_path.name,
+            "scientific_attempt_id": effective_identity.scientific_attempt_id,
+            "updates_before_gate": 0,
+        },
+    )
 
     def batch_loader(indices: torch.Tensor, batch_labels: torch.Tensor) -> torch.Tensor:
         if not torch.equal(batch_labels, torch.arange(10, dtype=torch.long)):
@@ -2142,16 +2796,10 @@ def run_scientific_execution(
         )
         return diagnostic
 
-    sampler = DeterministicTrainRoleSampler(train_indices, labels)
-    training_resume: Path | None = None
-    if not fresh:
-        selected_checkpoint = target / "scientific_step_000300.pt"
-        training_resume = selected_checkpoint if selected_checkpoint.exists() else _latest_training_resume_path(recovery)
-        if training_resume is None and tuple(target.glob("scientific_step_*.pt")):
-            raise RunControlError("resume requested but no training checkpoint/recovery is available")
-    theta0_trainable = consumer.trainable_state_dict()
     trajectory = run_bogt_scientific_trajectory(
+        control=control,
         consumer=consumer,
+        optimizer=optimizer,
         references=references,
         weights=weights,
         sampler=sampler,
@@ -2161,7 +2809,9 @@ def run_scientific_execution(
         source_manifest=source_manifest,
         authorization_id=authorization_id,
         preflight_status=PREFLIGHT_READY,
+        preflight_receipt=preflight_receipt,
         resume_checkpoint=training_resume,
+        loaded_resume_state=loaded_resume_state,
         repo_root=root,
         ledger=ledger,
         on_checkpoint=on_checkpoint,
@@ -2277,6 +2927,14 @@ def run_scientific_execution(
         ledger=ledger,
         git_before=git_before,
     )
+    report["production_preflight"] = {
+        "status": preflight_receipt.status,
+        "selected_engine": preflight_receipt.selected_engine,
+        "receipt": _artifact_ref(root, receipt_path, role="production-path CUDA preflight receipt"),
+        "measurement": preflight_measurements,
+        "scientific_updates_before_gate": 0,
+        "rollback_verified": True,
+    }
     if source_repair is not None:
         report["engineering_repair"] = {
             "artifacts": [
@@ -2442,19 +3100,313 @@ def run_scientific_execution(
     return report
 
 
+def run_production_checkpoint_preflight(
+    *,
+    checkpoint: str | Path,
+    output_dir: str | Path,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Run the real production preflight against one explicit saved checkpoint.
+
+    This diagnostic boundary validates the source attempt, loads its actual
+    optimizer and TRAIN sampler state, then runs the isolated three-update
+    production trial under a separate diagnostic identity. It never opens a
+    scientific attempt or executes the remainder of the trajectory.
+    """
+    root = _repo_root() if repo_root is None else repo_root.resolve()
+    checkpoint_path = _resolve_under_root(root, checkpoint)
+    target = _resolve_under_root(root, output_dir)
+    if root not in checkpoint_path.parents:
+        raise RunControlError("production preflight checkpoint must remain under the repository root")
+    outputs_root = (root / "outputs").resolve()
+    if outputs_root not in target.parents:
+        raise RunControlError("production preflight diagnostic output must remain under outputs/")
+    relative_parts = target.relative_to(outputs_root).parts
+    if (
+        len(relative_parts) != 3
+        or relative_parts[1] != "runs"
+        or len(relative_parts[0]) < 9
+        or not relative_parts[0][:8].isdigit()
+        or relative_parts[0][8] != "_"
+        or not relative_parts[2].startswith("diagnostic-only_")
+        or any(part in {"final_pt", "_wsl_restore_metadata_v4", ".tmp"} for part in relative_parts)
+    ):
+        raise RunControlError("production preflight output must be a new diagnostic-only run child")
+    if target.exists():
+        raise RunControlError(f"diagnostic output target already exists: {target}")
+
+    target.mkdir(parents=True, exist_ok=False)
+    progress_path = target / "preflight_progress.jsonl"
+    report: dict[str, Any] = {
+        "schema": PRODUCTION_PREFLIGHT_DIAGNOSTIC_SCHEMA,
+        "status": "RUNNING",
+        "diagnostic_only": True,
+        "scientific_updates": 0,
+        "scientific_attempt_opened": False,
+        "checkpoint": checkpoint_path.relative_to(root).as_posix(),
+        "output_dir": target.relative_to(root).as_posix(),
+        "started_at_epoch_seconds": time.time(),
+        "cuda_memory_and_elapsed_time_are_observations": True,
+        "scientific_authority_granted": False,
+    }
+
+    def record_event(state: str, **fields: Any) -> None:
+        event = {"state": state, "time_epoch_seconds": time.time(), **fields}
+        report.update({"phase": state, "phase_updated_at_epoch_seconds": event["time_epoch_seconds"]})
+        report.update(fields)
+        atomic_write_json(target / "preflight_report.json", report)
+        with progress_path.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps(event, sort_keys=True) + "\n")
+
+    try:
+        record_event("RUNNING", checkpoint=report["checkpoint"])
+        if not checkpoint_path.is_file():
+            raise RunControlError(f"explicit diagnostic checkpoint is missing: {report['checkpoint']}")
+        step_from_name = checkpoint_path.stem
+        checkpoint_payload_value = safe_torch_load(checkpoint_path, map_location="cpu")
+        if not isinstance(checkpoint_payload_value, Mapping):
+            raise RunControlError("diagnostic checkpoint payload is not a mapping")
+        completed_updates = checkpoint_payload_value.get("completed_updates")
+        if completed_updates not in {0, 100} or step_from_name != f"scientific_step_{completed_updates:06d}":
+            raise RunControlError("diagnostic checkpoint must be the explicitly named step-0 or step-100 artifact")
+
+        source_run = checkpoint_path.parent
+        execution_manifest = _read_json_mapping(source_run / "execution_manifest.json")
+        source_manifest = _read_json_mapping(source_run / "source_manifest.json")
+        checkpoint_identity_value = checkpoint_payload_value.get("run_identity")
+        manifest_identity_value = execution_manifest.get("run_identity")
+        if not isinstance(checkpoint_identity_value, Mapping) or not isinstance(manifest_identity_value, Mapping):
+            raise RunControlError("diagnostic checkpoint or execution manifest lacks its source run identity")
+        source_identity = ResearchRunIdentity.from_mapping(checkpoint_identity_value)
+        manifest_identity = ResearchRunIdentity.from_mapping(manifest_identity_value)
+        if _resume_identity(source_identity.execution_semantics()) != _resume_identity(manifest_identity.execution_semantics()):
+            raise RunControlError("checkpoint execution identity differs from its source manifest")
+        if (
+            source_identity.task_id != NEXT_TASK
+            or source_identity.run_id != SCIENTIFIC_RUN_ID
+            or source_identity.semantic_authority_id != SEMANTIC_AUTHORITY_ID
+            or source_identity.data_role != TRAIN_ROLE
+            or source_identity.scientific_attempt_id is None
+            or source_identity.model_identity != "LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1"
+            or execution_manifest.get("task_id") != NEXT_TASK
+        ):
+            raise RunControlError("explicit checkpoint is not from the declared BOGT TRAIN execution")
+        source_authorization = execution_manifest.get("authorization_id")
+        if not isinstance(source_authorization, str) or not source_authorization or checkpoint_payload_value.get("authorization_id") != source_authorization:
+            raise RunControlError("source checkpoint authorization does not match its execution record")
+        source_config = source_identity.config_identity
+        if not isinstance(source_config, Mapping):
+            raise RunControlError("source checkpoint execution configuration is missing")
+        if (
+            source_config.get("propagation_grid_size") != PRODUCTION_PROPAGATION_GRID
+            or source_config.get("logical_batch_size") != 10
+            or source_config.get("updates") != SCIENTIFIC_UPDATES
+            or source_config.get("selection") != "fixed final update step 300"
+        ):
+            raise RunControlError("source checkpoint configuration differs from the production BOGT contract")
+
+        if not torch.cuda.is_available():
+            raise RunControlError("PREFLIGHT_BLOCKED(resource): production BOGT diagnostic requires CUDA")
+        device = torch.device("cuda", torch.cuda.current_device())
+        initial_resource = _production_cuda_memory(device)
+        report["resource_observation"] = {
+            **initial_resource,
+            "device_name": torch.cuda.get_device_name(device),
+            "values_are_observations_only": True,
+            "memory_threshold_applied": False,
+        }
+        record_event("CUDA_DEVICE_OBSERVED", device=str(device), resource_observation=report["resource_observation"])
+        images, labels, train_indices, development_indices, data_identity = _load_scientific_dataset(root)
+        report["input_validation"] = {
+            "data_identity": data_identity,
+            "train_rows": int(train_indices.numel()),
+            "development_rows_not_measured": int(development_indices.numel()),
+            "data_role": TRAIN_ROLE,
+        }
+        record_event("EXPLICIT_INPUTS_VALIDATED", **report["input_validation"])
+        manifest_data_identity = execution_manifest.get("data_identity")
+        if not isinstance(manifest_data_identity, Mapping):
+            raise RunControlError("source execution record is missing its data-role identity")
+        if (
+            manifest_data_identity.get("source_path") != data_identity["source_path"]
+            or manifest_data_identity.get("train_count") != 55_000
+            or manifest_data_identity.get("development_count") != 5_000
+            or source_config.get("train_count") != 55_000
+            or source_config.get("development_count") != 5_000
+        ):
+            raise RunControlError("actual TRAIN/DEV roles differ from the source execution record")
+        actual_data_config = source_config.get("data_source")
+        if not isinstance(actual_data_config, Mapping) or actual_data_config.get("path") != data_identity["source_path"]:
+            raise RunControlError("source checkpoint data path differs from the explicit TRAIN input")
+
+        consumer = LightGen2DChenBOGTComplexOLSTrainingConsumer(device=device)
+        consumer.assert_theta0()
+        if consumer.runtime.config.propagation_grid_size != PRODUCTION_PROPAGATION_GRID:
+            raise RunControlError("production diagnostic did not construct the configured 2048 grid")
+        parameter_manifest = consumer.parameter_manifest()
+        if parameter_manifest["optimizer_parameter_names"] != list(ALLOWED_TRAINABLE_PARAMETER_NAMES):
+            raise RunControlError("production diagnostic optimizer allowlist changed")
+        optimizer = consumer.create_optimizer()
+        sampler = DeterministicTrainRoleSampler(train_indices, labels)
+        loaded = load_checkpoint(
+            checkpoint_path,
+            consumer,
+            optimizer,
+            expected_engineering_only=False,
+            expected_run_identity=source_identity,
+            expected_authorization_id=source_authorization,
+        )
+        sampler.load_state_dict(loaded.sampler_state)
+        if (
+            loaded.completed_updates != completed_updates
+            or sampler.cursor != completed_updates
+            or len(loaded.training_history) != completed_updates
+        ):
+            raise RunControlError("checkpoint model, history and sampler progress do not agree")
+        references = consumer.references
+        weights = consumer.weights
+        if (
+            references is None
+            or references.data_role != TRAIN_ROLE
+            or references.count != train_indices.numel()
+            or references.engineering_only
+            or weights is None
+            or weights.data_role != TRAIN_ROLE
+            or weights.engineering_only
+        ):
+            raise RunControlError("checkpoint frozen references and weights are not bound to scientific TRAIN")
+        if (
+            references.data_identity.get("source_path") != data_identity["source_path"]
+            or references.data_identity.get("train_count") != train_indices.numel()
+        ):
+            raise RunControlError("checkpoint frozen references do not describe the explicit TRAIN source")
+
+        ledger = DataReadLedger()
+        diagnostic_task = f"{NEXT_TASK}:PRODUCTION_PREFLIGHT_DIAGNOSTIC_ONLY"
+        diagnostic_manifest = capture_execution_source_manifest(
+            root,
+            task_id=diagnostic_task,
+            semantic_authority_id=f"{SEMANTIC_AUTHORITY_ID}:ENGINEERING_DIAGNOSTIC_ONLY",
+            relevant_paths=_execution_source_paths(root),
+            config_identity=source_config,
+        ).to_dict()
+        diagnostic_identity = ResearchRunIdentity(
+            task_id=diagnostic_task,
+            run_id=f"{SCIENTIFIC_RUN_ID}:PRODUCTION_PREFLIGHT_DIAGNOSTIC_ONLY",
+            trajectory_id=f"{SCIENTIFIC_TRAJECTORY_ID}:checkpoint_step_{completed_updates:06d}:DIAGNOSTIC_ONLY",
+            semantic_authority_id=f"{SEMANTIC_AUTHORITY_ID}:ENGINEERING_DIAGNOSTIC_ONLY",
+            data_role=TRAIN_ROLE,
+            config_identity=source_config,
+            model_identity=f"{source_identity.model_identity}:DIAGNOSTIC_ONLY",
+            optimizer_identity=source_identity.optimizer_identity,
+            sampler_identity=source_identity.sampler_identity,
+            execution_source_semantics_id=diagnostic_manifest["execution_source_semantics_id"],
+            source_manifest_id=diagnostic_manifest["source_manifest_id"],
+            scientific_attempt_id=None,
+        )
+        record_event(
+            "CHECKPOINT_LOADED",
+            completed_updates=completed_updates,
+            history_rows=len(loaded.training_history),
+            sampler_cursor=sampler.cursor,
+            optimizer_state_entries=len(optimizer.state),
+        )
+        report["diagnostic_identity"] = diagnostic_identity.to_dict()
+        report["diagnostic_source_manifest"] = diagnostic_manifest
+        report["source_authorization_record_matched"] = True
+        record_event("DIAGNOSTIC_IDENTITY_BOUND")
+        record_event(
+            "ISOLATED_TRIAL_STARTED",
+            trial_updates=3,
+            first_global_step=completed_updates,
+            completed_update_steps=list(range(completed_updates + 1, completed_updates + 4)),
+        )
+        receipt, measurement = _run_production_preflight(
+            consumer=consumer,
+            optimizer=optimizer,
+            sampler=sampler,
+            images=images,
+            labels=labels,
+            train_indices=train_indices,
+            run_identity=diagnostic_identity,
+            source_manifest=diagnostic_manifest,
+            authorization_id=PRODUCTION_PREFLIGHT_DIAGNOSTIC_AUTHORIZATION,
+            completed_updates=loaded.completed_updates,
+            training_history=loaded.training_history,
+            ledger=ledger,
+            initial_resource=initial_resource,
+        )
+        read_counts = ledger.to_dict()
+        if any(read_counts.get(role, 0) for role in (DEV_ROLE, PROTECTED_ROLE, TEST_ROLE, SEALED_ROLE)):
+            raise TrainingContractError("production diagnostic read a non-TRAIN data role")
+        if not measurement.get("model_optimizer_rng_sampler_restored") or sampler.cursor != completed_updates:
+            raise TrainingContractError("production diagnostic failed to restore the loaded checkpoint state")
+        serialized_receipt = receipt.to_dict()
+        report.update(
+            {
+                "status": PREFLIGHT_READY,
+                "loaded_completed_updates": completed_updates,
+                "loaded_history_rows": len(loaded.training_history),
+                "loaded_optimizer_state_entries": len(optimizer.state),
+                "loaded_sampler_cursor": sampler.cursor,
+                "actual_train_rows": int(train_indices.numel()),
+                "development_rows_not_measured": int(development_indices.numel()),
+                "data_read_counts": read_counts,
+                "source_authorization_record_matched": True,
+                "preflight_receipt": serialized_receipt,
+                "measurement": {**measurement, "resource": serialized_receipt["resource"]},
+                "scientific_authority_granted": False,
+                "completed_at_epoch_seconds": time.time(),
+            }
+        )
+        _save_new_json(target / "preflight_receipt.json", serialized_receipt)
+        record_event("READY", completed_updates=completed_updates, restored=True)
+    except Exception as error:
+        message = str(error)
+        resource_failure = isinstance(error, torch.cuda.OutOfMemoryError) or "PREFLIGHT_BLOCKED(resource)" in message
+        restoration = getattr(error, "production_preflight_restoration", None)
+        report.update(
+            {
+                "status": "PREFLIGHT_BLOCKED(resource)" if resource_failure else "INVALID_HARNESS",
+                "error_type": type(error).__name__,
+                "error_message": message,
+                "rollback_verification": (
+                    "VERIFIED"
+                    if isinstance(restoration, Mapping) and restoration.get("verified") is True
+                    else "FAILED"
+                    if isinstance(restoration, Mapping)
+                    else "NOT_STARTED_OR_NOT_VERIFIABLE"
+                ),
+                "rollback_result": restoration,
+                "completed_at_epoch_seconds": time.time(),
+            }
+        )
+        record_event(report["status"], error_type=report["error_type"], error_message=message)
+    atomic_write_json(target / "preflight_report.json", report)
+    return report
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="print the future graph without executing it")
     parser.add_argument("--preflight", action="store_true", help="run bounded synthetic/CPU engineering preflight")
+    parser.add_argument("--production-preflight", action="store_true", help="run the isolated production CUDA check for one explicit checkpoint and exit")
     parser.add_argument("--execute", action="store_true", help="execute the one explicit CUDA scientific trajectory")
     parser.add_argument("--resume", help="resume the explicitly named run directory or checkpoint")
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="new run directory below outputs/")
+    parser.add_argument("--checkpoint", type=Path, help="explicit BOGT checkpoint for --production-preflight")
+    parser.add_argument("--output-dir", type=Path, help="explicit output directory below outputs/")
     args = parser.parse_args()
-    selected_modes = sum(bool(value) for value in (args.dry_run, args.preflight, args.execute))
+    selected_modes = sum(bool(value) for value in (args.dry_run, args.preflight, args.production_preflight, args.execute))
     if selected_modes != 1:
-        parser.error("select exactly one of --dry-run, --preflight, or --execute")
+        parser.error("select exactly one of --dry-run, --preflight, --production-preflight, or --execute")
     if args.resume is not None and not args.execute:
         parser.error("--resume is valid only with --execute")
+    if args.checkpoint is not None and not args.production_preflight:
+        parser.error("--checkpoint is valid only with --production-preflight")
+    if args.production_preflight and (args.checkpoint is None or args.output_dir is None):
+        parser.error("--production-preflight requires explicit --checkpoint and --output-dir")
+    if args.output_dir is not None and not (args.dry_run or args.production_preflight or args.execute):
+        parser.error("--output-dir is valid only with --dry-run, --production-preflight, or --execute")
     if args.dry_run:
         print(json.dumps(build_scientific_execution_graph(output_dir=args.output_dir), indent=2, sort_keys=True))
         return 0
@@ -2462,7 +3414,11 @@ def main() -> int:
         result = run_engineering_preflight()
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if result["preflight_status"] == PREFLIGHT_READY else 1
-    result = run_scientific_execution(output_dir=args.output_dir, resume=args.resume)
+    if args.production_preflight:
+        result = run_production_checkpoint_preflight(checkpoint=args.checkpoint, output_dir=args.output_dir)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result.get("status") == PREFLIGHT_READY else 1
+    result = run_scientific_execution(output_dir=args.output_dir or DEFAULT_OUTPUT_DIR, resume=args.resume)
     print(json.dumps(result, indent=2, sort_keys=True))
     if result.get("result") == "INTERRUPTED":
         return 2

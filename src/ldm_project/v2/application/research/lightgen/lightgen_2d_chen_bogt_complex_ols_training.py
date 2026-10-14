@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 from ldm_project.v2.evidence import atomic_torch_save_new, canonical_sha256, file_sha256, safe_torch_load, tensor_sha256
-from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import ComplexOLSState, LightGen2DAlignmentRuntimeConfig, LightGen2DForwardResult, LightGen2DSemanticGenerationInputOLSAlignment, OLS_INTERFACE_ID, OLS_PORT_COUNT
+from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import GAUSSIAN_OLS_MODEL, LP01_OLS_MODEL, OLS_MODELS, ComplexOLSState, LightGen2DAlignmentRuntimeConfig, LightGen2DForwardResult, LightGen2DSemanticGenerationInputOLSAlignment, LightGenPhysicalOpticsConfig, OLS_INTERFACE_ID, OLS_PORT_COUNT
 from ldm_project.v2.application.research.shared.research_run_control import RECOVERY_CHECKPOINT_SCHEMA, ResearchRunIdentity, check_resume_compatibility
 
 
@@ -367,6 +367,8 @@ class FrozenBogtReferences:
     engineering_only: bool
     theta0_identity: Mapping[str, Any]
     data_identity: Mapping[str, Any]
+    basis_id: str = LP01_OLS_MODEL
+    mode_geometry: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         scale = self.scale.detach().to(dtype=torch.float64, device="cpu").clone()
@@ -385,6 +387,13 @@ class FrozenBogtReferences:
             _require(self.engineering_only, "engineering references must be explicitly marked", DataRoleError)
         _require(isinstance(self.theta0_identity, Mapping), "theta0 identity is required")
         _require(isinstance(self.data_identity, Mapping), "data identity is required")
+        _require(self.basis_id in OLS_MODELS, "reference basis_id is unsupported", CheckpointError)
+        if self.basis_id == GAUSSIAN_OLS_MODEL:
+            _require(isinstance(self.mode_geometry, Mapping), "Gaussian references require explicit mode geometry", CheckpointError)
+            _require(self.mode_geometry.get("basis_id") == self.basis_id, "Gaussian reference geometry/basis mismatch", CheckpointError)
+            object.__setattr__(self, "mode_geometry", copy.deepcopy(dict(self.mode_geometry)))
+        elif self.mode_geometry is not None:
+            _require(isinstance(self.mode_geometry, Mapping) and self.mode_geometry.get("basis_id") == self.basis_id, "LP01 reference geometry/basis mismatch", CheckpointError)
         scale.requires_grad_(False)
         reference.requires_grad_(False)
         object.__setattr__(self, "scale", scale)
@@ -399,7 +408,7 @@ class FrozenBogtReferences:
         return tensor_sha256(self.power_reference)
 
     def identity(self) -> dict[str, Any]:
-        return {
+        identity = {
             "schema": REFERENCES_SCHEMA,
             "data_role": self.data_role,
             "count": self.count,
@@ -409,9 +418,13 @@ class FrozenBogtReferences:
             "theta0_state_identity_sha256": self.theta0_identity.get("state_identity_sha256"),
             "data_identity": dict(self.data_identity),
         }
+        if self.basis_id == GAUSSIAN_OLS_MODEL:
+            identity["basis_id"] = self.basis_id
+            identity["mode_geometry"] = dict(self.mode_geometry or {})
+        return identity
 
     def to_payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": REFERENCES_SCHEMA,
             "scale": self.scale.clone(),
             "power_reference": self.power_reference.clone(),
@@ -422,6 +435,10 @@ class FrozenBogtReferences:
             "data_identity": dict(self.data_identity),
             "identity": self.identity(),
         }
+        if self.basis_id == GAUSSIAN_OLS_MODEL:
+            payload["basis_id"] = self.basis_id
+            payload["mode_geometry"] = dict(self.mode_geometry or {})
+        return payload
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "FrozenBogtReferences":
@@ -437,6 +454,8 @@ class FrozenBogtReferences:
             bool(payload.get("engineering_only")),
             _mapping(payload.get("theta0_identity"), "theta0 identity", CheckpointError),
             _mapping(payload.get("data_identity"), "data identity", CheckpointError),
+            str(payload.get("basis_id", LP01_OLS_MODEL)),
+            payload.get("mode_geometry"),
         )
 
 
@@ -777,6 +796,8 @@ def _resume_identity(value: Any) -> Any:
             "head",
             "dirty",
             "worktree_dirty",
+            "git",
+            "runtime_module",
             "source_manifest",
             "source_manifest_id",
             "execution_source_semantics_id",
@@ -803,13 +824,19 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
         *,
         device: torch.device | str = "cpu",
         propagation_grid_size: int = PRODUCTION_PROPAGATION_GRID,
+        ols_model: str = LP01_OLS_MODEL,
+        physical_optics: LightGenPhysicalOpticsConfig | None = None,
     ) -> None:
         super().__init__()
         _validate_contract_payloads()
         _require(propagation_grid_size in {ENGINEERING_PROPAGATION_GRID, PRODUCTION_PROPAGATION_GRID}, "only declared production or engineering grid is supported")
         self.device = torch.device(device)
         self.runtime = LightGen2DSemanticGenerationInputOLSAlignment(
-            LightGen2DAlignmentRuntimeConfig(propagation_grid_size=propagation_grid_size)
+            LightGen2DAlignmentRuntimeConfig(
+                propagation_grid_size=propagation_grid_size,
+                ols_model=ols_model,
+                physical_optics=physical_optics,
+            )
         ).to(self.device)
         self.runtime.train()
         self._references: FrozenBogtReferences | None = None
@@ -887,7 +914,7 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
             "schema": "chen_bogt_theta0_initialization_fingerprint.v1",
             "runtime_semantic_identity": "LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1",
             "runtime_module": _relative_path(Path(__file__).with_name("lightgen_2d_semantic_generation_input_ols_alignment.py"), _repo_root()),
-            "config": {"propagation_grid_size": self.runtime.config.propagation_grid_size},
+            "config": self._runtime_config_payload(),
             "phase_zero": {
                 name: bool(torch.equal(self._theta0_trainable_state[name], torch.zeros_like(self._theta0_trainable_state[name])))
                 for name in ALLOWED_TRAINABLE_PARAMETER_NAMES
@@ -917,7 +944,7 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
             "identity": "LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1",
             "module": _relative_path(runtime_path, root),
             "module_sha256": file_sha256(runtime_path),
-            "config": {"propagation_grid_size": self.runtime.config.propagation_grid_size},
+            "config": self._runtime_config_payload(),
             "ols_interface": OLS_INTERFACE_ID,
             "ols_shape": [OLS_PORT_COUNT],
             "ols_grid_shape": list(OLS_GRID_SHAPE),
@@ -928,6 +955,19 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
             "transport_sha256": tensor_sha256(self.runtime.ols.transport.detach().cpu()),
             "production_propagation_grid": PRODUCTION_PROPAGATION_GRID,
         }
+
+    def _runtime_config_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "propagation_grid_size": self.runtime.config.propagation_grid_size,
+        }
+        if self.runtime.config.ols_model == GAUSSIAN_OLS_MODEL:
+            payload["ols_model"] = self.runtime.config.ols_model
+            payload["mode_geometry"] = self.runtime.ols.mode_identity()
+        if self.runtime.config.physical_optics is not None:
+            payload["ols_model"] = self.runtime.config.ols_model
+            payload["mode_geometry"] = self.runtime.ols.mode_identity()
+            payload["physical_optics"] = self.runtime.config.physical_optics.to_dict()
+        return payload
 
     def parameter_manifest(self) -> dict[str, Any]:
         self._enforce_parameter_firewall()
@@ -993,6 +1033,11 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
 
     def bind_references(self, references: FrozenBogtReferences, *, for_scientific: bool = False) -> None:
         _require(isinstance(references, FrozenBogtReferences), "consumer requires FrozenBogtReferences")
+        _require(references.basis_id == self.runtime.ols.basis_id, "references belong to another OLS modal basis", CheckpointError)
+        if self.runtime.ols.basis_id == GAUSSIAN_OLS_MODEL:
+            _require(dict(references.mode_geometry or {}) == self.runtime.ols.mode_identity(), "Gaussian reference geometry differs from the runtime", CheckpointError)
+        elif references.mode_geometry is not None:
+            _require(dict(references.mode_geometry) == self.runtime.ols.mode_identity(), "LP01 reference geometry differs from the runtime", CheckpointError)
         if for_scientific:
             _require(references.data_role == TRAIN_ROLE and not references.engineering_only, "scientific consumer cannot bind engineering references", DataRoleError)
         _require(
@@ -1157,6 +1202,7 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
     def generated_forward(self, state: ComplexOLSState | torch.Tensor) -> LightGen2DForwardResult:
         """Use the runtime's existing direct OLS path; no second writer exists."""
         if isinstance(state, torch.Tensor):
+            _require(self.runtime.ols.basis_id == LP01_OLS_MODEL, "Gaussian generated input requires an explicit ComplexOLSState basis and geometry")
             state = ComplexOLSState.from_external(state)
         _require(isinstance(state, ComplexOLSState), "generated state must be ComplexOLSState")
         return self.runtime.forward_from_ols(state)
@@ -1293,6 +1339,8 @@ def collect_bogt_train_references(
         engineering_only,
         consumer.initialization_fingerprint(),
         identity,
+        consumer.runtime.ols.basis_id,
+        consumer.runtime.ols.mode_identity(),
     )
 
 
@@ -1737,7 +1785,11 @@ def construct_sampled_ols(
     z = torch.complex(amplitude * torch.cos(phase), amplitude * torch.sin(phase)).to(torch.complex64)
     gauged, _, _ = max_q_gauge(z, references)
     _validate_finite(gauged, "sampled z")
-    return ComplexOLSState.from_external(gauged)
+    return ComplexOLSState.from_external(
+        gauged,
+        basis_id=references.basis_id,
+        mode_geometry=references.mode_geometry,
+    )
 
 
 __all__ = [

@@ -1024,9 +1024,7 @@ def run_successor(*, repo_root: Path | None = None, output_dir: str | Path = DEF
     target.mkdir(parents=True, exist_ok=False)
     run_identity = _make_identity(source_manifest, data_identity)
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
-    control.start_execution()
-    effective_identity = control.begin_scientific_attempt(SCIENTIFIC_ATTEMPT_ID)
+    effective_identity = run_identity
     _write_json(target / "source_manifest.json", source_manifest)
     _write_json(
         target / "execution_manifest.json",
@@ -1061,6 +1059,41 @@ def run_successor(*, repo_root: Path | None = None, output_dir: str | Path = DEF
     preflight = _run_preflight(consumer, train_evaluator, training_authority["references"], training_authority["weights"], images, labels, train_indices, delta=delta, checkpoint=training_authority["checkpoint"])
     _write_json(target / "preflight.json", preflight)
     _write_json(target / "semantic_weight_calibration.json", calibration)
+
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and preflight.get("three_step_real_update", {}).get("updates") == 3
+        and preflight.get("negative_control", {}).get("passed") is True
+        and preflight.get("frozen_parameter_probe", {}).get("encoder_phase_unchanged") is True
+        and preflight.get("frozen_parameter_probe", {}).get("ols_unchanged") is True
+        and preflight.get("protected_test_sealed") == {"protected": False, "test": False, "sealed": False}
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+            "negative_control_rejected": preflight.get("negative_control", {}).get("passed"),
+            "frozen_parameter_probe": preflight.get("frozen_parameter_probe"),
+            "protected_test_sealed": preflight.get("protected_test_sealed"),
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+        },
+        implementation={
+            "passed": preflight.get("status") == "READY",
+            "selected_engine": "frozen_latent_semantic_recovery_cuda_generator_phase",
+            "optimizer_restore_after_preflight": True,
+            "scientific_updates_before_receipt": 0,
+        },
+        selected_engine="frozen_latent_semantic_recovery_cuda_generator_phase",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    effective_identity = control.open_scientific_attempt(target, SCIENTIFIC_ATTEMPT_ID, receipt, resume=True)
 
     optimizer, optimizer_mode = _restore_generator_optimizer(consumer, training_authority["checkpoint"])
     _freeze_generator_only(consumer)

@@ -1,0 +1,56 @@
+{
+  "artifact": "01_ols_nonlinear_mechanism_base_2p5d",
+  "scientific_status": "TARGET physical-mechanism schematic; not a current implementation or measured material result",
+  "source_visual_reference": "opening_ppt_assets/01_target_compact_system_architecture.svg",
+  "skill": "C:/Users/24567/.agents/skills/optical-nature-schematic/SKILL.md",
+  "built_in_validator": {
+    "status": "not_applicable",
+    "reason": "The four built-in topology modes do not cover a text-free generic nonlinear-material mechanism crop. The facet validator hard-codes a Te film; project figure guidance forbids tagging an unspecified material as te-film."
+  },
+  "dimensions": {
+    "svg": {
+      "width": 2800,
+      "height": 1000
+    },
+    "png": {
+      "width": 5600,
+      "height": 2000,
+      "hasAlpha": true,
+      "alphaAtTopLeft": 0
+    }
+  },
+  "counts": {
+    "fiber_cores": 100,
+    "selected_cores": 6,
+    "gaussian_beamlets": 6,
+    "visible_text_elements": 0,
+    "embedded_rasters": 0
+  },
+  "checks": {
+    "slightly_top_down_2p5d": true,
+    "fiber_array_2p5d_block": true,
+    "exact_10_by_10_fiber_cores": true,
+    "selected_core_count_5_to_7": true,
+    "six_gaussian_beamlets": true,
+    "beam_origins_match_selected_core_coordinates": true,
+    "waist_and_gradual_divergence": true,
+    "near_modes_discrete_and_far_modes_overlapping": true,
+    "continuous_pre_material_overlap_region": true,
+    "no_solid_beam_cones": true,
+    "no_black_hard_gaps_or_glow": true,
+    "generic_thin_orange_material_plane": true,
+    "post_material_field_continuous_and_modulated": true,
+    "decoder_planes_and_detector_present": true,
+    "no_visible_text_formula_or_digits": true,
+    "no_embedded_raster_or_heatmap": true,
+    "transparent_background": true,
+    "png_5600_by_2000": true,
+    "aspect_ratio_2_8_to_1": true
+  },
+  "all_checks_passed": true,
+  "white_background_visual_review": {
+    "status": "PASS",
+    "inspected": "full white-background render at slide scale plus enlarged SMF-to-overlap crop",
+    "findings": "No clipping; six soft outputs visibly begin at selected cores; overlap is gradual; field remains pale and boundary-soft; orange layer stays thin; D1, D2, and detector remain distinct with generous whitespace."
+  }
+}

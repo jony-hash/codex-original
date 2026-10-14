@@ -8,7 +8,8 @@ from pathlib import Path
 
 import torch
 
-from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_complex_ols_training_v2 import ALLOWED_TRAINABLE_PARAMETER_NAMES, COMPLETE, DeterministicTrainRoleSampler, FINAL_SELECT, FrozenPhysicalOLSScale, LightGen2DComplexOLSTrainingConsumerV2, SCALE_SMOKE_CLASSIFICATION, STAGE_A_FAILURE, STAGE_A_SEMANTIC_CHECK, STAGE_A_TRAIN, STAGE_B_FAILURE, STAGE_B_SEMANTIC_CHECK, STAGE_B_TRAIN, V2TrainingStateMachine, checkpoint_payload, extract_train_only_ols_scale, load_checkpoint, load_scale_artifact, load_v2_training_contract, normalized_full_complex_mmd_vstat, normalized_gauge_representation, normalized_ols, physical_ols_from_normalized, sample_normalized_prior, save_checkpoint, save_scale_artifact, select_stage_a_checkpoint, select_stage_b_checkpoint
+from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_complex_ols_training_v2 import ALLOWED_TRAINABLE_PARAMETER_NAMES, COMPLETE, DeterministicTrainRoleSampler, FINAL_SELECT, FrozenPhysicalOLSScale, LightGen2DComplexOLSTrainingConsumerV2, SCALE_SMOKE_CLASSIFICATION, STAGE_A_FAILURE, STAGE_A_SEMANTIC_CHECK, STAGE_A_TRAIN, STAGE_B_FAILURE, STAGE_B_SEMANTIC_CHECK, STAGE_B_TRAIN, TrainingContractError, V2TrainingStateMachine, checkpoint_payload, extract_train_only_ols_scale, load_checkpoint, load_scale_artifact, load_v2_training_contract, normalized_full_complex_mmd_vstat, normalized_gauge_representation, normalized_ols, physical_ols_from_normalized, sample_normalized_prior, sample_physical_prior, save_checkpoint, save_scale_artifact, select_stage_a_checkpoint, select_stage_b_checkpoint
+from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import GAUSSIAN_OLS_MODEL, LP01_OLS_MODEL
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -18,11 +19,12 @@ def _contract():
     return load_v2_training_contract(repo_root=ROOT)
 
 
-def _consumer() -> LightGen2DComplexOLSTrainingConsumerV2:
+def _consumer(*, ols_model: str = LP01_OLS_MODEL) -> LightGen2DComplexOLSTrainingConsumerV2:
     return LightGen2DComplexOLSTrainingConsumerV2(
         _contract(),
         device=torch.device("cpu"),
         propagation_grid_size=128,
+        ols_model=ols_model,
     )
 
 
@@ -41,6 +43,66 @@ def _nested_equal(left: object, right: object) -> bool:
 
 
 class LightGenV2TrainingConsumerTests(unittest.TestCase):
+    def test_gaussian_scale_rebuild_and_external_prior_keep_modal_identity(self) -> None:
+        torch.manual_seed(0)
+        consumer = _consumer(ols_model=GAUSSIAN_OLS_MODEL)
+        scale = extract_train_only_ols_scale(
+            consumer,
+            _fixture_images(),
+            data_role=SCALE_SMOKE_CLASSIFICATION,
+            checkpoint_identity={"role": SCALE_SMOKE_CLASSIFICATION, "initialization_seed": 0},
+            data_identity={"role": SCALE_SMOKE_CLASSIFICATION, "row_count": 10},
+            basis_id=GAUSSIAN_OLS_MODEL,
+            mode_geometry=consumer.runtime.ols.mode_identity(),
+        )
+        self.assertEqual(scale.basis_id, GAUSSIAN_OLS_MODEL)
+        self.assertEqual(scale.mode_geometry, consumer.runtime.ols.mode_identity())
+        self.assertEqual(scale.data_role, SCALE_SMOKE_CLASSIFICATION)
+        state, prior = sample_physical_prior(scale, 1, stage_local_step=1)
+        self.assertEqual(prior.coefficients.shape, (1, 100))
+        self.assertEqual(state.basis_id, GAUSSIAN_OLS_MODEL)
+        self.assertEqual(state.mode_geometry, scale.mode_geometry)
+        direct = consumer.runtime.forward_from_ols(state)
+        self.assertEqual(direct.z_ols.basis_id, GAUSSIAN_OLS_MODEL)
+        with self.assertRaisesRegex(ValueError, "explicit basis and geometry"):
+            consumer.runtime.forward_from_ols(state.coefficients)
+        with self.assertRaisesRegex(TrainingContractError, "modal basis/geometry"):
+            consumer.set_scale(FrozenPhysicalOLSScale.from_tensor(torch.ones(100, dtype=torch.float64)))
+
+        with tempfile.TemporaryDirectory(prefix="lightgen-gaussian-scale-") as temporary:
+            saved = save_scale_artifact(Path(temporary) / "scale.v2.pt", scale)
+            loaded = load_scale_artifact(saved.artifact_path)
+            self.assertEqual(loaded.basis_id, GAUSSIAN_OLS_MODEL)
+            self.assertEqual(loaded.mode_geometry, scale.mode_geometry)
+
+    def test_cross_basis_checkpoint_is_rejected_before_model_or_optimizer_mutation(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="lightgen-cross-basis-checkpoint-") as temporary:
+            checkpoint = Path(temporary) / "lp01-stage-a.v2.pt"
+            source = _consumer()
+            source_optimizer = source.create_optimizer()
+            payload = checkpoint_payload(
+                source,
+                source_optimizer,
+                state=V2TrainingStateMachine(stage=STAGE_A_TRAIN),
+                sampler_state={"cursor": 0},
+                semantic_selection_state={"stage": "A"},
+                git={"branch": "fixture"},
+            )
+            save_checkpoint(checkpoint, payload)
+
+            target = _consumer(ols_model=GAUSSIAN_OLS_MODEL)
+            with torch.no_grad():
+                for parameter in target.runtime.parameters():
+                    parameter.add_(0.125)
+            before_model = {name: value.clone() for name, value in target.trainable_state_dict().items()}
+            target_optimizer = target.create_optimizer()
+            before_optimizer = target_optimizer.state_dict()
+            with self.assertRaisesRegex(ValueError, "OLS basis/geometry mismatch: ols_model"):
+                load_checkpoint(checkpoint, target, target_optimizer)
+            for name, value in target.trainable_state_dict().items():
+                self.assertTrue(torch.equal(value, before_model[name]))
+            self.assertTrue(_nested_equal(target_optimizer.state_dict(), before_optimizer))
+
     def test_parameter_firewall_prior_and_gauge_invariant_mmd(self) -> None:
         consumer = _consumer()
         manifest = consumer.parameter_manifest()

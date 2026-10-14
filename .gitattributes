@@ -1,0 +1,53 @@
+* text=auto
+
+*.py text eol=lf
+*.pyi text eol=lf
+*.md text eol=lf
+*.rst text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.csv text eol=lf
+*.tsv text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.svg text eol=lf
+
+*.pt binary
+*.pth binary
+*.ckpt binary
+*.safetensors binary
+*.onnx binary
+*.bin binary
+*.npy binary
+*.npz binary
+*.mat binary
+*.h5 binary
+*.hdf5 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.tif binary
+*.tiff binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.7z binary
+*.tar binary
+*.gz binary
+*.bz2 binary
+*.conda binary
+*.sqlite binary
+*.sqlite3 binary
+*.db binary
+*.mp4 binary
+*.webm binary
+*.mp3 binary
+*.wav binary
+*.pyc binary

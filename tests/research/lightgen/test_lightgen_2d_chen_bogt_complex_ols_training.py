@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import math
+import sys
 import tempfile
+from dataclasses import replace
+from types import SimpleNamespace
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 
@@ -28,6 +33,120 @@ def test_resume_input_comparison_ignores_digests_but_keeps_execution_fields() ->
 
     assert executor._resume_identity(before) == executor._resume_identity(after)
     assert executor._resume_identity(before) != executor._resume_identity({**after, "split_seed": 999})
+
+
+@pytest.mark.parametrize("changed", [None, "images", "labels", "train_indices", "development_indices", "evaluator_state"])
+def test_resume_checks_saved_actual_inputs(tmp_path: Path, changed: str | None) -> None:
+    evaluator = torch.nn.Linear(2, 2)
+    inputs = {"images": torch.zeros(4, 1, 2, 2), "labels": torch.tensor([0, 1, 0, 1]), "train_indices": torch.tensor([0, 1]), "development_indices": torch.tensor([2, 3])}
+    executor._bind_resume_inputs(tmp_path, evaluator=evaluator, resume=False, **inputs)
+    if changed == "evaluator_state":
+        with torch.no_grad():
+            evaluator.weight.add_(1)
+    elif changed is not None:
+        inputs[changed] = inputs[changed].clone()
+        inputs[changed].reshape(-1)[0] += 1
+    if changed is None:
+        executor._bind_resume_inputs(tmp_path, evaluator=evaluator, resume=True, **inputs)
+    else:
+        with pytest.raises(executor.RunControlError, match="resume actual input changed"):
+            executor._bind_resume_inputs(tmp_path, evaluator=evaluator, resume=True, **inputs)
+
+
+def test_legacy_resume_cannot_create_a_new_input_baseline(tmp_path: Path) -> None:
+    with pytest.raises(executor.RunControlError, match="input snapshot is missing"):
+        executor._bind_resume_inputs(tmp_path, images=torch.zeros(1), labels=torch.zeros(1, dtype=torch.long), train_indices=torch.tensor([0]), development_indices=torch.tensor([], dtype=torch.long), evaluator=torch.nn.Linear(1, 1), resume=True)
+    assert not list(tmp_path.iterdir())
+
+
+def test_gaussian_bogt_reference_producer_records_basis_and_independent_values() -> None:
+    torch.manual_seed(0)
+    consumer = chen.LightGen2DChenBOGTComplexOLSTrainingConsumer(
+        device="cpu",
+        propagation_grid_size=chen.ENGINEERING_PROPAGATION_GRID,
+        ols_model=chen.GAUSSIAN_OLS_MODEL,
+    ).eval()
+    images = torch.linspace(0.05, 0.95, 10 * 28 * 28, dtype=torch.float32).reshape(10, 1, 28, 28)
+    with torch.no_grad():
+        result = consumer.runtime.forward_from_image(images)
+    references = chen.collect_bogt_train_references(
+        consumer,
+        images,
+        data_role=chen.TRAIN_SMOKE_ROLE,
+        engineering_only=True,
+        data_identity={"role": chen.TRAIN_SMOKE_ROLE, "purpose": "engineering_only"},
+    )
+
+    independent_scale = np.mean(np.abs(result.z_ols.coefficients.detach().cpu().numpy().astype(np.complex128)) ** 2, axis=0)
+    np.testing.assert_allclose(references.scale.numpy(), independent_scale, rtol=1.0e-12, atol=1.0e-18)
+    fields = (*result.encoder_records, result.generator_input_field, *result.generator_records)
+    independent_powers = []
+    for field in fields:
+        value = field.tensor.detach().cpu().numpy().astype(np.complex128)
+        area = math.prod(field.plane.pixel_pitch_m)
+        independent_powers.append(np.sum(np.abs(value) ** 2, axis=tuple(range(1, value.ndim))) * area)
+    np.testing.assert_allclose(
+        references.power_reference.numpy(), np.mean(np.stack(independent_powers, axis=1), axis=0), rtol=1.0e-12, atol=1.0e-18
+    )
+    assert references.data_role == chen.TRAIN_SMOKE_ROLE
+    assert references.engineering_only is True
+    assert references.count == 10
+    assert references.basis_id == chen.GAUSSIAN_OLS_MODEL
+    assert references.mode_geometry == consumer.runtime.ols.mode_identity()
+    restored = chen.FrozenBogtReferences.from_payload(references.to_payload())
+    consumer.bind_references(restored)
+    with pytest.raises(chen.CheckpointError, match="another OLS modal basis"):
+        consumer.bind_references(replace(references, basis_id=chen.LP01_OLS_MODEL, mode_geometry=None))
+    with pytest.raises(chen.TrainingContractError, match="explicit ComplexOLSState"):
+        consumer.generated_forward(result.z_ols.coefficients)
+
+
+@pytest.mark.parametrize("changed", [None, "images", "evaluator", "missing"])
+def test_scientific_resume_consumes_actual_input_check_before_model_construction(monkeypatch, tmp_path: Path, changed: str | None) -> None:
+    target = tmp_path / "outputs/20261006_bogt/runs/attempt_01"
+    target.mkdir(parents=True)
+    images, labels = torch.zeros(4, 1, 2, 2), torch.tensor([0, 1, 0, 1])
+    train, dev = torch.tensor([0, 1]), torch.tensor([2, 3])
+    evaluator = torch.nn.Linear(2, 2)
+    if changed != "missing":
+        executor._bind_resume_inputs(target, images=images, labels=labels, train_indices=train, development_indices=dev, evaluator=evaluator, resume=False)
+    if changed == "images":
+        images[0, 0, 0, 0] = 0.5
+    if changed == "evaluator":
+        with torch.no_grad():
+            evaluator.weight.add_(1)
+    identity = executor.ResearchRunIdentity(executor.NEXT_TASK, "unit", "unit", executor.SEMANTIC_AUTHORITY_ID, executor.TRAIN_ROLE, {}, {}, {}, {}, scientific_attempt_id="unit:attempt_01")
+    manifest = {"schema": executor.RUN_MANIFEST_SCHEMA, "source_manifest": {"source_manifest_id": "unit"}, "run_identity": identity.to_dict(), "authorization_id": "unit", "data_identity": {"source_sha256": "historical"}, "evaluator_identity": {}, "run_config": {}}
+    (target / "execution_manifest.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 0)
+    monkeypatch.setattr(executor, "_production_cuda_memory", lambda *_: {})
+    monkeypatch.setattr(executor, "_load_scientific_dataset", lambda *_: (images, labels, train, dev, {"source_sha256": "current"}))
+    monkeypatch.setattr(executor, "_load_evaluator", lambda *_: (evaluator, {}))
+    monkeypatch.setattr(executor, "_make_run_config", lambda *_: {})
+    def construction_boundary(**kwargs):
+        raise RuntimeError("model construction reached")
+    monkeypatch.setattr(executor, "LightGen2DChenBOGTComplexOLSTrainingConsumer", construction_boundary)
+    expected = "model construction reached" if changed is None else ("snapshot is missing" if changed == "missing" else "actual input changed")
+    with pytest.raises((RuntimeError, executor.RunControlError), match=expected):
+        executor.run_scientific_execution(repo_root=tmp_path, resume=target)
+    assert not list(target.glob("scientific_step_*.pt"))
+
+
+def test_resume_theta0_identity_ignores_git_and_moved_runtime_module_provenance() -> None:
+    before = {
+        "config": {"propagation_grid_size": 2048, "phase_zero": True},
+        "git": {"branch": "research/old", "head": "old-head", "worktree_dirty": True},
+        "runtime_module": "src/old/location/runtime.py",
+    }
+    after = {
+        "config": {"propagation_grid_size": 2048, "phase_zero": True},
+        "git": {"branch": "research/current", "head": "new-head", "worktree_dirty": False},
+        "runtime_module": "src/new/location/runtime.py",
+    }
+
+    assert chen._resume_identity(before) == chen._resume_identity(after)
+    assert chen._resume_identity(before) != chen._resume_identity({**after, "config": {"propagation_grid_size": 1024, "phase_zero": True}})
 
 
 def test_train_loader_records_changed_file_digest_without_rejecting_valid_roles(monkeypatch, tmp_path: Path) -> None:
@@ -114,6 +233,201 @@ def test_preflight_records_git_changes_without_rejecting_them(monkeypatch, tmp_p
     assert payload["git"]["head_unchanged"] is False
     assert payload["git"]["starting"]["head"] == "one"
     assert payload["git"]["ending"]["head"] == "two"
+
+
+@pytest.mark.parametrize("free_bytes", [0, 1024**3, 128 * 1024**2])
+def test_execute_does_not_impose_cuda_memory_quota(monkeypatch, tmp_path: Path, free_bytes: int) -> None:
+    target = tmp_path / "outputs" / "runs" / "preflight-blocked"
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 0)
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda _device: (free_bytes, 8 * 1024**3))
+    def stop_at_input_validation(*_args, **_kwargs):
+        raise executor.TrainingContractError("input validation reached")
+
+    monkeypatch.setattr(
+        executor,
+        "_load_scientific_dataset",
+        stop_at_input_validation,
+    )
+
+    with pytest.raises(executor.TrainingContractError, match="input validation reached"):
+        executor.run_scientific_execution(repo_root=tmp_path, output_dir=target)
+
+    assert not target.exists()
+    assert not (tmp_path / "outputs").exists()
+
+
+def test_execute_rejects_cuda_unavailability_before_loading_inputs(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "outputs" / "20261002_bogt" / "runs" / "attempt_01"
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(
+        executor, "_load_scientific_dataset",
+        lambda *_args, **_kwargs: pytest.fail("CUDA failure must stop input loading"),
+    )
+    with pytest.raises(executor.RunControlError, match="CUDA"):
+        executor.run_scientific_execution(repo_root=tmp_path, output_dir=target)
+    assert not target.exists()
+
+
+def test_unopened_fresh_preflight_failure_removes_scientific_artifacts_and_keeps_engineering_record(tmp_path: Path) -> None:
+    target = tmp_path / "outputs" / "20261002_bogt" / "runs" / "attempt_01"
+    target.mkdir(parents=True)
+    (target / "frozen_references.pt").write_bytes(b"preflight-only artifact")
+    failure = executor.RunControlError("PREFLIGHT_BLOCKED(resource): synthetic test")
+
+    executor._discard_unopened_fresh_attempt_after_preflight_failure(
+        repo_root=tmp_path,
+        target=target,
+        error=failure,
+    )
+
+    assert not target.exists()
+    records = list(target.with_name("attempt_01.preflight_failures").glob("*.json"))
+    assert len(records) == 1
+    record = json.loads(records[0].read_text(encoding="utf-8"))
+    assert record["status"] == "PREFLIGHT_BLOCKED(resource)"
+    assert record["scientific_updates"] == 0
+    assert record["scientific_attempt_opened"] is False
+    assert record["fresh_attempt_artifacts_removed"] is True
+
+
+def test_execute_preparation_oom_is_engineering_failure_without_a_scientific_attempt(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "outputs" / "20261002_bogt" / "runs" / "attempt_01"
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 0)
+    monkeypatch.setattr(torch.cuda, "mem_get_info", lambda _device: (128 * 1024**2, 8 * 1024**3))
+    monkeypatch.setattr(executor, "_load_scientific_dataset", lambda *_args: (None, None, None, None, {}))
+    monkeypatch.setattr(executor, "_load_evaluator", lambda *_args: (None, {}))
+    monkeypatch.setattr(executor, "_make_run_config", lambda *_args: {})
+    monkeypatch.setattr(executor, "git_identity", lambda *_args: {"head": "unit", "branch": "unit"})
+    manifest = {"execution_source_semantics_id": "unit", "source_manifest_id": "unit"}
+    monkeypatch.setattr(executor, "capture_execution_source_manifest", lambda *_args, **_kwargs: SimpleNamespace(to_dict=lambda: manifest))
+    real_save = executor._save_new_json
+
+    def fail_during_preparation(path, payload):
+        if path.name == "source_manifest.json":
+            raise torch.cuda.OutOfMemoryError("actual allocation failure boundary")
+        return real_save(path, payload)
+
+    monkeypatch.setattr(executor, "_save_new_json", fail_during_preparation)
+    with pytest.raises(torch.cuda.OutOfMemoryError):
+        executor.run_scientific_execution(repo_root=tmp_path, output_dir=target)
+    assert not target.exists()
+    record = json.loads(next(target.with_name("attempt_01.preflight_failures").glob("*.json")).read_text(encoding="utf-8"))
+    assert record["status"] == "PREFLIGHT_BLOCKED(resource)"
+    assert record["scientific_updates"] == 0
+    assert record["scientific_attempt_opened"] is False
+
+
+def test_execute_rejection_preserves_existing_attempt_artifacts(tmp_path: Path) -> None:
+    target = tmp_path / "outputs" / "20261002_bogt" / "runs" / "attempt_01"
+    target.mkdir(parents=True)
+    evidence = target / "existing.pt"
+    evidence.write_bytes(b"existing evidence")
+    with pytest.raises(executor.RunControlError, match="exists"):
+        executor.run_scientific_execution(repo_root=tmp_path, output_dir=target)
+    assert evidence.read_bytes() == b"existing evidence"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--production-preflight"],
+        ["--production-preflight", "--checkpoint", "checkpoint.pt"],
+        ["--production-preflight", "--output-dir", "outputs/20261003_engineering/runs/diagnostic-only_test"],
+        ["--execute", "--checkpoint", "checkpoint.pt"],
+        ["--preflight", "--output-dir", "outputs/20261003_engineering/runs/diagnostic-only_test"],
+        ["--execute", "--production-preflight", "--checkpoint", "checkpoint.pt", "--output-dir", "outputs/20261003_engineering/runs/diagnostic-only_test"],
+    ],
+)
+def test_production_preflight_cli_rejects_missing_or_misplaced_inputs(monkeypatch, arguments: list[str]) -> None:
+    monkeypatch.setattr(sys, "argv", ["bogt_executor", *arguments])
+
+    with pytest.raises(SystemExit) as error:
+        executor.main()
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("status,expected_exit", [("READY", 0), ("PREFLIGHT_BLOCKED(resource)", 1)])
+def test_production_preflight_cli_dispatches_diagnostic_and_never_science(
+    monkeypatch, capsys, status: str, expected_exit: int
+) -> None:
+    checkpoint = Path("outputs/20260917_chen_bogt_complex_ols_v1/runs/attempt_01/scientific_step_000100.pt")
+    output = Path("outputs/20261003_engineering_governance/runs/diagnostic-only_step000100")
+    monkeypatch.setattr(sys, "argv", ["bogt_executor", "--production-preflight", "--checkpoint", str(checkpoint), "--output-dir", str(output)])
+    monkeypatch.setattr(
+        executor,
+        "run_production_checkpoint_preflight",
+        lambda **kwargs: {
+            "status": status,
+            "diagnostic_only": True,
+            "scientific_updates": 0,
+            "received": {key: str(value) for key, value in kwargs.items()},
+        },
+    )
+    monkeypatch.setattr(
+        executor,
+        "run_scientific_execution",
+        lambda **_kwargs: pytest.fail("production preflight mode must exit before scientific execution"),
+    )
+
+    assert executor.main() == expected_exit
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == status
+    assert result["diagnostic_only"] is True
+    assert result["scientific_updates"] == 0
+    assert result["received"] == {"checkpoint": str(checkpoint), "output_dir": str(output)}
+
+
+def test_production_preflight_missing_checkpoint_records_engineering_failure_without_science(tmp_path: Path) -> None:
+    target = tmp_path / "outputs" / "20261003_engineering_governance" / "runs" / "diagnostic-only_missing_checkpoint"
+
+    result = executor.run_production_checkpoint_preflight(
+        repo_root=tmp_path,
+        checkpoint="outputs/source/scientific_step_000000.pt",
+        output_dir=target,
+    )
+
+    assert result["status"] == "INVALID_HARNESS"
+    assert result["diagnostic_only"] is True
+    assert result["scientific_updates"] == 0
+    assert result["scientific_attempt_opened"] is False
+    assert json.loads((target / "preflight_report.json").read_text(encoding="utf-8"))["status"] == "INVALID_HARNESS"
+    assert "INVALID_HARNESS" in (target / "preflight_progress.jsonl").read_text(encoding="utf-8")
+
+
+def test_production_preflight_refuses_existing_diagnostic_output_without_overwrite(tmp_path: Path) -> None:
+    target = tmp_path / "outputs" / "20261003_engineering_governance" / "runs" / "diagnostic-only_existing"
+    target.mkdir(parents=True)
+    marker = target / "keep.txt"
+    marker.write_text("existing diagnostic evidence", encoding="utf-8")
+
+    with pytest.raises(executor.RunControlError, match="already exists"):
+        executor.run_production_checkpoint_preflight(
+            repo_root=tmp_path,
+            checkpoint="outputs/source/scientific_step_000000.pt",
+            output_dir=target,
+        )
+
+    assert marker.read_text(encoding="utf-8") == "existing diagnostic evidence"
+
+
+def test_cpu_engineering_preflight_exercises_and_fully_restores_three_step_trial() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+
+    result = executor.run_engineering_preflight(repo_root=repo_root)
+
+    correctness = result["preflight_receipt"]["checks"]["CORRECTNESS_INVARIANTS"]
+    assert result["preflight_status"] == "READY"
+    assert result["scientific_updates"] == 0
+    assert correctness["passed"] is True
+    assert correctness["three_real_updates"] == 3
+    assert correctness["checkpoint_model_state_equivalent"] is True
+    assert correctness["checkpoint_optimizer_state_equivalent"] is True
+    assert correctness["checkpoint_sampler_state_equivalent"] is True
+    assert correctness["checkpoint_loss_trace_equivalent"] is True
+    assert correctness["loaded_model_optimizer_rng_sampler_restored"] is True
 
 
 def _images() -> torch.Tensor:
@@ -409,6 +723,155 @@ def _sampler() -> chen.DeterministicTrainRoleSampler:
         torch.arange(chen.TRAIN_COUNT, dtype=torch.long),
         torch.arange(60_000, dtype=torch.long).remainder(10),
     )
+
+
+@pytest.mark.parametrize("failure_mode", ["none", "frozen_violation", "midpoint_reload"])
+@pytest.mark.parametrize("completed_updates", [1, 2])
+def test_shared_preflight_continues_loaded_state_and_restores_after_success_or_failure(
+    monkeypatch, failure_mode: str, completed_updates: int
+) -> None:
+    consumer, _references, _weights, images, ledger = _prepared_consumer()
+    optimizer = consumer.create_optimizer()
+    sampler = _sampler()
+    for _ in range(completed_updates):
+        sampler.next_batch()
+    first_update = consumer.bogt_training_step(images, optimizer, global_step=0, data_role=chen.SYNTHETIC_ROLE)
+    for state in optimizer.state.values():
+        state["step"].fill_(completed_updates)
+    model_before = {name: value.detach().clone() for name, value in consumer.runtime.state_dict().items()}
+    gradients_before = {
+        name: None if parameter.grad is None else parameter.grad.detach().clone()
+        for name, parameter in consumer.runtime.named_parameters()
+    }
+    optimizer_before = copy.deepcopy(optimizer.state_dict())
+    sampler_before = copy.deepcopy(sampler.state_dict())
+    rng_before = executor._rng_snapshot()
+    real_step = optimizer.step
+    states_seen = []
+    batches_seen = []
+    global_steps_seen = []
+    real_training_step = consumer.bogt_training_step
+
+    def capture_training_step(batch, *args, **kwargs):
+        batches_seen.append(batch.detach().clone())
+        global_steps_seen.append(kwargs["global_step"])
+        return real_training_step(batch, *args, **kwargs)
+
+    def step_with_optional_frozen_violation(*args, **kwargs):
+        states_seen.append(copy.deepcopy(optimizer.state_dict()))
+        result = real_step(*args, **kwargs)
+        if failure_mode == "frozen_violation":
+            with torch.no_grad():
+                next(consumer.runtime.buffers()).add_(1)
+        return result
+
+    monkeypatch.setattr(optimizer, "step", step_with_optional_frozen_violation)
+    monkeypatch.setattr(consumer, "bogt_training_step", capture_training_step)
+    if failure_mode == "midpoint_reload":
+        real_load_checkpoint = executor.load_checkpoint
+
+        def fail_midpoint_reload(path, *args, **kwargs):
+            if Path(path).name == "after_first_update.pt":
+                raise chen.TrainingContractError("injected midpoint reload failure")
+            return real_load_checkpoint(path, *args, **kwargs)
+
+        monkeypatch.setattr(executor, "load_checkpoint", fail_midpoint_reload)
+    identity = executor.ResearchRunIdentity(
+        task_id="isolated-preflight-test", run_id="unit", trajectory_id="unit",
+        semantic_authority_id="unit", data_role=chen.SYNTHETIC_ROLE,
+        config_identity={"grid": 128}, model_identity="bogt", optimizer_identity="Adam",
+        sampler_identity={"seed": chen.SCHEDULE_SEED},
+    )
+    arguments = dict(
+        consumer=consumer, optimizer=optimizer, sampler=sampler,
+        images=images.repeat(6_000, 1, 1, 1),
+        labels=torch.arange(60_000, dtype=torch.long).remainder(10),
+        train_indices=torch.arange(55_000, dtype=torch.long),
+        run_identity=identity, source_manifest={}, authorization_id="unit",
+        data_role=chen.SYNTHETIC_ROLE, engineering_only=True,
+        completed_updates=completed_updates,
+        training_history=[first_update.metrics()] * completed_updates,
+        ledger=ledger,
+    )
+    if failure_mode != "none":
+        message = "frozen runtime state changed" if failure_mode == "frozen_violation" else "injected midpoint reload failure"
+        with pytest.raises(chen.TrainingContractError, match=message) as error:
+            executor._run_isolated_preflight_trial(**arguments)
+        restoration = getattr(error.value, "production_preflight_restoration")
+        assert restoration["verified"] is True
+    else:
+        result = executor._run_isolated_preflight_trial(**arguments)
+        assert result["checks"]["passed"] is True
+        assert result["checks"]["three_real_updates"] == 3
+        assert result["checks"]["checkpoint_rng_state_equivalent"] is True
+        assert result["loaded_completed_updates"] == completed_updates
+        assert result["trial_completed_updates"] == completed_updates + 3
+        assert result["optimizer_global_step_indices"] == list(range(completed_updates, completed_updates + 3))
+        assert result["completed_update_steps"] == list(range(completed_updates + 1, completed_updates + 4))
+        assert result["sampler_cursor_start"] == completed_updates
+        assert result["sampler_cursor_end"] == completed_updates + 3
+        assert result["restoration"]["verified"] is True
+        assert result["checks"]["checkpoint_step_sampler_adam_history_consistent"] is True
+        assert global_steps_seen == [
+            *range(completed_updates, completed_updates + 3),
+            *range(completed_updates + 1, completed_updates + 3),
+        ]
+        assert executor._tree_close(batches_seen[1:3], batches_seen[3:5])
+
+    expected_trial = _sampler()
+    expected_trial.load_state_dict(sampler_before)
+    expected_indices, _ = expected_trial.next_batch()
+    if failure_mode == "none":
+        assert result["first_sampler_batch_indices"] == expected_indices.tolist()
+    assert torch.equal(
+        batches_seen[0], arguments["images"].index_select(0, expected_indices)
+    )
+
+    assert executor._tree_close(states_seen[0], optimizer_before)
+    assert executor._tree_close(model_before, consumer.runtime.state_dict())
+    gradients_after = {
+        name: None if parameter.grad is None else parameter.grad.detach().clone()
+        for name, parameter in consumer.runtime.named_parameters()
+    }
+    assert executor._tree_close(gradients_before, gradients_after)
+    assert executor._tree_close(optimizer_before, optimizer.state_dict())
+    assert executor._tree_close(sampler_before, sampler.state_dict())
+    assert executor._tree_close(rng_before, executor._rng_snapshot())
+    expected_next = _sampler()
+    expected_next.load_state_dict(sampler_before)
+    assert executor._tree_close(sampler.next_batch(), expected_next.next_batch())
+
+
+@pytest.mark.parametrize("corruption", ["adam_step", "adam_moment", "sampler_cursor"])
+def test_shared_preflight_rejects_invalid_loaded_state_before_updates(monkeypatch, corruption: str) -> None:
+    consumer, _references, _weights, images, ledger = _prepared_consumer()
+    optimizer = consumer.create_optimizer()
+    sampler = _sampler()
+    sampler.next_batch()
+    first = consumer.bogt_training_step(images, optimizer, global_step=0, data_role=chen.SYNTHETIC_ROLE)
+    state = next(iter(optimizer.state.values()))
+    if corruption == "adam_step":
+        state["step"].add_(1)
+    elif corruption == "adam_moment":
+        state["exp_avg"].flatten()[0] = float("nan")
+    else:
+        sampler.next_batch()
+    monkeypatch.setattr(consumer, "bogt_training_step", lambda *_args, **_kwargs: pytest.fail("invalid checkpoint must not reach an update"))
+    identity = executor.ResearchRunIdentity(
+        task_id="loaded-state-test", run_id="unit", trajectory_id="unit",
+        semantic_authority_id="unit", data_role=chen.SYNTHETIC_ROLE,
+        config_identity={"grid": 128}, model_identity="bogt", optimizer_identity="Adam",
+        sampler_identity={"seed": chen.SCHEDULE_SEED},
+    )
+    with pytest.raises(chen.TrainingContractError, match="loaded checkpoint"):
+        executor._run_isolated_preflight_trial(
+            consumer=consumer, optimizer=optimizer, sampler=sampler,
+            images=images, labels=torch.arange(60_000, dtype=torch.long).remainder(10),
+            train_indices=torch.arange(55_000, dtype=torch.long),
+            run_identity=identity, source_manifest={}, authorization_id="unit",
+            data_role=chen.SYNTHETIC_ROLE, engineering_only=True,
+            completed_updates=1, training_history=[first.metrics()], ledger=ledger,
+        )
 
 
 def test_checkpoint_resume_matches_uninterrupted_engineering_trajectory() -> None:

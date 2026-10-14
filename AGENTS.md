@@ -21,8 +21,17 @@ and repair-quota rules in scoped contracts, plans, and documentation.
   production path without imposing a retry quota or requesting another token.
 - Retain numerical validity, evaluator isolation, frozen/update scope, actual
   hardware safety, checkpoint recovery, and protection of existing artifacts.
+- GPU memory readings are observations, not fixed free-memory or utilization
+  quotas. Verify that the representative production preflight completes; actual
+  CUDA unavailability or allocation failure is an engineering error.
 - Keep plans short: question, inputs, action, final measurement, and stop point.
   This policy does not authorize new scientific updates or successor experiments.
+- Reserve human review for decision-changing milestones such as adopting a model,
+  validating sampled generation, physical deployment, or formal readability
+  acceptance. Routine engineering fixes, local diagnostics, and intermediate
+  training points do not trigger review by default; each important review must
+  set its sample size and decision use in advance rather than inheriting a prior
+  large review package.
 
 ## 1. Scope Router
 
@@ -58,13 +67,37 @@ This explicit routing is required when Codex starts at the repository root, beca
    substantive loss or rejected decision, do not modify the repository.
    If verification is unavailable, report the blocker and lost guarantee; never
    silently downgrade the result.
-7. Plan-driven or cross-product work follows the existing
+7. Before finalizing a plan or writing consequential code, verify the quantity
+   and its consumer against the production path. Ask: What exact quantity is
+   being measured? Does its implementation include every term in the definition?
+   What independent counterexample could falsify it? Does the final decision
+   consume the verified production result? For numerical or gradient claims,
+   check values, derivatives, and decision signs separately; use an analytic,
+   finite-difference, or otherwise independent reference rather than a copy of
+   the implementation. Regression tests must exercise the production producer
+   through the decision that consumes its output; tests of hand-supplied values
+   alone do not establish measurement validity. A check marked `checked`,
+   `passed`, or `READY` must come from an executed check, and the readiness
+   consumer must require that result. Prove that a regression fails against the
+   faulty behavior and passes after the fix, then run a representative
+   production preflight before the full measurement. Scale checks to the risk;
+   do not add a generic framework, extra scientific gate, digest lock, or
+   unrelated reruns.
+8. Plan-driven or cross-product work follows the existing
    [Delta + One Gate + Short Codex Prompt](docs/operations/delta_one_gate_short_prompt.md):
    keep one scientific decision, verify the required inputs, run the relevant
    preflight without an elapsed-time cap, execute only the named action, and
    return acceptance or stop results. Its documentation write-set rule is mandatory: machine evidence
    does not by itself authorize edits to every memory/status entry. This is
    provenance control, not a second scientific gate.
+   Research plans must explain how each possible result changes the decision.
+   Research and plan-driven engineering closeout reports must use that guide's
+   fixed five-part feedback order and explicitly state scientific learning,
+   the remaining goal gap, and the boundary between advice and authorization.
+   Recheck the relevant guide sections when preparing a plan or closeout,
+   including changes made during an ongoing conversation; before delivery,
+   verify the report's meaning against the evidence, not just file/test checks.
+   Brief factual answers and routine progress updates do not require this format.
 
 ### Turn Opening Compliance
 
@@ -181,10 +214,10 @@ formal acceptance.
 
 ## Windows-native migration operating rules
 
-Use `D:\codex-original` and `D:\ANACONDA\envs\optical-generative-models-win` for
-development, tests, training and Git. Do not use bare `python`/`pytest` or the
-legacy environment; runtime code remains path-portable. PATH setup, migration and
-historical-test details live in [Windows-native migration](docs/migration_windows_native_20260830.md).
+Use the supported Windows-native environment for development, tests, training
+and Git; runtime code remains path-portable. Exact setup, lock installation,
+verification commands, and migration details live in [Windows development](docs/operations/windows_development.md)
+and [Windows-native migration](docs/migration_windows_native_20260830.md).
 
 `outputs/` combines Windows runs with restored historical views. Restore membership
 and Linux-to-Windows mappings come only from
@@ -192,18 +225,37 @@ and Linux-to-Windows mappings come only from
 Restored entries, metadata, indexes and external archives are immutable and never
 auto-resolved as current artifacts; `version_index` is provenance only. New runs
 need a distinct non-restored child path; see [output_artifact_notes.md](docs/operations/output_artifact_notes.md).
+The AutoDL Remote-SSH, `screen`, status, and explicit-result-backup workflow is documented in [AutoDL workflow](docs/operations/autodl_workflow.md).
 
-Ubuntu WSL is unavailable and `docker-desktop` is not the runtime. Keep the D:
-safety floor, keep `docs/CURRENT_STATUS.md` current, and change the migration
-record only for migration, environment, restore or bridge events.
+### Fixed cloud execution and Codex network permissions (2026-10-14)
+
+- The user has selected `autodl-monthly` as the execution host for subsequent
+  training and long numerical validation. Windows remains the source, preparation,
+  review and backup authority. This overrides the Windows-local training default
+  above; each scientific run still needs its authorized scope and valid preflight.
+- In Codex, run authorized AutoDL SSH/SCP operations, including `autodl_run.ps1`
+  and `autodl_pull.ps1`, with `exec_command.sandbox_permissions=require_escalated`.
+  On this host, the identical environment check failed with SSH DNS error 255
+  inside the restricted sandbox and succeeded outside it on 2026-10-14.
+- A sandbox DNS/proxy error is not evidence of a cloud-server DNS failure or a
+  missing server. Verify the same read-only operation outside the sandbox before
+  asking the user to repair SSH/DNS or supply another endpoint. Do not change DNS,
+  SSH host keys, credentials or provider endpoint to work around sandbox isolation.
+- Existing user authorization for the named cloud task carries through routine
+  connection checks, screen execution and exact-file transfers. If automatic
+  approval review rejects external execution, report that rejection distinctly;
+  do not mislabel it as server/network failure or silently execute locally.
+
+Keep `docs/CURRENT_STATUS.md` current, preserve the D: safety floor, and change
+the migration record only for migration, environment, restore or bridge events.
 
 ## Codex history and project memory operating rules
 
 Before a cross-product task, read `docs/PROJECT_MEMORY.md`; local Git, source and
-evidence outrank Sources. WSL history immutability, snapshot-first migration and
-old-path handling live in [codex_history_migration.md](docs/codex_history_migration.md)
-and [Windows-native migration](docs/migration_windows_native_20260830.md); old WSL
-paths are never current roots, and the archive/SQLite must not be edited.
+evidence outrank Sources. Historical WSL paths are never current roots, and the
+archive/SQLite must not be edited. Snapshot-first migration and old-path handling
+live in [Codex history migration](docs/codex_history_migration.md) and
+[Windows-native migration](docs/migration_windows_native_20260830.md).
 
 Bridge refresh/status and the controlled six-file Sources contract live in
 [chatgpt_codex_workflow.md](docs/chatgpt_codex_workflow.md). Cloud and local projects

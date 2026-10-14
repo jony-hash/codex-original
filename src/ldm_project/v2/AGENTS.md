@@ -20,3 +20,13 @@ optical-generation runtime.
 - `student train`, `sample`, and `evaluate` remain public generic commands, but
   architecture dispatch must reject missing context before creating an
   optimizer or run artifact.
+
+## Shared Research Lifecycle
+
+`application/research/shared/research_run_control.py` is research execution
+governance, not part of formal v2 inference. Scientific producers must provide
+a task-authorized READY receipt with explicit passing correctness, resource,
+and implementation groups; execution and resume use the same receipt through
+`open_scientific_attempt`. Do not restore the no-receipt
+`begin_scientific_attempt` path. Source digests and Git state remain provenance
+under the root policy, not admission or resume locks.

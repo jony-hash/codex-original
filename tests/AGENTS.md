@@ -10,22 +10,16 @@ once for shared or cross-package changes. Tests should validate actual inputs,
 model/config/step/optimizer state, data roles, frozen groups, and saved payloads;
 do not require source-digest or dirty-patch equality.
 
-In Windows-native work, use the project environment and keep pytest temporary
-files outside the checkout. Use a dedicated child directory because pytest
-clears the selected `--basetemp` directory at startup:
+Shared research lifecycle tests must cover a valid receipt and representative
+rejections for missing credentials, failed check groups, inconsistent engine
+selection, and terminal restart. Architecture boundary tests scan the canonical
+v1/v2 source trees, resolve absolute and relative imports, and fail if a required
+scan root is missing or empty.
 
-```powershell
-$envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
-$env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
-$py = Join-Path $envRoot 'python.exe'
-$testTemp = Join-Path $env:USERPROFILE 'Documents\Codex\codex-original-history-context\pytest-run'
-New-Item -ItemType Directory -Path $testTemp -Force | Out-Null
-& $py -m pytest <focused-tests> --basetemp $testTemp
-& $py -m compileall -q src tests scripts train.py
-& (Join-Path $envRoot 'Scripts\ruff.exe') check <changed-python-files>
-git diff --check
-& $py -m pytest -q --basetemp $testTemp
-```
+Use the supported Windows interpreter, and put pytest `--basetemp` outside the
+checkout. Installation, minimum CPU checks, focused Ruff rules, and full-suite
+commands are maintained in
+[`docs/operations/windows_development.md`](../docs/operations/windows_development.md).
 
 A CPU smoke verifies software behavior only; it does not replace hardware or
 scientific acceptance.

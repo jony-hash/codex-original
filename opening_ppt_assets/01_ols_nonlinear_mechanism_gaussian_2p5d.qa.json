@@ -1,0 +1,70 @@
+{
+  "scientific_status": "TARGET conceptual mechanism; Gaussian alpha is a schematic, not experimental or phase-resolved simulation data",
+  "hybrid_authoring": "editable SVG devices plus embedded, numerically generated constant-color RGBA fields",
+  "field_generation": "sum of smooth Gaussian-like envelopes; no polygons, particles, random noise, or wavefront grids",
+  "counts": {
+    "cores": 100,
+    "representative_modes": 6,
+    "pre_wavefronts": 0,
+    "post_wavefronts": 0
+  },
+  "pre_field": {
+    "constant_rgb_alpha_only": true,
+    "noise_particle_or_texture_generation": false,
+    "outer_top_bottom_alpha_max": 0,
+    "all_raster_edge_alpha_max": 0,
+    "alpha_max": 93,
+    "numerically_generated": true
+  },
+  "post_field": {
+    "constant_rgb_alpha_only": true,
+    "noise_particle_or_texture_generation": false,
+    "outer_top_bottom_alpha_max": 0,
+    "all_raster_edge_alpha_max": 0,
+    "alpha_max": 95,
+    "numerically_generated": true
+  },
+  "required_groups": [
+    "smf_array",
+    "nonlinear_plane",
+    "D1",
+    "D2",
+    "detector",
+    "gaussian_field_pre_nonlinear",
+    "gaussian_field_post_nonlinear"
+  ],
+  "legacy_skill_validator": "not applicable: user explicitly permits numerical raster fields and generic material; no false Te tag",
+  "render_and_visual_review": {
+    "status": "PASS",
+    "review": "Full white-background render and 200-percent enlarged SMF-output/overlap detail inspected.",
+    "findings": "Shallow fiber body; six discrete Gaussian outputs progressively overlap; no field polygons, corners, crop edges, dots, wavefront grid, noise, or output data; devices retain a common shallow 2.5D view."
+  },
+  "executed_checks": {
+    "valid_svg_xml": true,
+    "required_independent_groups": true,
+    "exact_100_cores": true,
+    "six_origins_match_real_core_centers": true,
+    "no_visible_text_or_formula": true,
+    "png_5600_by_2000": true,
+    "transparent_png": true,
+    "no_optical_polygon_geometry": true,
+    "field_layers_fade_at_all_raster_edges": true,
+    "field_color_is_not_heatmap": true,
+    "no_sampling_stipple": true
+  },
+  "field_raster_checks": {
+    "gaussian_field_pre_nonlinear": {
+      "no_vector_field_polygons_or_paths": true,
+      "single_constant_rgb_color": true,
+      "all_crop_edges_fully_transparent": true,
+      "no_horizontal_sampling_stipple": true
+    },
+    "gaussian_field_post_nonlinear": {
+      "no_vector_field_polygons_or_paths": true,
+      "single_constant_rgb_color": true,
+      "all_crop_edges_fully_transparent": true,
+      "no_horizontal_sampling_stipple": true
+    }
+  },
+  "all_checks_passed": true
+}

@@ -1174,7 +1174,44 @@ def run_training(*, repo_root: Path | None = None, output_dir: str | Path = DEFA
     target.mkdir(parents=True, exist_ok=False)
     run_identity = _make_identity(source_manifest)
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready(); control.start_execution(); effective_identity = control.begin_scientific_attempt(run_identity.scientific_attempt_id)
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and calibration.get("status") == "READY"
+        and preflight.get("three_step_real_update", {}).get("updates") == 3
+        and preflight.get("stored_step6000_state_restored") is True
+        and preflight.get("sampler_cursor_restored") is True
+        and preflight.get("rng_restored") is True
+        and preflight.get("protected_test_sealed") == {"protected": 0, "test": 0, "sealed": 0}
+    )
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": correctness_passed,
+            "three_real_updates": preflight.get("three_step_real_update", {}).get("updates"),
+            "stored_checkpoint_state_restored": preflight.get("stored_step6000_state_restored"),
+            "optimizer_step_restored": preflight.get("adam_internal_step_at_start"),
+            "sampler_cursor_restored": preflight.get("sampler_cursor_restored"),
+            "rng_restored": preflight.get("rng_restored"),
+            "scale_calibration_directional_sanity": calibration.get("directional_sanity"),
+            "protected_test_sealed": preflight.get("protected_test_sealed"),
+        },
+        resource={
+            "passed": int(total_bytes) > 0 and 0 <= int(free_bytes) <= int(total_bytes),
+            "free_bytes": int(free_bytes),
+            "total_bytes": int(total_bytes),
+        },
+        implementation={
+            "passed": preflight.get("trainable_parameter_names") == ["generator.phase"],
+            "selected_engine": "evaluator_agnostic_structural_alignment_cuda_generator_phase",
+            "trainable_parameter_names": preflight.get("trainable_parameter_names"),
+            "structural_dimension": STRUCTURAL_DIMENSION,
+        },
+        selected_engine="evaluator_agnostic_structural_alignment_cuda_generator_phase",
+        resource_envelope={"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)},
+    )
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    effective_identity = control.open_scientific_attempt(target, run_identity.scientific_attempt_id, receipt, resume=True)
     _write_json(target / "source_manifest.json", source_manifest, kind="structural alignment source manifest")
     _write_torch(target / "surrogate_normalization.pt", {"schema": "evaluator_agnostic_structural_alignment_surrogate_normalization.v1", "mean": surrogate_mean, "scale": surrogate_scale, "train_only": True, "source_sha256": TRAINING_SOURCE_SHA256}, kind="TRAIN-only structural surrogate normalization")
     _write_json(target / "preflight.json", {**preflight, "scale_calibration": calibration}, kind="structural alignment preflight")

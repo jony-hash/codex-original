@@ -1,0 +1,29 @@
+schema: physical_reachability_convergence_v2.diagnostic
+status: synthetic_diagnostic_only
+reference_config: configs/reference/lightgen_power_proxy.yaml
+camera_gain_w_inverse: 160449288.76173845
+camera_gain_status: simulation_calibration_parameter_not_experimental_camera_calibration
+camera_gain_calibration:
+  source: outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_05/camera_gain_preflight.json
+  baseline: A0
+  physical_chain: A1_same_compact_geometry
+  synthetic_calibration_subset:
+    - uniform
+    - vertical_bar
+  independent_validation_subset:
+    - diagonal
+    - center_disk
+  refit_on_validation: false
+  fit_objective: one_scalar_least_squares_after_clip_0_1_on_physical_W_per_pixel
+diagnostics:
+  propagation_grid_size: 2048
+  single_target_optimization_steps: 8
+  full_array_optimization_steps: 12
+  random_target_seed: 20261013
+scope:
+  training: forbidden
+  task_evaluator: forbidden
+  training_dataset_reads: forbidden
+  loss_changes: forbidden
+  optical_geometry_changes: forbidden
+  device: cpu

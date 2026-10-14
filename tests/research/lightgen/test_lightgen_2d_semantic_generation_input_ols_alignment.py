@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import inspect
 
+import numpy as np
 import pytest
 import torch
 
 from ldm_project.v2.contracts import ComplexField, OperationProvenance, PlaneSpec
-from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import ComplexOLSState, LightGen2DAlignmentRuntimeConfig, LightGen2DSemanticGenerationInputOLSAlignment, ROW_MAJOR_PORT_ORDER
+from ldm_project.v2.application.research.lightgen.gaussian_fiber_baseline import GaussianFiberGeometry
+from ldm_project.v2.application.research.lightgen.lightgen_2d_semantic_generation_input_ols_alignment import GAUSSIAN_OLS_MODEL, LP01_OLS_MODEL, ComplexOLSState, LightGen2DAlignmentRuntimeConfig, LightGen2DSemanticGenerationInputOLSAlignment, ROW_MAJOR_PORT_ORDER
 
 
 def _runtime() -> LightGen2DSemanticGenerationInputOLSAlignment:
@@ -143,3 +145,68 @@ def test_writer_rejects_incompatible_generator_plane_and_nonfinite_state() -> No
         ComplexOLSState.from_external(
             torch.full((1, 100), complex(float("nan"), 0.0), dtype=torch.complex64)
         )
+
+
+def test_gaussian_runtime_projects_real_encoder_and_uses_the_same_writer() -> None:
+    runtime = LightGen2DSemanticGenerationInputOLSAlignment(
+        LightGen2DAlignmentRuntimeConfig(propagation_grid_size=128, ols_model=GAUSSIAN_OLS_MODEL)
+    ).eval()
+    geometry = runtime.ols.mode_identity()
+    image = torch.linspace(0.05, 0.95, 28 * 28, dtype=torch.float32).reshape(1, 1, 28, 28)
+
+    result = runtime.forward_from_image(image)
+    direct_state = ComplexOLSState.from_external(
+        result.z_ols.coefficients,
+        basis_id=GAUSSIAN_OLS_MODEL,
+        mode_geometry=geometry,
+    )
+    direct = runtime.forward_from_ols(direct_state)
+
+    assert runtime.config.ols_model == GAUSSIAN_OLS_MODEL
+    assert geometry["parameter_status"] == "PROJECT_GEOMETRY_UNMEASURED"
+    assert geometry["wavelength_m"] == 532.0e-9
+    assert geometry["plane_shape"] == [100, 100]
+    assert geometry["pixel_pitch_m"] == [2.0e-6, 2.0e-6]
+    np.testing.assert_allclose(geometry["fov_m"], [200.0e-6, 200.0e-6], rtol=0.0, atol=1.0e-18)
+    assert geometry["port_center_pitch_m"] == GaussianFiberGeometry().port_pitch_m
+    assert geometry["gaussian_field_1e_radius_m"] == GaussianFiberGeometry().waist_m
+    assert result.z_ols.basis_id == GAUSSIAN_OLS_MODEL
+    assert result.z_ols.mode_geometry == geometry
+    assert result.ols_input_field is not None
+    assert torch.equal(result.generator_input_field.tensor, direct.generator_input_field.tensor)
+
+    plane = result.ols_input_field.plane
+    y = (np.arange(plane.shape[0]) + 0.5) * plane.pixel_pitch_m[0] - plane.fov_m[0] / 2.0
+    x = (np.arange(plane.shape[1]) + 0.5) * plane.pixel_pitch_m[1] - plane.fov_m[1] / 2.0
+    centers = (np.arange(10) - 4.5) * GaussianFiberGeometry().port_pitch_m
+    cy, cx = np.meshgrid(centers, centers, indexing="ij")
+    radius = (y[None, :, None] - cy.reshape(-1, 1, 1)) ** 2 + (x[None, None, :] - cx.reshape(-1, 1, 1)) ** 2
+    modes = np.sqrt(2.0 / np.pi) / GaussianFiberGeometry().waist_m * np.exp(-radius / GaussianFiberGeometry().waist_m**2)
+    source = result.ols_input_field.tensor.detach().cpu().numpy()[:, 0]
+    independent_coefficients = np.einsum("mhw,bhw->bm", modes.conj(), source) * np.prod(plane.pixel_pitch_m)
+    np.testing.assert_allclose(
+        result.z_ols.coefficients.detach().cpu().numpy(), independent_coefficients, rtol=1.0e-5, atol=1.0e-5
+    )
+    independent_emission = np.einsum("bm,mhw->bhw", independent_coefficients, modes)
+    np.testing.assert_allclose(
+        result.generator_input_field.tensor.detach().cpu().numpy()[:, 0],
+        independent_emission,
+        rtol=1.0e-5,
+        atol=1.0e-5,
+    )
+
+    with pytest.raises(ValueError, match="explicit basis and geometry"):
+        runtime.forward_from_ols(result.z_ols.coefficients)
+    with pytest.raises(ValueError, match="cannot be used"):
+        runtime.forward_from_ols(ComplexOLSState.from_external(result.z_ols.coefficients, basis_id=LP01_OLS_MODEL))
+    wrong_geometry = dict(geometry, gaussian_field_1e_radius_m=geometry["gaussian_field_1e_radius_m"] * 1.1)
+    with pytest.raises(ValueError, match="selected mode geometry"):
+        runtime.forward_from_ols(
+            ComplexOLSState.from_external(
+                result.z_ols.coefficients,
+                basis_id=GAUSSIAN_OLS_MODEL,
+                mode_geometry=wrong_geometry,
+            )
+        )
+    with pytest.raises(ValueError, match="requires explicit mode geometry"):
+        ComplexOLSState.from_external(result.z_ols.coefficients, basis_id=GAUSSIAN_OLS_MODEL)

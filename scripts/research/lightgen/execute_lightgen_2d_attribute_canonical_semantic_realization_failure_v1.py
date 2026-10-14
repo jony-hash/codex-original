@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -990,9 +991,23 @@ def run_analysis(*, repo_root: Path | None = None, output_dir: str | Path = DEFA
     scientific_attempt_id = f"{RUN_ID}:{target.name}"
     run_identity = _make_identity(source_manifest, bank, scientific_attempt_id)
     control = ResearchRunControl(run_identity, AUTHORIZATION_ID)
-    control.mark_preflight_ready()
+    cuda_free, cuda_total = torch.cuda.mem_get_info(device)
+    receipt = control.make_ready_receipt(
+        correctness={
+            "passed": bool(preflight.get("status") == "READY" and preflight.get("runtime_state_restored") is True and preflight.get("parameter_updates") == 0 and preflight.get("representative_step0_gradient") is True and preflight.get("protected_test_sealed_zero") is True),
+            "representative_gradient_checked": bool(preflight.get("representative_step0_gradient")),
+            "runtime_state_restored": bool(preflight.get("runtime_state_restored")),
+            "protected_test_sealed_zero": bool(preflight.get("protected_test_sealed_zero")),
+        },
+        resource={"passed": int(cuda_total) > 0 and 0 <= int(cuda_free) <= int(cuda_total), "free_bytes": int(cuda_free), "total_bytes": int(cuda_total), "updates": 0},
+        implementation={"passed": preflight.get("optimizer_created") is False and preflight.get("parameter_updates") == 0, "selected_engine": "read_only_cuda_attribution"},
+        selected_engine="read_only_cuda_attribution",
+        created_at=time.time(),
+    )
+    control.mark_preflight_ready(receipt)
     control.start_execution()
-    effective_identity = control.begin_scientific_attempt(scientific_attempt_id)
+    effective_identity = control.open_scientific_attempt(target, scientific_attempt_id, receipt, resume=True)
+    _write_json(target / "preflight_receipt.json", receipt.to_dict())
 
     bank_payload = {
         "schema": "canonical_semantic_realization_failure_attribution_bank.v1",

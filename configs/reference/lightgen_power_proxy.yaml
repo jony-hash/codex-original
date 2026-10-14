@@ -1,0 +1,60 @@
+schema: lightgen_physical_power_proxy.v1
+status: reference_scenario_not_current_device_measurement
+optics:
+  input_power_w: 0.0002493
+  input_power_source: Chen et al. reported incident coherent power; reference only
+  input_power_scan_w:
+    - 0.0002493
+    - 0.001
+    - 0.01
+    - 0.1
+    - 0.3
+  layer_power_transmission: 0.889
+  layer_power_transmission_status: reference_from_LightGen_not_measured_for_current_device
+  layer_power_transmission_scan:
+    - 1.0
+    - 0.95
+    - 0.889
+    - 0.8
+    - 0.7
+  wavelength_m: 5.32e-7
+  sampling_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  source_profile: uniform_plane_wave_over_declared_SLM_FOV
+fiber:
+  rows: 10
+  columns: 10
+  pitch_m: 0.000125
+  pitch_status: user_requested_reference_geometry_not_measured
+  cladding_diameter_m: 0.000125
+  cladding_status: independent_reference_value_not_tied_to_pitch
+  mfd_m: 1.4222e-5
+  mfd_status: inherited_from_current_LP01_model_not_measured_for_current_fiber
+  length_m: 0.0085
+  attenuation_db_per_km: 0.0
+  attenuation_status: configurable_zero_loss_reference_not_measured
+  mode_model: step_index_lp01_ports
+  transport: identity_100
+material:
+  baseline_model: identity
+  saturable_absorption:
+    T_ns: 0.7
+    Delta_T: 0.2
+    i_sat_w_cm2_scan:
+      - 10.0
+      - 100.0
+      - 1000.0
+      - 10000.0
+      - 100000.0
+      - 1000000.0
+      - 10000000.0
+      - 30000000.0
+      - 520.0
+    benchmark_labels:
+      "520.0": other_wavelength_structure_TaP_conditional_benchmark_not_TaP_at_532nm_measurement
+      "30000000.0": Te_at_532nm_high_threshold_literature_reference_scenario_not_current_evaporated_film_parameter
+    material_parameter_status: generic_sweep_only_not_current_device_measurement
+  phase_response: disabled
+output_mode:
+  geometry: existing_compact_100x100_LP01_reemission_basis
+  status: uncalibrated_project_mode_basis_not_a_measured_fiber_output_relay

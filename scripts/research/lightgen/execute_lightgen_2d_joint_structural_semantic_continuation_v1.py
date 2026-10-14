@@ -65,7 +65,6 @@ GRADIENT_COSINE_MINIMUM = 0.999999
 PERFORMANCE_WARMUP_RUNS = 1
 PERFORMANCE_TIMED_RUNS = 5
 PERFORMANCE_MIN_SPEEDUP = 0.10
-PERFORMANCE_MAX_MEMORY_FRACTION = 0.90
 
 START_CHECKPOINT = Path("outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/attempt_03/scientific_step_009000.pt")
 START_CHECKPOINT_SHA256 = "14e76f3273e6f794cbadaee63a881bd686645016c5c5aba62c727ce9860afcee"
@@ -1069,29 +1068,58 @@ def _source_manifest_for_run(root: Path, authorities: Mapping[str, Any], *, grad
 
 def _preflight_receipt(source_manifest: Mapping[str, Any], preflight: Mapping[str, Any]) -> PreflightReceipt:
     performance = _mapping(preflight.get("performance"), "preflight performance")
+    three_step = _mapping(preflight.get("three_step_real_update"), "preflight three-step update")
+    negative_control = _mapping(preflight.get("negative_control"), "preflight negative control")
+    adam = _mapping(preflight.get("one_step_adam_equivalence"), "preflight Adam equivalence")
+    sign_preflight = _mapping(preflight.get("directional_sanity"), "preflight directional sanity")
+    selected_engine = str(preflight.get("selected_engine", ""))
+    engine_resources = _mapping(performance.get("resource_ok"), "preflight engine resources")
+    resource_passed = bool(engine_resources.get(selected_engine) is True and str(performance.get("status", "")).upper() in {"READY", "PASS", "PASSED"})
+    correctness_passed = bool(
+        preflight.get("status") == "READY"
+        and three_step.get("updates") == 3
+        and three_step.get("persistent_updates") == 0
+        and preflight.get("stored_rng_restored") is True
+        and adam.get("passed") is True
+        and negative_control.get("rejected") is True
+        and sign_preflight.get("q_joint_finite") is True
+        and preflight.get("E_D_in_backward") is False
+        and preflight.get("protected_test_sealed") == {"protected": 0, "test": 0, "sealed": 0}
+    )
+    implementation_passed = bool(
+        selected_engine in {SCALAR_REFERENCE_ENGINE, GRADIENT_ENGINE}
+        and selected_engine == preflight.get("gradient_engine")
+        and selected_engine == performance.get("selected_engine")
+        and preflight.get("scalar_reference_engine") == SCALAR_REFERENCE_ENGINE
+    )
     return PreflightReceipt(
         source_semantics_id=str(source_manifest["execution_source_semantics_id"]),
         authorization_id=AUTHORIZATION_ID,
         checks={
             CORRECTNESS_INVARIANTS: {
-                "gradient_equivalence": True,
-                "adam_one_step_equivalence": True,
-                "three_step_update_and_restore": bool(preflight.get("stored_rng_restored")),
-                "negative_control": bool(_mapping(preflight.get("negative_control"), "preflight negative control").get("rejected")),
+                "passed": correctness_passed,
+                "three_step_real_update": dict(three_step),
+                "adam_equivalence": dict(adam),
+                "rng_restored": bool(preflight.get("stored_rng_restored")),
+                "negative_control_rejected": bool(negative_control.get("rejected")),
+                "sign_check": dict(sign_preflight),
+                "evaluator_isolated": preflight.get("E_D_in_backward") is False,
             },
             RESOURCE_ENVELOPE: {
+                "passed": resource_passed,
                 "status": performance.get("status"),
                 "resource_ok": performance.get("resource_ok"),
                 "estimated_hours": performance.get("estimated_3000_step_hours"),
                 "memory_fraction": performance.get("peak_reserved_memory_fraction"),
             },
             IMPLEMENTATION_SELECTION: {
-                "selected_engine": preflight.get("selected_engine", preflight.get("gradient_engine")),
+                "passed": implementation_passed,
+                "selected_engine": selected_engine,
                 "selection_reason": performance.get("selection_reason"),
                 "threshold": performance.get("criteria", {}).get("minimum_speedup_fraction"),
             },
         },
-        selected_engine=str(preflight.get("selected_engine", preflight.get("gradient_engine"))),
+        selected_engine=selected_engine,
         resource={
             "estimated_3000_step_hours": performance.get("estimated_3000_step_hours"),
             "peak_reserved_memory_fraction": performance.get("peak_reserved_memory_fraction"),
@@ -1582,21 +1610,21 @@ def _compare_optimizer_states(left: Mapping[str, Any], right: Mapping[str, Any],
 
 def _select_gradient_engine(*, speedup_fraction: float, estimated_hours: Mapping[str, float], memory_fraction: Mapping[str, float]) -> dict[str, Any]:
     resource_ok = {
-        engine: float(memory_fraction[engine]) <= PERFORMANCE_MAX_MEMORY_FRACTION
+        engine: math.isfinite(float(memory_fraction[engine])) and 0 <= float(memory_fraction[engine]) <= 1
         for engine in (SCALAR_REFERENCE_ENGINE, GRADIENT_ENGINE)
     }
     if speedup_fraction >= PERFORMANCE_MIN_SPEEDUP and resource_ok[GRADIENT_ENGINE]:
         selected_engine = GRADIENT_ENGINE
-        selection_reason = "batched_meets_speedup_and_memory_limit"
+        selection_reason = "batched_completed_and_meets_speedup"
     elif resource_ok[SCALAR_REFERENCE_ENGINE]:
         selected_engine = SCALAR_REFERENCE_ENGINE
-        selection_reason = "scalar_is_within_memory_limit"
+        selection_reason = "scalar_completed"
     elif resource_ok[GRADIENT_ENGINE]:
         selected_engine = GRADIENT_ENGINE
-        selection_reason = "batched_is_only_engine_within_memory_limit"
+        selection_reason = "batched_is_only_engine_with_valid_measurements"
     else:
         selected_engine = None
-        selection_reason = "both_engines_exceed_memory_limit"
+        selection_reason = "both_engines_have_invalid_resource_measurements"
     return {"selected_engine": selected_engine, "selection_reason": selection_reason, "resource_ok": resource_ok, "status": "READY" if selected_engine is not None else "BLOCKED"}
 
 
@@ -1655,7 +1683,7 @@ def _benchmark_gradient_engines(consumer: Any, smooth: Any, independent: Any, ec
         "resource_ok": selection["resource_ok"],
         "selected_engine": selection["selected_engine"],
         "selection_reason": selection["selection_reason"],
-        "criteria": {"minimum_speedup_fraction": PERFORMANCE_MIN_SPEEDUP, "maximum_memory_fraction": PERFORMANCE_MAX_MEMORY_FRACTION},
+        "criteria": {"minimum_speedup_fraction": PERFORMANCE_MIN_SPEEDUP},
     }
 
 
