@@ -21,6 +21,15 @@ optical-generation runtime.
   architecture dispatch must reject missing context before creating an
   optimizer or run artifact.
 
+## Research Namespaces
+
+`application/research/{lightgen,capacity,optical_manifold,scaled_chen}/` are
+research-only, non-promotion namespaces. They may consume formal v2 code but may
+not become part of it: `application/current/` and the formal student modules must
+not import them, enforced by `tests/test_architecture_boundaries.py`. A research
+namespace with no current consumer stays frozen; moving its files out of the
+runtime package is a separate, explicitly authorized change.
+
 ## Shared Research Lifecycle
 
 `application/research/shared/research_run_control.py` is research execution
