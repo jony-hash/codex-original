@@ -17,8 +17,11 @@ v1/v2 source trees, resolve absolute and relative imports, and fail if a require
 scan root is missing or empty.
 
 Use the supported Windows interpreter, and put pytest `--basetemp` outside the
-checkout. Installation, minimum CPU checks, focused Ruff rules, and full-suite
-commands are maintained in
+checkout. The single verification entry is
+`python scripts/run_windows_cpu_checks.py` (focused lane) or
+`python scripts/run_windows_cpu_checks.py --full` (whole `tests/` tree). It runs
+the regression tests, repository-wide Ruff (`E9, F82`), the focused Ruff rules,
+and `compileall`. Installation and environment lock commands are maintained in
 [`docs/operations/windows_development.md`](../docs/operations/windows_development.md).
 
 A CPU smoke verifies software behavior only; it does not replace hardware or

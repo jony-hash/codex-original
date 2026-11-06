@@ -1,4 +1,8 @@
-"""Run the Windows CPU Actions regression, Ruff, and compile checks locally or in CI."""
+"""Run the Windows CPU Actions regression, Ruff, and compile checks locally or in CI.
+
+The default lane runs the focused regression list. Pass ``--full`` to run the
+whole ``tests/`` tree (marker filters in ``pyproject.toml`` still apply).
+"""
 
 from __future__ import annotations
 
@@ -68,19 +72,14 @@ def run(command: list[str]) -> None:
 def main() -> int:
     if not Path(sys.executable).is_file():
         raise SystemExit("the current Python executable is unavailable")
+    full = "--full" in sys.argv[1:]
     runner_temp = os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()
     with tempfile.TemporaryDirectory(prefix="ldm-project-pytest-", dir=runner_temp) as test_temp:
-        run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-q",
-                *PYTEST_PATHS,
-                "--basetemp",
-                test_temp,
-            ]
-        )
+        command = [sys.executable, "-m", "pytest", "-q"]
+        command.extend(["tests"] if full else PYTEST_PATHS)
+        command.extend(["--basetemp", test_temp])
+        run(command)
+    run([sys.executable, "-m", "ruff", "check", "src", "tests", "scripts", "train.py"])
     run([sys.executable, "-m", "ruff", "check", "--select", "E4,E9,F821", *RUFF_PATHS])
     run(
         [
