@@ -26,3 +26,7 @@ and `compileall`. Installation and environment lock commands are maintained in
 
 A CPU smoke verifies software behavior only; it does not replace hardware or
 scientific acceptance.
+
+CI (`.github/workflows/windows-cpu.yml`) runs the focused lane on every push and
+pull request; `--full` is not part of CI. Treat a full-suite result as manually
+attested evidence and record its failures rather than silently fixing them.

@@ -58,10 +58,10 @@
 
 ### 完成
 
-- **G1 当前快照**：新增 [`docs/status/current_snapshot.md`](../status/current_snapshot.md)，固定四段（活跃路线 / 当前停止点 / 允许动作 / 未验证缺口）；`docs/README.md` 首行与 `CURRENT_STATUS.md` 头部改为"先读快照"。
+- **G1 当前快照**：新增 [`docs/status/current_snapshot.md`](../../status/current_snapshot.md)，固定四段（活跃路线 / 当前停止点 / 允许动作 / 未验证缺口）；`docs/README.md` 首行与 `CURRENT_STATUS.md` 头部改为"先读快照"。
 - **G2 产物规则**：`output_artifact_notes.md` 新增顶层布局——`runs/`、`assets/`、`reports/` 都必须挂在日期版本目录下；根 `AGENTS.md` §7 同步一句；现有 16 个非日期顶层目录标记 legacy/frozen，不移动。
-- **G3 路线状态**：新增 [`docs/research/route_status.md`](../research/route_status.md)，六行覆盖 v1、v2、LightGen、scaled_chen、optical_manifold/fiber、capacity；状态只引用现有文档，scaled_chen 标 `UNCONFIRMED`，未擅自下结论。
-- **G4 资产来源**：[`research_assets/README.md`](../../research_assets/README.md) 纳入版本库，列出 14 个 bundle 与归档要求；`.gitignore` 增加 README negation。工作区未检测到 `D:\LDM-Archive`，已写入文档。
+- **G3 路线状态**：新增 [`docs/research/route_status.md`](../../research/route_status.md)，六行覆盖 v1、v2、LightGen、scaled_chen、optical_manifold/fiber、capacity；状态只引用现有文档，scaled_chen 于 2026-11-07 签字为 `REFERENCE_LEGACY`。
+- **G4 资产来源**：[`research_assets/README.md`](../../../research_assets/README.md) 纳入版本库，列出 14 个 bundle 与归档要求；`.gitignore` 增加 README negation。工作区未检测到 `D:\LDM-Archive`，已写入文档。
 - **G5 分支**：`git fetch --prune` 清理失效远端引用（远端分支 37 → 7）；`git_branch_management.md` 新增清理规则——合并分支删除必须经用户授权。
 
 ### 验证
@@ -74,3 +74,19 @@
 - 不移动 `application/research/` 的 115 个文件：175 处 import 且边界测试已隔离，移动收益不抵风险。
 - 不删除任何本地/远端分支，不 push；本地分支仍无 upstream。
 - 12 个空目录壳与 5 个 worktree 保持原状。
+
+## 第三批：收尾闭环（2026-11-07）
+
+### 完成
+
+- **A4 存量 outputs 归并**：14 个非日期目录移入 `outputs/_legacy_2026q3/`（`ppt/`、`reports/`、`topological/`、`smf/`、`migration/`）；顶层非日期项只剩 `final_pt/`、`_wsl_restore_metadata_v4/`、`_legacy_2026q3/`。逐目录计数见 [`legacy_moves.jsonl`](legacy_moves.jsonl)。
+- **A3 路线签字**：`route_status.md` 的 scaled_chen 改为 `REFERENCE_LEGACY`；容量与 fiber 沿用既有 `CLOSED` / `DIAGNOSTIC_ONLY`。
+- **A2 云端交接**：新增 [`full_suite_autodl.md`](../../operations/full_suite_autodl.md)。
+- **A5 archive 断链**：794 条 / 4 文件，只统计不修。
+- **A6 CI 边界**：`tests/AGENTS.md` 写明 CI 只跑 focused。
+- **A1 本地全量**：见 [`full_suite.md`](full_suite.md)。
+
+### 边界
+
+- `final_pt/` 与恢复元数据未动；legacy 容器 frozen，不新增、不扩容。
+- 全量失败只记录，不在本批修复。
