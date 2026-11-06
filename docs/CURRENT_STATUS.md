@@ -1,6 +1,6 @@
 # 当前项目状态
 
-> **本页职责：** 最新科研结论的摘要入口；实现路线见[研究代码地图](research/project_map.md)，当前停止点和允许动作见[当前任务交接](status/current_handoff.md)。
+> **本页职责：** 最新科研结论的摘要入口；一屏摘要见[当前快照](status/current_snapshot.md)，实现路线见[研究代码地图](research/project_map.md)，当前停止点和允许动作见[当前任务交接](status/current_handoff.md)。
 
 更新时间：2026-11-06（补入 HW207 C3.8 数值四分类与 CMOS 光斑路由收尾；独立评估、加工放行与实物映射继续阻断）。
 

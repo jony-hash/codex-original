@@ -1,10 +1,11 @@
 # Documentation index
 
-先读当前状态，再读架构与运行说明；archive 只用于溯源，不能覆盖当前合同。
+先读当前快照，再读状态与架构；archive 只用于溯源，不能覆盖当前合同。
 
 | 任务 | 主文档 |
 | --- | --- |
 | ChatGPT 讨论、项目记忆与 Codex 本地交接 | [Project Memory](PROJECT_MEMORY.md) / [ChatGPT ↔ Codex workflow](operations/chatgpt_codex_workflow.md) / [Delta + One Gate + Short Prompt](operations/delta_one_gate_short_prompt.md) |
+| 当前快照（先读这个） | [Current snapshot](status/current_snapshot.md)：主线、停止点、允许动作、未验证缺口 |
 | 当前科研结论摘要 | [Current Status](CURRENT_STATUS.md)：最新科学结论及其正式报告入口 |
 | 当前停止点、允许动作与交接建议 | [Current Handoff](status/current_handoff.md)：建议不构成执行授权 |
 | OLS-native N3 历史治理状态 | [Research governance state](status/research_governance_state.json) / [Experiment History](status/experiment_history.md) |
@@ -12,6 +13,7 @@
 | v1 架构与最终推理边界 | [v1 single-shot architecture](architecture/v1_single_shot_distillation.md) |
 | 当前 v2 identity 无蒸馏 runtime、evidence 和停止规则 | [v2 runtime](architecture/v2_runtime.md) |
 | LightGen 与其他研究路线的代码、配置、入口、验证和历史导航 | [Research Project Map](research/project_map.md) |
+| 研究路线状态（活跃/诊断/关闭） | [Route status](research/route_status.md)：每条线的消费者与禁止事项 |
 | OLS 窗口/维度/相位与物理功率历史诊断 | [OLS series](research/ols/README.md) |
 | electronic O0 与 synthetic fiber 路线状态 | [Capacity-map hypothesis ledger](status/capacity_map_hypothesis_ledger.md) / [Fiber image-generation status](status/v2_fiber_image_generation_v1.md) / [Corrected fiber OLS status](status/v2_fiber_ols_corrected_status.md) |
 | v2 旧蒸馏、prototype/capacity 与 LightGen 历史 | [archive](archive/)；活动兼容实现仍在显式 `legacy`/`diagnostic` 命名空间 |

@@ -92,7 +92,8 @@ because a script or configuration still exists.
 Placement and linking rules live in [`docs/AGENTS.md`](AGENTS.md).
 
 `PROJECT_MEMORY.md` stores durable navigation, `CURRENT_STATUS.md` stores the
-current high-level state, `status/current_handoff.md` stores the latest delta
+current high-level state, `status/current_snapshot.md` is the one-screen summary
+(read it first), `status/current_handoff.md` stores the latest delta
 and any next allowed planning action (or an explicit stop), and
 `experiment_history.md` stores dated facts. Do not copy full machine hash
 tables into all four files.
