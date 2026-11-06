@@ -46,15 +46,12 @@ tests/research/scaled_chen/test_scaled_chen_output_semantic_evaluator_requalific
 - 其余为 contract 断言与历史 authority 不匹配。
 - **与本次 legacy 归并无关**：失败日志中引用被移动目录（`_legacy_2026q3`、`reports/`、`ppt_*` 等）的次数为 0；引用的是未移动的 dated `outputs/2026*` 路径。
 
-## Harness 缺陷（新发现，未修）
+## Harness 缺陷（已修）
 
 测试跑到 100% 后，`run_windows_cpu_checks.py` 在清理 `tempfile.TemporaryDirectory` 时报
-`OSError: [WinError 145]`（长路径目录非空），脚本以 traceback 结束。后果：
+`OSError: [WinError 145]`（长路径目录非空），脚本以 traceback 结束，退出码不可信。
 
-- 退出码不可靠（本次由外层 shell 吞掉）；
-- 运行结果只存在于日志，脚本没有打印自己的 verdict。
-
-修复方向（下一批，不属本次）：改用短路径 basetemp 或对长路径目录做 `ignore_errors` 清理。
+已修：basetemp 前缀缩短为 `ldm-pytest-`，并加 `ignore_cleanup_errors=True`，清理失败不再覆盖真实退出码。修复后 focused lane 仍为 176 passed / exit 0，且 `C:\TEMP` 无残留 `ldm-pytest-*`。
 
 ## 云端结果（AutoDL）
 

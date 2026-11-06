@@ -76,7 +76,7 @@ Windows 验证、GPT App 历史会话人工验收和恢复点复核完成后，�
   可用；v2 CLI、compileall、Ruff、迁移 verify、folder-bound verify、Sources verify
   通过；默认 pytest 为 `1,028 passed, 12 deselected, 25 subtests passed`。
 - 注销后短 CUDA smoke 完成 2 个 one-shot step 和 epoch 验证，运行目录为
-  `outputs/migration_smoke/20260830_191323_817115_train_windows_native_post_unregister`。
+  `outputs/_legacy_2026q3/migration/migration_smoke/20260830_191323_817115_train_windows_native_post_unregister`。
 - GPT App 项目 `codex-original · Windows` 的主目录、辅助目录和导入会话已由用户人工验收；
   217 个唯一会话、147 条可见主聊天、70 条归档内部线程和 214 条 folder-bound 记录保持不变。
 

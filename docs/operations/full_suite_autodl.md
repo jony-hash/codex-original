@@ -40,3 +40,22 @@ Linux 与 Windows 的路径、字体、内存和部分 torch 行为可能不同�
 - 云端缺 `ruff` 与 `pymupdf`，需先安装；`ldm-project` 的 editable 指向旧树，用 `PYTHONPATH=<worktree>/src` 覆盖。
 - 本次在约 5% 处停滞 20 分钟以上（宿主 load average 约 28，无子进程），已终止。重跑请加外层 `timeout` 看门狗，并在负载低时执行。
 - 详细记录见 [full_suite.md](../governance/20261107/full_suite.md)。
+
+## 环境版本（2026-11-07 实测）
+
+- Python 3.12.3（`/root/miniconda3/bin/python`）
+- pytest 9.0.3
+- ruff 0.17.4（需 `pip install ruff`）
+- pymupdf 2.1（需 `pip install pymupdf`；TE 测试收集阶段依赖）
+- `ldm-project` 为 editable 安装且可能指向旧树；运行时必须用 `PYTHONPATH=<worktree>/src` 覆盖。
+
+## 看门狗命令
+
+```bash
+cd /root/autodl-tmp/fs-ws
+timeout 1800 env PYTHONPATH=/root/autodl-tmp/fs-ws/src \
+  /root/miniconda3/bin/python scripts/run_windows_cpu_checks.py --full \
+  > /root/autodl-tmp/full_suite_<sha>.log 2>&1
+```
+
+`run_windows_cpu_checks.py` 已改为容忍长路径清理失败，不会再因临时目录清理覆盖真实退出码。

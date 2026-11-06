@@ -6,6 +6,8 @@
 文档状态：`STABLE_NAVIGATION`
 本文件是已跟踪的路线索引，不是执行授权或科研结果来源。
 
+> **历史注册表：** 当前路线签字状态见 [route_status](route_status.md)。本文件只保留逐条 experiment/distribution lineage，不再作为状态或授权来源。
+
 > 本文件只整理路线身份、分布对象、目标函数和 claim 边界；不新增科学证据，不改写历史报告，
 > 不授权训练、CUDA、采样、生成、物理验证
 > 或 promotion。当前 latest、blocker、current next action 和执行授权仍以

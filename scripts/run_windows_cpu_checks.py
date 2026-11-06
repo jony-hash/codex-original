@@ -74,7 +74,11 @@ def main() -> int:
         raise SystemExit("the current Python executable is unavailable")
     full = "--full" in sys.argv[1:]
     runner_temp = os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()
-    with tempfile.TemporaryDirectory(prefix="ldm-project-pytest-", dir=runner_temp) as test_temp:
+    # Keep the basetemp name short and tolerate long-path cleanup failures:
+    # a nested test directory can exceed the Windows path limit after the run.
+    with tempfile.TemporaryDirectory(
+        prefix="ldm-pytest-", dir=runner_temp, ignore_cleanup_errors=True
+    ) as test_temp:
         command = [sys.executable, "-m", "pytest", "-q"]
         command.extend(["tests"] if full else PYTEST_PATHS)
         command.extend(["--basetemp", test_temp])

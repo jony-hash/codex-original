@@ -96,3 +96,7 @@
 - 修复 6 处因迁移产生的断链：`wp4/rule_map.md` 3 处（`../operations` → `../../../operations`）、`full_suite.md` 1 处（`../operations` → `../../operations`）、`OPENING_PPT_EVIDENCE_AUDIT.md` 2 处（旧 outputs 路径 → `_legacy_2026q3`）。
 - 复检 93 个非 archive Markdown：仅剩 2 处既有断链——`CURRENT_STATUS.md` 的乱码绝对路径、`ols_gaussian_lp01_model_alignment_v1.md` 指向缺失的 `complex_field_readouts.pt`；均非本次引入。
 - 数字一致性抽查通过：`full_suite.md` 的 16/3525/7 与日志一致；`legacy_moves.jsonl` 合计 9,984 文件 / 1,242 MB；`docs/` 根 5 文件；根 `AGENTS.md` 链接 0 断链。
+
+### 断点处置（2026-11-07）
+
+见 [`breakpoints.md`](breakpoints.md)：本轮修复 4 项（迁移文档路径、历史路线表声明、`--full` 清理退出码、云端环境记录）；3 类阻塞（ACL、已清除证据、归档不可改写）；3 项待所有者决策（`main` 分支、脏 worktree、云端对齐）。
