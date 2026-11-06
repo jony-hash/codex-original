@@ -10,7 +10,19 @@
 - `outputs/YYYYMMDD_<version>/assets/<topic>/`：PPT 图件、示意图等非运行产物；
 - `outputs/YYYYMMDD_<version>/reports/<date>_<topic>/`：汇总报告。
 
-禁止新增非日期的顶层目录。既有非日期目录（`reports/`、`ppt_*`、`topological_*`、`smf_array_*`、`migration_smoke/`）视为 legacy/frozen：保持原位，不移动、不扩容、不再作为新产出的默认位置。
+禁止新增非日期的顶层目录。2026-11-07 起，历史非日期产物统一归并到 `outputs/_legacy_2026q3/`，`outputs/` 顶层只保留 `final_pt/`、`_wsl_restore_metadata_v4/` 与 `_legacy_2026q3/` 三个非日期项。legacy 容器 frozen：不新增、不扩容、不还原回顶层，除非有新授权。
+
+### Legacy 归并映射
+
+| 容器 | 原目录 |
+| --- | --- |
+| `_legacy_2026q3/ppt/` | `ppt_chart_assets_v1`、`ppt_confusion_annotation_v1`、`ppt_data_cards_v1`、`ppt_page12_mechanism_localization_v1`、`ppt_page6_definition_cards_v1`、`ppt_page6_design_v1`、`ppt_page7_2x2_svg_v1`、`ppt_slide04_material_candidates_field_variants_v1`、`ppt_slide04_material_candidates_v1` |
+| `_legacy_2026q3/reports/` | `reports`（历史 output 版本清理报告） |
+| `_legacy_2026q3/topological/` | `topological_material_effect_target_v1`、`topological_material_smf_concept_v1` |
+| `_legacy_2026q3/smf/` | `smf_array_composite_device_v1` |
+| `_legacy_2026q3/migration/` | `migration_smoke` |
+
+逐目录的文件数与字节数记录在 [`docs/governance/20261107/legacy_moves.jsonl`](../governance/20261107/legacy_moves.jsonl)；历史文档中的旧路径只作 provenance，不再解析。
 
 ## Research asset links
 

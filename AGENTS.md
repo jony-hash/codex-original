@@ -123,7 +123,8 @@ New runs: `outputs/YYYYMMDD_<version>/runs/...`; pre-acceptance runs are
 `diagnostic-only`; promotion needs a named consumer
 ([output_artifact_notes.md](docs/operations/output_artifact_notes.md)). Non-run output
 (assets, reports) stays under the same dated version directory; no new non-dated
-top-level output directories. Restore
+top-level output directories. Legacy non-dated roots live only under
+`outputs/_legacy_2026q3/` and stay frozen. Restore
 membership comes only from `outputs/_wsl_restore_metadata_v4/`; restored entries are
 immutable and never auto-resolved.
 
