@@ -7,6 +7,7 @@ whole ``tests/`` tree (marker filters in ``pyproject.toml`` still apply).
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,10 @@ def main() -> int:
         command.extend(["tests"] if full else PYTEST_PATHS)
         command.extend(["--basetemp", test_temp])
         run(command)
+    # Best effort: when Windows cannot remove a nested path above MAX_PATH the
+    # context manager leaves the tree behind; retry once with the long-path prefix.
+    if os.path.isdir(test_temp):
+        shutil.rmtree("\\\\?\\" + test_temp, ignore_errors=True)
     run([sys.executable, "-m", "ruff", "check", "src", "tests", "scripts", "train.py"])
     run([sys.executable, "-m", "ruff", "check", "--select", "E4,E9,F821", *RUFF_PATHS])
     run(

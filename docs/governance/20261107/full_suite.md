@@ -51,7 +51,9 @@ tests/research/scaled_chen/test_scaled_chen_output_semantic_evaluator_requalific
 测试跑到 100% 后，`run_windows_cpu_checks.py` 在清理 `tempfile.TemporaryDirectory` 时报
 `OSError: [WinError 145]`（长路径目录非空），脚本以 traceback 结束，退出码不可信。
 
-已修：basetemp 前缀缩短为 `ldm-pytest-`，并加 `ignore_cleanup_errors=True`，清理失败不再覆盖真实退出码。修复后 focused lane 仍为 176 passed / exit 0，且 `C:\TEMP` 无残留 `ldm-pytest-*`。
+已修：basetemp 前缀缩短为 `ldm-pytest-`，加 `ignore_cleanup_errors=True`，并在上下文结束后用 `\\?\` 前缀做一次 best-effort 删除，避免残留。
+
+验证：重跑 `--full` 用时 781.97s，结果与首次一致（16 failed / 3525 passed / 7 errors），日志无 traceback，退出码不再被清理异常覆盖；focused lane 仍为 176 passed / exit 0；残留的 `ldm-pytest-*` 目录已用同一 `\\?\` 删除路径清除，当前计数为 0。
 
 ## 云端结果（AutoDL）
 
