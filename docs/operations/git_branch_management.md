@@ -46,6 +46,13 @@ git log --oneline --decorate -20
 正式 v2 evidence 仍受 clean-ancestor、scoped Git diff、配置、split、checkpoint 和 artifact
 内容绑定约束；分支发布本身不构成科学验收。
 
+## 清理规则
+
+- `git fetch --prune` 只清理本地对已删除远端 ref 的引用，可直接执行。
+- 已合并的 `research/*`、`experiment/*` 分支只在用户明确授权后删除；不按日期或数量自动清理。
+- 未合并分支、`archive/*` tag 和 `rewrite/v2` 基线不删除。
+- 删除前记录分支名、最后 commit、是否已合并和对应证据路径。
+
 ## v1 与 v2 边界
 
 v1 继续由 `train.py --stage` 驱动；v2 由 `python -m ldm_project.v2` 驱动。两者可共享

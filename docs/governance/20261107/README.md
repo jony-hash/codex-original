@@ -53,3 +53,24 @@
 - `wp1/deleted_dirs.jsonl`
 - `wp4/rule_map.md`
 - `docs/research/ols/README.md`（索引）
+
+## 第二批：结构层（2026-11-07）
+
+### 完成
+
+- **G1 当前快照**：新增 [`docs/status/current_snapshot.md`](../status/current_snapshot.md)，固定四段（活跃路线 / 当前停止点 / 允许动作 / 未验证缺口）；`docs/README.md` 首行与 `CURRENT_STATUS.md` 头部改为"先读快照"。
+- **G2 产物规则**：`output_artifact_notes.md` 新增顶层布局——`runs/`、`assets/`、`reports/` 都必须挂在日期版本目录下；根 `AGENTS.md` §7 同步一句；现有 16 个非日期顶层目录标记 legacy/frozen，不移动。
+- **G3 路线状态**：新增 [`docs/research/route_status.md`](../research/route_status.md)，六行覆盖 v1、v2、LightGen、scaled_chen、optical_manifold/fiber、capacity；状态只引用现有文档，scaled_chen 标 `UNCONFIRMED`，未擅自下结论。
+- **G4 资产来源**：[`research_assets/README.md`](../../research_assets/README.md) 纳入版本库，列出 14 个 bundle 与归档要求；`.gitignore` 增加 README negation。工作区未检测到 `D:\LDM-Archive`，已写入文档。
+- **G5 分支**：`git fetch --prune` 清理失效远端引用（远端分支 37 → 7）；`git_branch_management.md` 新增清理规则——合并分支删除必须经用户授权。
+
+### 验证
+
+- `python scripts/run_windows_cpu_checks.py`：176 passed，两轮 Ruff 通过，`compileall` 通过。
+- 新增/改动文档的断链为 0；`docs/` 根仍为 5 个入口文件。
+
+### 未做与边界
+
+- 不移动 `application/research/` 的 115 个文件：175 处 import 且边界测试已隔离，移动收益不抵风险。
+- 不删除任何本地/远端分支，不 push；本地分支仍无 upstream。
+- 12 个空目录壳与 5 个 worktree 保持原状。
