@@ -2,6 +2,20 @@
 
 本文件只解释生成图片、tensor bundle 和光学诊断。v1 Stage 命令见 [Stage Guide](stage_guide.md)，v2 current 命令见 [v2 runtime](../architecture/v2_runtime.md)，完整文档导航见 [Documentation](../README.md)。
 
+## 顶层布局
+
+`outputs/` 顶层只允许日期版本目录 `YYYYMMDD_<version>/`，以及受保护的 `final_pt/` 和恢复元数据 `_wsl_restore_metadata_v4/`。新产出必须落在日期版本目录内：
+
+- `outputs/YYYYMMDD_<version>/runs/<run>/`：训练、诊断、pre-acceptance 运行；
+- `outputs/YYYYMMDD_<version>/assets/<topic>/`：PPT 图件、示意图等非运行产物；
+- `outputs/YYYYMMDD_<version>/reports/<date>_<topic>/`：汇总报告。
+
+禁止新增非日期的顶层目录。既有非日期目录（`reports/`、`ppt_*`、`topological_*`、`smf_array_*`、`migration_smoke/`）视为 legacy/frozen：保持原位，不移动、不扩容、不再作为新产出的默认位置。
+
+## Research asset links
+
+`research_assets/` 的 bundle 是本地-only 证据（`lightgen/science_adv7434/` 除外）。文档中指向该目录的链接只在持有 bundle 的机器上可解析，全新 clone 打不开；清单与归档要求见 [`research_assets/README.md`](../../research_assets/README.md)。
+
 ## 恢复历史 outputs
 
 当前 Windows 工作区的 `outputs/` 同时包含两类内容：当前 Windows-native
