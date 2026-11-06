@@ -1,4 +1,4 @@
-# 全量 CPU 验证记录（2026-11-07）
+﻿# 全量 CPU 验证记录（2026-11-07）
 
 ## 状态
 
@@ -58,7 +58,7 @@ tests/research/scaled_chen/test_scaled_chen_output_semantic_evaluator_requalific
 
 ## 云端结果（AutoDL）
 
-待 Codex 执行，步骤见 [`docs/operations/full_suite_autodl.md`](../operations/full_suite_autodl.md)。回传日志后补填此节。
+待 Codex 执行，步骤见 [`docs/operations/full_suite_autodl.md`](../../operations/full_suite_autodl.md)。回传日志后补填此节。
 
 ## 附录：`docs/archive/` 既有断链
 

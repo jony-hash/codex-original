@@ -1,4 +1,4 @@
-# 开题 PPT 证据盘点
+﻿# 开题 PPT 证据盘点
 
 审计日期：2026-10-12（Asia/Shanghai）。仓库：`D:\codex-original`。课题暂定名：《基于非线性光纤复合器件的紧凑光学语义生成架构用于智能视觉生成》。本文件供聊天模式理解背景、核查开题表述使用，不是训练、模型采用或物理部署授权。
 
@@ -613,8 +613,8 @@ e^{i\Delta\phi_j(P_s,P_c,\ldots)}E_{in,j}.
 | [历史Strict ReLU90汇总](D:/codex-original/outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_aggregate_attempt_03/strict_train_calibrated_relu90_gain_v2_aggregate_report.v2.json) | 需要说明历史代理负结果时使用，标LEGACY |
 | [历史4L ReLU对照](D:/codex-original/outputs/20260915_lightgen_aligned_4l_relu_gain_v1/runs/lightgen_aligned_4l_relu_gain_v1_aggregate_attempt_01/lightgen_aligned_4l_relu_gain_v1_aggregate_report.v1.json) | 限定历史架构的未支持结果 |
 | [内部相位代理报告](D:/codex-original/outputs/20260918_minimal_near_identity_nonlinear_generator_v1/runs/attempt_02/report.json) | 排除把局部nonlinear响应等同于数据集恢复或端面材料 |
-| [材料候选示意](D:/codex-original/outputs/smf_array_composite_device_v1/smf_array_composite_device.svg) | 仅概念图，必须标“拟定/示意”；不是器件照片 |
-| [材料素材边界](D:/codex-original/outputs/ppt_slide04_material_candidates_v1/slide04_text_layout.md) | 证明素材没有材料响应曲线、排名或性能结论 |
+| [材料候选示意](D:/codex-original/outputs/_legacy_2026q3/smf/smf_array_composite_device_v1/smf_array_composite_device.svg) | 仅概念图，必须标“拟定/示意”；不是器件照片 |
+| [材料素材边界](D:/codex-original/outputs/_legacy_2026q3/ppt/ppt_slide04_material_candidates_v1/slide04_text_layout.md) | 证明素材没有材料响应曲线、排名或性能结论 |
 | [旧相位导出器](D:/codex-original/experiments/archive/v57_v67/tools/export_v67_phase_candidate.py:28) | 说明相位.npy与height/STL/打印之间的缺口 |
 | [论文证据包说明](D:/codex-original/research_assets/lightgen/science_adv7434/README.md) | 图源语义、未知物理参数及论文/项目边界 |
 | [LightGen补充材料](D:/codex-original/research_assets/lightgen/science_adv7434/paper/sciencesm.pdf) | 参考层数/格点/加工及Gaussian公式；重点PDF第2–3、7–8、12、38–39页 |
@@ -665,7 +665,7 @@ e^{i\Delta\phi_j(P_s,P_c,\ldots)}E_{in,j}.
 [E40]: D:/codex-original/outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_aggregate_attempt_01/4l_linear_optimization_ceiling_v1_aggregate_report.v1.json
 [E41]: D:/codex-original/outputs/20261009_m0_generator_energy_matched_target_comparison_v1/runs/attempt_03/report.json
 [E42]: D:/codex-original/scripts/ppt_assets/render_slide04_material_candidates.py:171
-[E43]: D:/codex-original/outputs/smf_array_composite_device_v1/smf_array_composite_device.svg
+[E43]: D:/codex-original/outputs/_legacy_2026q3/smf/smf_array_composite_device_v1/smf_array_composite_device.svg
 [E44]: D:/codex-original/docs/research/lightgen_research_route_registry.md:22
 [E45]: D:/codex-original/outputs/20261011_autodl_fixed_endpoint_replay_v1/runs/attempt_01/report.json
 [E46]: D:/codex-original/docs/PROJECT_MEMORY.md:8

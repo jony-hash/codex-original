@@ -1,4 +1,4 @@
-# WP4 规则映射（无规则丢失）
+﻿# WP4 规则映射（无规则丢失）
 
 旧版 `AGENTS.md`（312 行）压缩为 165 行。逐条去向：
 
@@ -9,11 +9,11 @@
 | GPU 显存读数 / CUDA 失败语义 | §3 第三条 |
 | Scope Router | §1 |
 | Execution Rules 1–8 | §4 第 1–8 条（逐条保留，措辞压缩） |
-| Literature Quality Rule（5 条） | §5 Research Pointers + 新增 [literature_quality.md](../operations/literature_quality.md)（全文保留） |
+| Literature Quality Rule（5 条） | §5 Research Pointers + 新增 [literature_quality.md](../../../operations/literature_quality.md)（全文保留） |
 | Sol / Luna 协作与复审路由 | §10 模型路由 |
 | Codex / DSH 会话分工与并发写入 | §2 |
 | Turn Opening Compliance | §1 末段 |
-| Long-Training Gate | §5 Research Pointers + 既有 [long-training-preflight.md](../operations/long-training-preflight.md) |
+| Long-Training Gate | §5 Research Pointers + 既有 [long-training-preflight.md](../../../operations/long-training-preflight.md) |
 | Ordinary Research Fast Path | §5 Research Pointers |
 | Minimal Implementation And Failure Semantics | §5 首段 |
 | Skill Policy | §10 首段 |
@@ -23,7 +23,7 @@
 | Boundaries | §9 |
 | Capacity-map Research Lifecycle | §5 Research Pointers |
 | Windows-native migration | §10 第三段（路径更新为 `docs/operations/`） |
-| Fixed cloud execution / Codex network permissions | §10 第三段（压缩，细节留在 [autodl_workflow.md](../operations/autodl_workflow.md)） |
+| Fixed cloud execution / Codex network permissions | §10 第三段（压缩，细节留在 [autodl_workflow.md](../../../operations/autodl_workflow.md)） |
 | Codex history / project memory | §10 末段（路径更新为 `docs/operations/`） |
 
 ## 有意的取舍
