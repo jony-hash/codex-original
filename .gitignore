@@ -39,8 +39,10 @@ outputs/*
 data/
 
 # 文献与证据包：体积大，留在本地或外部归档。
-# 已跟踪的 research_assets/lightgen/science_adv7434/ 证据包保持跟踪。
+# 已跟踪的 research_assets/lightgen/science_adv7434/ 证据包保持跟踪；
+# README 记录 bundle 清单与归档要求，需要进版本库。
 research_assets/*
+!research_assets/README.md
 !research_assets/lightgen/science_adv7434/
 !research_assets/lightgen/science_adv7434/**
 
