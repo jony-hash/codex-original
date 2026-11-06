@@ -3,7 +3,7 @@
 ## 结果与状态
 
 云端纯光学诊断 `VALID_COMPLETED`。共扫描280种架构（8 aperture × 7 距离 × 5 pitch），每架构分别优化吞吐、N_eff、均匀100通道三项目标，每目标24步，合计20,160次phase-only诊断参数更新。正式训练、dataset读取、task evaluator/FID、loss修改、材料非线性forward和生产几何变更均为0。
-交付：本报告与 [`compact_ols_pareto_results.json`](../artifacts/compact_ols_pareto_results.json)。JSON包括280个架构、每组优化前后结果与10×10功率图、Pareto列表、可达性图、绝对通道功率和非线性敏感性。
+交付：本报告与 [`compact_ols_pareto_results.json`](../../../artifacts/compact_ols_pareto_results.json)。JSON包括280个架构、每组优化前后结果与10×10功率图、Pareto列表、可达性图、绝对通道功率和非线性敏感性。
 
 ## 科学认识
 

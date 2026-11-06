@@ -2,7 +2,7 @@
 
 日期：2026-10-13。对象是当前 532 nm LightGen 2+2 研究前向。所有测量都使用 CPU 合成场；没有读取训练数据、加载 checkpoint、调用任务评价器或执行生成任务训练。双层 phase-only 搜索是零更新光学诊断，不是任务训练。相位优化只报告有限步局部达到值，不声称是全局最优上界。fiber pitch、cladding、MFD 和器件间距仍是项目参考值，非当前器件实测。
 
-机器结果：[`physical_reachability_and_convergence_v2.json`](../artifacts/physical_reachability_and_convergence_v2.json)。原始完整运行：[`attempt_06`](../outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_06/physical_reachability_and_convergence_v2.json)。修正后的 clipped camera-gain 预检：[`attempt_05`](../outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_05/camera_gain_preflight.json)。
+机器结果：[`physical_reachability_and_convergence_v2.json`](../../../artifacts/physical_reachability_and_convergence_v2.json)。原始完整运行：[`attempt_06`](../../../outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_06/physical_reachability_and_convergence_v2.json)。修正后的 clipped camera-gain 预检：[`attempt_05`](../../../outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_05/camera_gain_preflight.json)。
 
 ## 结果与状态：
 
@@ -138,7 +138,7 @@ C1.5 只列备选方案，没有选择或实施：
 
 ## 工程完成与验证：
 
-- 新增合成诊断入口 [`diagnose_physical_reachability_and_convergence_v2.py`](../scripts/research/lightgen/diagnose_physical_reachability_and_convergence_v2.py) 与固定 gain 配置 [`physical_reachability_convergence_v2.yaml`](../configs/research/lightgen/physical_reachability_convergence_v2.yaml)。传播使用生产 angular-spectrum encoder 和 LP01 overlap；没有缩小场或移动 fiber。C1 的9个单通道锚点共执行72个 phase-only Adam steps，三种 full-array 目标共36步；合计108个诊断相位更新，任务训练更新仍为0。
+- 新增合成诊断入口 [`diagnose_physical_reachability_and_convergence_v2.py`](../../../scripts/research/lightgen/diagnose_physical_reachability_and_convergence_v2.py) 与固定 gain 配置 [`physical_reachability_convergence_v2.yaml`](../../../configs/research/lightgen/physical_reachability_convergence_v2.yaml)。传播使用生产 angular-spectrum encoder 和 LP01 overlap；没有缩小场或移动 fiber。C1 的9个单通道锚点共执行72个 phase-only Adam steps，三种 full-array 目标共36步；合计108个诊断相位更新，任务训练更新仍为0。
 - LightGen physical forward 保留 `physical_sensor_output_w_per_pixel`，并仅在显式配置 scalar gain 时提供 `task_sensor_output`。这条接口目前只被合成诊断和边界测试消费；未接入任务训练器、loss 或 evaluator。
 - 新增回归测试覆盖 W/pixel 的物理像素面积换算、固定 gain clip 映射以及未配置 gain 时不生成 task 输出。本轮和既有 LightGen 前向测试一起运行：`10 passed`。脚本语法检查和 focused Ruff（`E4,E7,E9,F`）通过；`git diff --check` 通过。未跑全仓 suite。
 - 输出保留在 `outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_01...06`；attempt_01 与 attempt_02 的 gain 拟合口径存在混杂/未按clip拟合，已明确标为探索并保留；最终值来自 attempt_05 clipped fit 与 attempt_06 full run。没有覆盖上一轮 `physical_power_integration_v1`。

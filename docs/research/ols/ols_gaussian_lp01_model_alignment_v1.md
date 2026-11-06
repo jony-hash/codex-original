@@ -101,10 +101,10 @@ Gaussian 路径使用解析归一化的完整全局 Gaussian 模式，不逐端�
 
 主要证据：
 
-- [最终机器报告](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/report.json)、[云端报告副本](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/report.md)
-- [原始复场读出](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/complex_field_readouts.pt)、[系数和逐 fiber 功率](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/coefficients_and_power.pt)、[Gram 矩阵](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/gram_matrices.pt)
-- [最终回传收据](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/transfer_receipt.json)、[独立逐 fiber 指标交付审计](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/delivery_audit_01/delivery_audit.json)
-- [初始梯度步长扫描](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_gradient_resolution_01/gradient_step_sweep.json)、[稳定邻域复核](../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_gradient_resolution_02/gradient_step_neighborhood.json)
+- [最终机器报告](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/report.json)、[云端报告副本](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/report.md)
+- [原始复场读出](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/complex_field_readouts.pt)、[系数和逐 fiber 功率](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/coefficients_and_power.pt)、[Gram 矩阵](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/gram_matrices.pt)
+- [最终回传收据](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_attempt_05/transfer_receipt.json)、[独立逐 fiber 指标交付审计](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/delivery_audit_01/delivery_audit.json)
+- [初始梯度步长扫描](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_gradient_resolution_01/gradient_step_sweep.json)、[稳定邻域复核](../../../outputs/20261013_ols_gaussian_lp01_model_alignment_v1/runs/autodl_backup_gradient_resolution_02/gradient_step_neighborhood.json)
 
 本轮全项目未跑 pytest；对任务 runner/config 执行了 Ruff、Python AST/YAML 解析、云端 py_compile/CLI、代表性 GPU 前向、全部数值 Gate 和回传后独立复算。
 

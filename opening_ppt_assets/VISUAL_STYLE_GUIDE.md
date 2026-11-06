@@ -33,7 +33,7 @@ CURRENT不要求整图为实线：例如已实现仿真光路中的未标定实�
 - [SMF/OLS实现](D:/codex-original/src/ldm_project/v2/optics/fiber_operator.py)：复数面积加权overlap、100复系数、T和模式重发；旧局部端口与新全局参考几何必须分别绑定配置，不混用尺寸。
 - [历史Strict ReLU](D:/codex-original/scripts/research/lightgen/execute_lightgen_2d_ideal_facet_relu_long_v1.py:323)：重发复场的像素级阈值强度代理。标LEGACY，不画成Te测量，更不能画Te=ReLU。
 - [新材料响应代码](D:/codex-original/src/ldm_project/v2/application/research/lightgen/material_nonlinearity.py)：CURRENT可选工程实现，包含identity、SA、SA+RSA、振幅加相位模型；方程参数不是实测Te/CoSi/TaP性能。仅在消费明确代理场景的图中显示；不自动放入已有训练端点。
-- [物理功率集成记录](D:/codex-original/docs/physical_power_integration_v1.md)：小2+2可配置研究前向已实现，诊断有效未通过，G3/G9未通过，未训练；SA扫描是探索性代理证据，不能升级为材料验收。
+- [物理功率集成记录](D:/codex-original/docs/research/ols/physical_power_integration_v1.md)：小2+2可配置研究前向已实现，诊断有效未通过，G3/G9未通过，未训练；SA扫描是探索性代理证据，不能升级为材料验收。
 - [参考物理配置](D:/codex-original/configs/reference/lightgen_power_proxy.yaml)：249.3μW、T=0.889、125μm pitch等带reference/unmeasured状态。不能画成项目实物测量；本轮不在视觉规范中固化这些参考数值。
 - [正式v2合同](D:/codex-original/docs/architecture/v2_runtime.md)及[配置](D:/codex-original/configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml)：identity OLS无光纤，是另一个正式兼容路径，不能替代本课题SMF研究线。
 - [旧2+2打印边界文档](D:/codex-original/docs/archive/v67_ideal_phase_boundary.md)：项目自定义缩放设计和历史理想相位加工候选，LEGACY参考；不证明现有打印实物。

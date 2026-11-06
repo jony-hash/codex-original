@@ -84,7 +84,7 @@ float32 传播核精度缺陷确已修复；它不是当前主要收敛残差。
 
 ## 工程完成与验证
 
-已完成复传播核 float64 相位计算修复、诊断伴随复透射修正、代表性 AutoDL 预检、G3 全测量、保存复场逐 fiber 读出与 36项历史交叉核对、云端临时源码恢复和精确回传。零训练更新、零相位优化、零数据集读取、零 task evaluator/FID、零 loss 修改、零生产几何改动。报告与结构化机器证据分别见本文件和 [机器 JSON](../artifacts/ols_gaussian_zero_update_closeout_v2.json)；完整逐通道输出、原始复场及控制证据见 [AutoDL 回传目录](../outputs/20261014_ols_gaussian_zero_update_closeout_v2/runs/)。
+已完成复传播核 float64 相位计算修复、诊断伴随复透射修正、代表性 AutoDL 预检、G3 全测量、保存复场逐 fiber 读出与 36项历史交叉核对、云端临时源码恢复和精确回传。零训练更新、零相位优化、零数据集读取、零 task evaluator/FID、零 loss 修改、零生产几何改动。报告与结构化机器证据分别见本文件和 [机器 JSON](../../../artifacts/ols_gaussian_zero_update_closeout_v2.json)；完整逐通道输出、原始复场及控制证据见 [AutoDL 回传目录](../../../outputs/20261014_ols_gaussian_zero_update_closeout_v2/runs)。
 
 ## 决策影响与下一步
 

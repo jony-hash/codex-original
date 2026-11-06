@@ -25,7 +25,7 @@ Sources 与本地信息不一致时使用本地信息。云端报告的本地执
 
 `INVALID_HARNESS` 不是科学负结果；只有完整有效的测量可以判为 `VALID_FAILED`。结果只更新本轮被授权的状态文件，不自动把历史摘要复制到多个文档。
 
-推荐交接字段和反馈格式见 [`operations/delta_one_gate_short_prompt.md`](operations/delta_one_gate_short_prompt.md)。
+推荐交接字段和反馈格式见 [`operations/delta_one_gate_short_prompt.md`](delta_one_gate_short_prompt.md)。
 
 ## Sources 文件
 

@@ -1,6 +1,233 @@
 # 当前项目状态
 
-更新时间：2026-10-14。执行规则以[根 AGENTS.md](../AGENTS.md)为准。三项相关工作当前阶段停点见[收尾报告](status/lightgen_three_workstreams_closeout_20261014.md)：身份定位为混合证据，OLS/G3 v5在限定系统内完成，Generator恢复验收仍为`INVALID_HARNESS / INCOMPLETE`。Gaussian/OLS v6相位优化已在另一独立授权会话中开始；该会话结果不在本页上述v5结论内。其余测试数量保留为对应历史研究或工程轮次的记录。
+> **本页职责：** 最新科研结论的摘要入口；实现路线见[研究代码地图](research/project_map.md)，当前停止点和允许动作见[当前任务交接](status/current_handoff.md)。
+
+更新时间：2026-11-06（补入 HW207 C3.8 数值四分类与 CMOS 光斑路由收尾；独立评估、加工放行与实物映射继续阻断）。
+
+## 2026-11-04 HW207 C3.1/C3.2 理想 CMOS 数值诊断收尾；完整 C3 仍部分通过
+
+### 结果与状态
+
+固定 2×2 ROI 与理想 CMOS 数值链路记录为 C3_2X2_CMOS_NUMERICAL_DIAGNOSTIC_PASS。A/B/C 在 2,475 张固定 validation 上 Accuracy 为 9.86%/12.61%/13.54%；完整 C3 仍为 C3_PARTIAL_PASS，HW207_CURRENT_MAPPING 仍为 BLOCKED。
+
+### 科学认识
+
+单层零相位、单位透射屏没有形成类别路由；固定四区赢家读出无法稳定把类别映射到指定 ROI。C 的完整 CMOS 像素阵列可由冻结数字线性头以 91.47% validation Accuracy 读取，但这不是全光分类或实物证据。180° ROI 编号置换是同一 validation 上的事后诊断。
+
+### 目标缺口
+
+DMD 收光方向、输入/输出 Relay 实测映射、双光子打印层 532 nm 复透射、CMOS 参数及像素坐标到四区 ROI 标定、重复测量稳定性均未验证。
+
+### 工程完成与验证
+
+独立核对 C0 validation 索引和标签、三候选混淆矩阵及逐类指标、ROI 坐标、CMOS 示例重积分、回传收据和数字头权重；官方 test、训练和硬件均未调用。
+
+### 决策影响与下一步
+
+保留 C0/C1/C2/C2.1 和原 C3 历史状态。该子项通过只限理想数值链，不能升级实物闭环或图像生成结论。详见[C3.1/C3.2 收尾报告](research/lightgen/hw207_mnist4_c31_c32_report.md)及[机器审计记录](../outputs/20261104_hw207_mnist4_c31_c32_v1/runs/attempt_09_codex_closeout_01/c3_closeout_audit.json)。
+
+## 2026-11-04 HW207 C2.1 空间几何完成；C2 保持部分通过；C3 部分完成
+
+### 结果与状态
+
+`C0_PASS` 与 `C1_NUMERICAL_DIAGNOSTIC_PASS` 保持不变。原始 C2 状态仍为 `C2_PARTIAL_PASS`；C2.1 已完成 3 个理想 4f 候选 × 0°/45° × nearest/area 的 12 条几何条件。C3 为 `C3_PARTIAL_PASS`：DMD 标量二值映射、输出 Relay 候选坐标与 CMOS 像元面积积分完成数值诊断；全光路分类与 `HW207_CURRENT_MAPPING` 仍为 `BLOCKED`。attempt06 的合成均匀场能量闭合误差为 0，20 项定向测试通过。
+
+### 科学认识
+
+当前结果支持在明确的空间倍率、角度和有效微镜面积假设下，把 MNIST 二值图映射到 200×200 μm 目标面；C1 冻结数字头在这些输入面图样上仍有验证集可读信息。新增输出端只用人工均匀场核对 4f 候选与 CMOS 面积积分，不能给出类别信息。没有固定 LightGen 实物输出场或 CMOS ROI 分类证据，因此不支持 HW207 实物四分类、图像生成能力或实际光路已闭环的结论。
+
+### 目标缺口
+
+实际 DMD 身份/安装方向/ON-OFF 收光、输入与输出 Relay 映射、打印 LightGen 的 532 nm 复透射、CMOS 实机与读出参数、固定 ROI 和重复采集稳定性仍未知或未标定。13 段距离继续作为卷尺照片估读、按厘米取整的初始化值。
+
+### 工程完成与验证
+
+attempt04 保存了 256 张 pilot、每条件 2,475 张 validation、12 条件独立重播审计和 66 项回传收据；官方 test 未新调用。attempt05 的 54 个非实物 pupil 情景维持原值。attempt06 只复用已审计 validation 摘要，新处理样本为 0；修复 CMOS ROI 的浮点平局识别，20 项定向测试通过。没有控制 DMD/CMOS 或进行光学加工。
+
+### 决策影响与下一步
+
+保留 `C2_PARTIAL_PASS` 和 `C3_PARTIAL_PASS`，不把几何或面积积分组件通过升级成实物闭环结论。详见[C2.1 空间几何报告](research/lightgen/hw207_mnist4_c21_spatial_alignment_report.md)、[C3 数字孪生报告](research/lightgen/hw207_mnist4_c3_report.md)与[attempt06 几何收尾摘要](../outputs/20261104_hw207_mnist4_c3_v1/runs/attempt_06/c3_geometry_closeout_summary.json)。完整四区分类仍需可追溯的固定 LightGen 输出场、真实输出面坐标与 ROI 标定；目前不支持实物光路或图像生成结论。
+
+## 2026-11-03 AutoDL项目存储整理
+
+- 按逐文件白名单清理本项目已收尾重复输出、输入包和失败重试缓存，共1,389个文件；云端数据盘可用空间由4.67 GiB增至12.00 GiB，实测释放7.32 GiB。D盘整理后可用282.43 GiB。
+- 正式运行路径、任务控制记录、回传收据和科研输入保留。8-bit机器测量已完成但任务仍为`AWAITING_HUMAN_RATINGS`；本轮只处理经双重核验的重复输入副本。科学结论和训练资格没有变化。
+- 逐文件恢复映射、容量和差异验收见[AutoDL存储整理记录](../outputs/20261103_autodl_storage_cleanup_v8/runs/attempt_01/closeout.md)、[处置清单](../outputs/20261103_autodl_storage_cleanup_v8/runs/attempt_01/file_level_disposition.jsonl)及[验收记录](../outputs/20261103_autodl_storage_cleanup_v8/runs/attempt_01/post_cleanup_verification.json)。
+
+## 最新G1停止点：固定零相位教师资格不足
+
+- **结果与状态：** `LIGHTGEN_G1_FIXED_PHASE_TEACHER_DISTILLATION_V1`保持`diagnostic-only`，教师资格结果为`TRAINING_REFERENCE_INSUFFICIENT`。固定训练人口已处理1,394/2,000条：云端汇总记载1,393条通过，索引1393（类别6、proposal 193）未通过；其余606条未求解。未生成READY或预检选择，没有启动学生训练，科学更新为0；最终留出未测量。
+- **科学认识：** 失败目标相位固定为0，FISTA达到5,000步上限。Windows从保存的float32命令、目标、实际复系数、两网格原生CMOS及直接Decoder参考独立重算：指定相位系数误差`0.0812613`，2048/4096系数误差`0.0812606 / 0.0812557`，CMOS误差`0.148737 / 0.148729`；跨网格误差约`1.9e-5`。这只说明本目标在本固定相位及预算下未取得合格教师，不证明其他相位、整个G1分布或实物不可达。
+- **目标缺口：** 原计划要求2,000条训练目标全部具备合格教师。当前一个完整失败样本已阻止READY，因此不执行15,000步蒸馏、终态留出测量或语义代理判定。也没有人眼可读性或硬件部署证据。
+- **工程完成与验证：** 首次工程尝试因CUDA复系数与CPU目标混用而中断，未提交目标行；修复后按无第500步检查点的保守499步上界扣减预算，目标0以125次新迭代通过，累计上界624。聚焦测试6项通过，Ruff与编译通过。Windows独立复算指标与保存值最大差`2.8e-16`，W/像素单位检查最大差`4.2e-25`；相关回传文件实际大小与收据一致。详见[五部分收尾报告](../outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/windows_verify_failure_01/closeout_report.md)、[独立复核JSON](../outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/windows_verify_failure_01/independent_review.json)、[教师失败样本备份收据](../outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/autodl_backup_teacher_failure_01/transfer_receipt.json)、[固定人口备份收据](../outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/autodl_backup_population_01/transfer_receipt.json)。
+- **决策影响与下一步：** 按固定计划停止本候选；不扩相位搜索、不换目标、不放宽阈值、不训练。若要继续，需另行决定教师或相位策略并明确新预算与留出；本结果不授权该后继研究。`VALID_FAILED`历史状态、`PROJECT_GEOMETRY_UNMEASURED`和340张待评分状态保持。
+
+## 前序停止点：G1 20条已消费开发目标的来源、语义与相位复核
+
+- **结果与状态：** `LIGHTGEN_G1_FIXED_FRAME_TRANSFER_DIAGNOSIS_V1`已完成，Windows `verify-saved`为`SAVED_EVIDENCE_VERIFIED`。训练映射器、光学、先验和评价器更新均为0。诊断人口是已消费开发集20条，非独立留出。
+- **科学认识：** 3种离线有界求解在20/20目标上取得六项`1e-4`完整光路见证，包括固定相位0、固定终点相位及八起点自由相位；V2、终点一次前向和终点零相位前向均0/20。两网格间误差仍通过。该人口内存在合法振幅命令，但当前映射器一次前向未生成这些命令；不能外推至总体G1或真实器件。语义配对复核中，终点相对V2的E_D/E_C净变化为-0.4/-0.2个百分点，旧G1与新先验为不同人口，不作配对因果比较。
+- **目标缺口：** 只测20条已消费开发目标；开发其余180条未纳入，本次不建立映射器泛化、人工可读性或实物部署结论。`PROJECT_GEOMETRY_UNMEASURED`与340张待评分状态保持。
+- **工程完成与验证：** 2,400条终点命令和V2留出2,000条CUDA重放逐位一致，Windows CPU响应最大差`1.97e-6`；保存六项指标独立重算最大差`9.99e-16`，分解项差`1.04e-14`。测量摘要、实际命令、模型绑定及分目录回传收据经Windows消费者核验。AutoDL聚焦测试17通过、2跳过；Windows pytest受NumPy C扩展DLL初始化影响，未声称本地pytest通过。详见[本轮五部分收尾报告](../outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/closeout_report_01.md)、[保存证据复核](../outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/windows_verify_02/saved_verification.json)、[六条件测量摘要](../outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/autodl_backup_attempt_02/measurement_summary.json)与[语义归因摘要](../outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/semantic_attribution_01/semantic_attribution_summary.json)。
+- **决策影响与下一步：** 本轮诊断到此停止，不自动训练、扩人口、做量化、推进G4、人工评分或实物实验。若另行研究，应提出如何将合法振幅命令蒸馏或摊销为一次前向生成器输出，并使用新的未消费人口和固定判据；这是后继方案建议，不是本轮授权。
+
+## 2026-10-31 AutoDL项目存储整理
+
+- 云端项目 `outputs` 的74项已收尾读出和历史工程缓存已核验D盘副本后删除，数据盘可用空间由5.13 GiB增至15.94 GiB；D盘可用约284.62 GiB。清理前后项目文件清单仅相差白名单74项，其余文件元数据、JSON/JSONL及CSV/压缩CSV清单一致；未发现训练、screen或GPU任务。
+- 另有5项未找到可核验D盘副本的历史缓存保留在线。复核或重放已归档材料前，按[逐文件恢复映射](../outputs/20261031_autodl_storage_cleanup_v7/runs/attempt_01/disposition_manifest.jsonl)恢复并校验SHA-256；详见[整理记录](../outputs/20261031_autodl_storage_cleanup_v7/runs/attempt_01/closeout.md)。科学结论和资格状态未改变。
+
+## 2026-10-30 AutoDL本项目收尾文件离线归档
+
+- 云端 `outputs` 中619个已收尾文件已核验归档到D盘并逐文件删除，数据盘空闲由约9.4 MiB增至 **10.58 GiB**。本项目其余22,831个文件、全部JSON/JSONL及CSV清单保持不变；清理后未发现活动任务。逐文件恢复映射及验收见[整理记录](../outputs/20261030_autodl_storage_cleanup_v6/runs/attempt_01/closeout.md)。
+- 历史语义留出、可达性逐样本、旧修订命令、重复预检、重复Te备份和两份中间检查点已转为D盘离线材料；需要复核或重放时按整理记录中的恢复映射回传。科学结论和资格状态未改变。
+
+## 前序科学停止点：G1固定物理相位语义候选
+
+- **结果与状态：** `LIGHTGEN_G1_FIXED_FRAME_SEMANTIC_V1`为`diagnostic-only`，终态`VALID_FAILED`。所选`alpha=1.0`完成恰好15,000步映射器更新；训练人口200/200通过，历史开发人口0/200通过，新固定留出人口19/2,000通过六项`1e-4`数值标准，19条通过样本均为class 1。
+- **科学认识：** 两网格间的系数和原生CMOS误差全部低于`1e-4`，主要失败是输出未能逐样本复现目标系数及CMOS强度。E_D/E_C准确率分别为85.90%/86.75%，相对旧G1直接Decoder参照提升10.30/8.30个百分点；十类图像距离最低保留95.88%。这些评价器结果通过本轮语义代理条件，但不是人工可读性证据。训练全过而开发全未过，表明当前人口外数值复现不足；不能仅凭本轮归因于单一机制。
+- **目标缺口：** 新固定留出数值制备未达标，因此当前候选未同时建立独立人口上的一次前向数值制备与语义代理保留。历史开发人口已被消费；人眼可读性、实际光路与实物部署未验证。旧`LIGHTGEN_G1_SEMANTIC_EXPOSURE200_V1`仍独立停于`TRAINING_REFERENCE_INSUFFICIENT`；`PROJECT_GEOMETRY_UNMEASURED`和340张待评分状态保持。
+- **工程完成与验证：** 完整双网格测量及Windows `verify-saved`完成，状态`SAVED_EVIDENCE_VERIFIED`。768项证据共8,136,362,299字节，传输收据逐项匹配；15,000步历史、四组Adam步数、每目标750次暴露、人口和终点绑定通过。终点命令CPU重放最大绝对差为`1.49e-6`。测量入口及Windows消费者中的工程缺陷已在本任务内修复；11项聚焦测试、Ruff、`py_compile`和差异检查通过。见[收尾报告](../outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/windows_verify_01/closeout_report.md)、[Windows复核摘要](../outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/windows_verify_01/verification_summary.json)、[重算判定](../outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/windows_verify_01/recomputed_final_decision.json)、[云端判定](../outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01/final_decision.json)及[回传收据](../outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01/transfer_receipt.json)。
+- **决策影响与下一步：** 本轮按固定预算停止于`VALID_FAILED`，不自动续训、不调alpha、不扩大人口或改损失，不触发量化、G4、人工评分或实物实验。若要继续，应另行设计可区分训练暴露、先验可达性与映射泛化的新研究，并预先固定未消费留出；这是后续建议，不是本轮授权。
+
+## 前序停止点：G1 200目标连续相位参照资格不足
+
+- **结果与状态：** `LIGHTGEN_G1_SEMANTIC_EXPOSURE200_V1`保持`diagnostic-only`。修复复数状态比较后，Windows独立消费者将修订结果核验为`REFERENCE_INSUFFICIENT_VERIFIED`：固定训练人口已检查5/200条，4条通过完整六项标准，class 0、proposal 4未通过；其余195条未求解。没有READY、正式`attempt_01`或15,000步训练，本轮科学更新为0。
+- **科学认识：** proposal 4新增4次固定相位FISTA求解、共20,000步；38个对偶方向对应的相邻区间覆盖完整公共相位周期，最小归一化下界为`1.521607e-3`，高于`1e-4`系数门槛。该排除只针对冻结响应矩阵与`a∈[0,1]`盒约束模型，不证明真实器件不可达或G1总体不可制备。保存指令的完整光路系数误差约`9.286e-3`/`9.283e-3`，原生CMOS误差约`1.680e-2`/`1.679e-2`；跨网格两项通过。
+- **目标缺口：** 200/200训练参照资格未满足，因此原15,000步、训练/开发400条终态测量及终点语义读数均未启动。开发人口是已消费人口；独立泛化、人眼语义可读性和实物光路仍未建立。`PROJECT_GEOMETRY_UNMEASURED`及340张待评分状态保持。
+- **工程完成与验证：** 首轮连续相位运行的复数转实数比较缺陷已修复，修订运行无该警告；聚焦测试29项、Ruff和`py_compile`通过。此前矩阵路径资格与独立恢复仍有效：响应相对误差最大约`2.14e-15`，完整光路/矩阵四步差异在约定容差内，已有9次工程Adam调用；它只确定后续可用计算路径，不构成训练READY。修订包22个文件、68,083,656字节经远端清单、收据和当前文件大小核对；Windows独立重算资格指标、相位覆盖及第三步到第四步恢复。见[收尾报告](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_extension_02/qualification_verification_repair_01/closeout_report.md)、[资格复核JSON](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_extension_02/qualification_verification_repair_01/qualification_verification.json)、[修订回传收据](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/autodl_backup_reference_continuous_phase_repair_01/transfer_receipt.json)及[矩阵/恢复资格摘要](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/autodl_backup_engine_qualification_repair_01/engine_qualification_summary.json)。
+- **决策影响与下一步：** 本次按计划停于`TRAINING_REFERENCE_INSUFFICIENT`，不继续检查剩余195条、不追加求解预算、不替换人口或启动训练。该状态不是`VALID_FAILED`，也不支持G1物理不可制备或网络不可学习结论。后续需另行设计能改变判断的目标人口或参照策略；本轮不推进G4、量化、人工评分或实物实验。
+- **存储维护（2026-10-28）：** 已核验D盘副本并清理云端434个已收尾PT文件，AutoDL可用空间由7.67 GiB增至15.60 GiB。复核相关来源或重放历史留出/命令前，先按[恢复映射](../outputs/20261028_autodl_storage_cleanup_v5/runs/attempt_01/file_disposition.jsonl)恢复；详见[整理记录](../outputs/20261028_autodl_storage_cleanup_v5/runs/attempt_01/storage_cleanup_record.md)。科研结论未改变。
+
+## 前序停止点：G1全人口固定公共相位可达性诊断完成
+
+- **结果与状态：** `LIGHTGEN_G1_FULLPOP_FEASIBILITY_DIAGNOSIS_V1`已完成并关闭，结论为`CURRENT_PHASE_WITNESS_20_OF_20`。固定B公共相位求解和自由相位求解各20/20通过六项`1e-4`标准；同一开发人口上的冻结V2与B5000映射输出各0/20通过。原全人口B试训仍为`VALID_FAILED`、0/2,000通过。
+- **科学认识：** 这20条目标在B当前公共相位下存在合法振幅指令，自由相位没有增加见证数；映射优化、训练暴露与学习能力仍是待区分的原因。离线求解见证不等于映射器已学会一次前向制备。
+- **目标缺口：** 人口角色为`development_feasibility20`，不构成独立泛化证据；更广G1人口制备、语义可读性和实物光路尚未建立。历史留出已消费，`PROJECT_GEOMETRY_UNMEASURED`及340张待评分状态保持。
+- **工程完成与验证：** 原全人口2,000条来源绑定修订、诊断恢复、四条件双网格测量及Windows重算均已完成；固定相位精度修订改变20条数值、0条判定。证据见[全人口来源复核](../outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_review_repair_01/windows_review_receipt.json)、[诊断报告](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_attempt_01/final_report.md)、[修订报告](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_review_repair_01/final_report.md)及[Windows复核](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_review_repair_01/windows_reconsumption.json)。
+- **决策影响与下一步：** 当前授权任务已收尾；后续可学习性研究需另定人口、每目标暴露预算和新最终留出。本停止点不自动授权续训、扩网、调整损失、A8/I8、G4、人工评分或实物实验。
+
+## 2026-10-29 G1 Te 文献代理薄膜插入光路仿真（attempt 04 收尾）
+
+- **结果与状态：** attempt 04 为有效 `diagnostic-only` 测量，冻结 G1 C45k 光学模型、原先验、v1 step-5000 映射器及 `G1_stream_0.pt` 100条样本（每类10条）；direct OLS 和 mapped 两条路径运行，优化器更新0。10 nm Te 文献代理的总功率比为0.153413（25 °C固态）和0.158975（80 °C准液态）。详见[attempt 04机器报告](../outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04/report.md)。
+- **科学认识：** 独立复算确认膜前后复场符合统一复数缩放，raw强度归一化形状误差约`9.04e-16`，实测相位与预测相位残差约`1.39e-16 rad`。固定曝光输出功率降低约84.1%–84.7%，裸端面饱和像素消失；冻结 E_D/E_C 辅助读数改变。该结果符合均匀线性损耗与全局相位模型，不是光致非线性或ReLU证据。
+- **目标缺口：** ADMA2026 正文PDF和SI DOCX现已本地导入并核验；此前出版社HTML/下载403保留为历史访问记录，不再代表正文/SI缺失。该论文的S9/S11条件不匹配532 nm CW G1；近期论文也未提供目标条件的Te `T(I)`/复透射参数。目标溅射批次、端面反馈、实际CMOS/SLM接口和硬件验收仍未知。该段所述NC低温淬火非晶Te阈值开关论文的532 nm为Raman表征，不是同频透射证据。
+- **工程完成与验证：** 修复了 attempt 03 的复场保存、相位重叠计算、冻结状态强制比较、固定曝光图册映射和生产负控判定。attempt 04 九项机器检查通过；Windows 独立 NumPy 重算的像元功率误差为0、28×28池化误差`7.64e-12`、2048/4096 raw误差`2.29e-5`，72组图册身份核验通过。另完成高水平论文本地归档、PDF关键页渲染和Figshare源文件身份检查；2025 NC Fig. 1f九个源点由独立log-log OLS复算，指数`1.928905`，与原文`1.93 ± 0.03`一致。详见[线性插膜研究包](../research_assets/lightgen/hardware_g1_te_inserted_path_20261029_v1/README.md)、[非线性本地文献包](../research_assets/lightgen/hardware_g1_te_nonlinear_literature_local_20261029_v1/README.md)和[非线性论文数据准入记录](../research_assets/lightgen/hardware_g1_te_inserted_path_20261029_v1/nonlinear_paper_data_admission.md)。
+- **决策影响与下一步：** attempt 04取代 attempt 03 成为线性插膜正式证据；attempt 01–03历史文件保留，G1映射历史失败状态不变。仅准入2025 NC在原条件下的SHG经验幂律，不把它接入G1。建议后续只寻找明确支持532 nm入射同频透射/复场响应的近期高水平参数；当前不自动启动G1非线性前向、续训、制样或实物测量。
+## 2026-10-29 Te 原论文响应纠错与 G1 非线性模型设计停止点（attempt 02）
+
+- **结果与状态：** attempt 02 为 `COMPLETE_DIAGNOSTIC_ONLY`。S9/S11原图提取和归一化修订完成，attempt 01保留但其S11曲线身份不再采用。G1膜面输入预算直接引用此前attempt 01/04保存证据，本轮没有重复全链传播；科学更新、G1非线性运行及训练更新均为0。
+- **科学认识：** S9仅支持1530 nm、2 ns泵浦/1520 nm CW探测下的归一化探测透射代理；S11仅支持800 nm、100 fs、1 kHz和独立石英/50 nm Te/20 nm SiO2平面膜条件下的可见延迟曲线段。S11保存4472个图像像素位置、121个缺失区间和130个可见片段；不是完整曲线族或独立实验样本数。S9七个FDTD标记拟合斜率与论文标注相差5.09%。两项均不能转成532 nm CW复透射或G1非线性响应。
+- **目标缺口：** 仍缺少与目标磁控溅射样品、532 nm CW及绝对外部辐照度匹配的同频透射关系、相位依据，以及100×100/2 µm数值入口到100根125/127 µm节距SMF端面的物理复场映射。局部W/m²数值不是实物纤端标定。
+- **工程完成与验证：** attempt 02纠正S11颜色归属；独立检查x=258 px锚点处1.91 pJ/µm²约y=398 px、2.23 pJ/µm²约y=488 px，旧attempt 01将1.91归在约483.5 px附近。保存数据的双方法差异在预设包络内，缺口未跨段插值；S9共同归一化公式逐行独立重算差为0。图像复审发现生产PNG的呈现缺陷，研究包内新增从保存CSV独立复绘的图，未修改数值。文献库状态已同步：ADMA正文/SI本地核验；NC低温淬火Te论文的正文、SI、评审PDF及源数据XLSX已登记验证。详见[attempt 02报告](../outputs/20261029_lightgen_te_nonlinear_bridge_v1/runs/diagnostic-only_attempt_02/report.md)、[独立复审](../research_assets/lightgen/hardware_g1_te_nonlinear_bridge_20261029_v1/independent_review_attempt02.md)和[模型设计](../research_assets/lightgen/hardware_g1_te_nonlinear_bridge_20261029_v1/model_design_532nm.md)。
+- **决策影响与下一步：** 仅准入S9/S11各自原论文条件下、归一化且无相位的代理。当前没有依据在532 nm G1中使用Te非线性算子。建议先取得匹配的外部辐照度—绝对透射来源/测量、明确相位用途并闭合SMF到数值入口映射；该建议不授权传播、训练、G4或实物工作。历史G1映射器5,000步`VALID_FAILED`与200目标参照`REFERENCE_INSUFFICIENT_VERIFIED`保持各自状态。
+
+## 2026-10-30 Te 近期高水平论文与 520–532 nm 证据补充
+
+- **结果与状态：** 完成本地文献复核和限定范围内的近期高水平期刊定向筛查；新增NC2026 Te纳米线光电流论文并归档正文、SI和透明同行评审文件。没有启动G1传播、训练或材料参数扫描，科学更新为0。
+- **科学认识：** 在520–532 nm附近存在真实但测量量不同的证据：NC2026偏振SHG论文以1064 nm泵浦并测量532 nm谐波；新归档的宽谱BPVE论文在638 nm测量电流随功率变化，方法部分使用532 nm Raman、SI以约532 nm激发PL，透明同行评审附件另显示520 nm电流时间响应。该论文Fig. 1e图注和Methods对SHG波长的标注关系未解释，本轮保留原文差异，不推断精确响应。520 nm时间响应输出是电流，不是同频光学透射；这些论文样品分别为溶剂热Te纳米结构或CVD Te纳米线/Au器件，与目标磁控溅射连续膜不同。另有ADMA2025热致Te膜和ADMA2026椭偏图源两套独立532 nm线性`n,k`代理，但它们不提供光强相关响应。因此已有线性参数，不等于已有532 nm CW `T(I)`或`q(I)`。
+- **目标缺口：** 仍缺匹配目标Te身份、532 nm CW外部辐照度、绝对同频透射及复相位的数据；目标100×100数值入口到100根125/127 µm节距SMF端面的复场/模式映射也未闭合。原G1 5,000步`VALID_FAILED`和200目标`REFERENCE_INSUFFICIENT_VERIFIED`状态不因文献新增而改变。
+- **工程完成与验证：** 管理器在支持PDF文本抽取的Windows环境中重核：ADMA2026正文/SI本地2/3项（HTML历史访问403）；LSA2024 2/2；NC2025 Te-SHG 5/5；NC2026 cryogenic-switching 4/4；NC2026 polarimetric-SHG正文/SI/评审件/PMC XML 4/4，独立Source Data的MOESM3候选URL返回HTTP 404且未计入完成；新NC2026 BPVE公开正文/SI/评审件3/3，原始数据为`available_on_request`。原先默认Python缺PDF解析器造成的SI/评审件误报已通过支持环境重验纠正。文献索引重建后，样品、波长角色和受限用途见[来源筛查](../research_assets/lightgen/hardware_g1_te_nonlinear_bridge_20261029_v1/source_screening.md)、[文献库](../research_assets/lightgen/literature_library/README.md)、[模型设计补充](../research_assets/lightgen/hardware_g1_te_nonlinear_bridge_20261029_v1/model_design_532nm.md)和[2026-10-30独立复核](../research_assets/lightgen/hardware_g1_te_nonlinear_bridge_20261029_v1/independent_review_20261030.md)。
+- **决策影响与下一步：** 本轮定向筛查不支持基于文献的定量532 nm G1非线性预测。若继续计算，只能另行授权明确标为假设的敏感性分析，且不可称为Te预测；若要求定量结论，须先取得匹配光学数据和SMF到数值入口映射。当前授权完成于证据归档与模型设计，不含G1非线性传播、训练、G4、制样或实测。
+
+## 前序结果：2026-10-27 G1全人口B候选固定预算试训收尾
+
+- **结果与状态：** 唯一B候选完成恰好5,000个新更新及2,000条新留出测量；云端和Windows消费者均判定`VALID_FAILED`，六项联合判据通过0/2,000条。收尾与独立复核完成，见[Windows收尾报告](../outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01/windows_closeout_report.md)和[Windows证据消费收据](../outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01/windows_reconsumption.json)。
+- **科学认识：** 2048/4096系数最大误差约0.41793，原生CMOS最大误差约0.64798；两项跨网格最大误差分别约`5.37e-5`和`3.48e-5`，2000/2000条均通过跨网格指标，而四项网格内指标均为0/2000通过。候选总体均值低于冻结V2基线，但最坏系数误差略高；无匹配A臂，不能据此归因越界惩罚。结果只说明固定结构、损失、预算和新留出人口没有达到数值制备目标。
+- **目标缺口：** 连续输入在留出人口上仍未满足系数和原生CMOS误差标准；人眼语义可读性、整个G1分布及实物光路均未由本轮证明。`PROJECT_GEOMETRY_UNMEASURED`、历史`VALID_FAILED`及340张待评分状态保持。
+- **工程完成与验证：** READY预检、5次工程恢复调用、冻结边界、5,000条训练历史、终点检查点、200片留出测量和200片独立CUDA命令重放均已核验。464项回传记录共6,730,196,233字节，远端/收据/当前文件大小一致。Windows从原始测量重算全部2000条六项指标，恢复和人口来源核验通过。跨平台READY路径和`1e-14`浮点重算容差修复后，17项聚焦回归、Ruff、编译及差异检查通过。相机面积/固定增益复核通过；固定20样本、60个图像面板共2,400,000像素逐像素差为0，见[固定展示图](../outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01/windows_display_evidence/first_two_per_class_2048_contact_sheet.png)。
+- **决策影响与下一步：** 本计划在Windows证据复核和收尾报告后停止；不追加训练、不调整阈值、不自动启动全人口后继、量化、G4、人工评分或实物实验。后续研究需另行规划和授权。
+
+## 2026-10-27 G1已知可达20目标裁剪前约束损失对照收尾
+
+- **结果与状态：** `LIGHTGEN_G1_PROJECTED_FIT20_BOX_AB_V1` 完成，科学状态为 `VALID_FAILED / BOTH_FAIL`。A（系数损失）和B（系数损失加固定5倍裁剪前越界惩罚）各完成500次更新；第500步终点各自只有0/20条目标同时满足全部六项 `1e-4` 误差标准。详见[正式报告](../outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/autodl_backup_attempt_01/final_report.md)和[Windows独立复核](../outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/autodl_backup_attempt_01/windows_reconsumption.json)。
+- **科学认识：** B的最大逐网格系数误差为0.000718，低于A的0.001748；最大原生CMOS误差为0.001172，低于A的0.001804，但仍分别约为阈值的7.2倍和11.7倍。两臂最大跨网格误差均低于阈值，然而没有样本满足六项联合判据。结果只说明固定20条已知可达目标、共同起点和500步预算下的重复拟合对照；它不证明G1整体不可学习，也不检验独立泛化或硬件可用性。
+- **目标缺口：** 尚无新目标人口上的连续制备、人眼语义可读性或实物光路证据；真实几何状态 `PROJECT_GEOMETRY_UNMEASURED` 保持。原G1输入映射试训的 `VALID_FAILED`、340张待评分状态及G4相关停止点不变。
+- **工程完成与验证：** 训练前将20条已有见证重新通过2048/4096完整光路复核，补齐系数、原生CMOS和跨网格六项指标后才启动对照。两臂训练历史各500行、四个Adam状态步数各500，冻结光学更新为0；工程恢复对照共10次Adam调用。Windows消费者独立重算两臂20条原始测量并核验恢复、日程、历史和Adam步数；50项结果文件远端/本地/当前字节数匹配，51项回传收据总计1,470,176,865字节。
+- **决策影响与下一步：** 本对照不支持在当前设置下继续全人口训练，也不支持把越界惩罚作为已验证方案。按计划停止，不追加训练、不扩网、不做A8/I8、G4、人工评分或实物实验；任何后续研究须另行规划和授权。
+
+## 2026-10-27 G1 fit20 B臂固定预算收敛确认
+
+- **结果与状态：** 新任务`LIGHTGEN_G1_FIT20_BOX_B_CONVERGENCE_V1`完成，B臂从500步续训恰好1,000步至分支步1,500；固定20条`known_reachable_fit20`目标20/20均满足六项误差≤`1e-4`。旧A/B任务仍保持`VALID_FAILED / BOTH_FAIL`。
+- **科学认识：** 六项最大误差为：2048/4096系数`7.5433e-5`/`8.5231e-5`，2048/4096原生CMOS`8.6988e-5`/`8.3463e-5`，跨网格系数/CMOS`3.7803e-5`/`2.5114e-5`。这支持当前B设置在同一20条已知可达目标上的延续拟合，不检验独立泛化；参数谱系累计11,500步，不能把结果归因于单一结构因素。
+- **目标缺口：** 新人口上的制备、人眼语义可读性及实物光路仍无证据；`PROJECT_GEOMETRY_UNMEASURED`、原G1任务`VALID_FAILED`和340张待评分状态保持。
+- **工程完成与验证：** 同入口CUDA预检`READY`，5次工程Adam调用完成；实时与独立恢复的模型、Adam、损失差为0，RNG和日程精确一致。正式历史1,000行、四个Adam参数步数各1,500、冻结光学更新为0。Windows独立复算第0/500/1000步全部原始观测并通过文件大小复核：40项回传文件合计1,453,166,467字节；聚焦回归45项通过，Ruff、编译与差异检查通过。见[正式报告](../outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/autodl_backup_attempt_01/final_report.md)、[Windows复核](../outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/autodl_backup_attempt_01/windows_reconsumption.json)及[传输收据](../outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/autodl_backup_attempt_01/transfer_receipt.json)。
+- **决策影响与下一步：** 结果支持另行设计更大人口的研究，但不自动启动该研究；本任务按计划停止，不续训、不扩网、不做A8/I8、G4、人工评分或实物实验。
+
+M2专项诊断（2026-10-26）：[冻结材料接口证据](../outputs/20261026_m2_spatial_material_interface_validation_v1/runs/autodl_backup_attempt_04/m2_spatial_material_diagnostics.json)完成40个保存G4输入、固定C45k Generator的六组静态振幅proxy对照，判定`M2_INTERFACE_VALID_TASK_RELEVANT`。非均匀响应的完整场/100维投影场会改变探测输出，等功率补充对照仍有差异；40样本的两评价器分类预测均未改变，不支持准确率收益或真实Te结论。旧B重放与模型状态不变，训练更新0；A的Γ仍未实现，历史`VALID_FAILED`及`PROJECT_GEOMETRY_UNMEASURED`保持。详见[本包收尾](D:/学术写作工作区/M2_spatial_material_interface_validation_v1/08_package_decision.md)；未启动后继训练、A入口或实验。
+
+工程验证索引：[Gate 2 安全 CPU 子集验收](../outputs/20261023_g2/runs/cpu_baseline_01/acceptance.json)记录所选 33 个参数化测试实例全部通过。该证据仅覆盖明确选择的 CPU 子集，不代表默认全套测试通过，也未验证近期 Gaussian 生产完整链。
+
+工程治理索引（2026-10-24）：[Gate 0–7 收尾记录](../outputs/20261024_governance_closeout/runs/closeout_01/report.md)汇总保守维护责任、当前本地恢复基线、Gate 7 保留决定和本轮核心 CPU 验证。Gate 2B 本轮 27 项核心实例全部通过；这不代表默认全套测试、Gaussian 完整生产链、CUDA、真实 checkpoint 恢复或科研质量 Gate 通过。SSIM 的已知 float32 参考差异及其有限精度边界保持原记录。
+
+2026-10-27历史快照：执行规则以[根 AGENTS.md](../AGENTS.md)为准。固定C端点的G1/G4原生CMOS盲评已通过本轮质控，G1为72%、G4为89%，收益+17个百分点（95% CI [+7,+27]）；结论仅覆盖固定人口和单一评阅者，不改变C的`VALID_FAILED`及`PROJECT_GEOMETRY_UNMEASURED`。见[盲评复核](../outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01/review_analysis.html)。
+
+最近完成的Gaussian小架构工作是固定C起点的联合Encoder/Decoder更新J：新增5,000步至累计50,000步，DEV SSIM较D0提高0.006500（95% CI [+0.006398,+0.006602]），但固定G4生成的E_D/E_C宏召回略降、代理截断略增，J尚无人眼盲评。历史系统状态仍为`VALID_FAILED`。详见[本轮收尾报告](../outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/autodl_backup_attempt_01/closeout_report.md)和[结果页](../outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/attempt_01/report.html)。
+
+## 2026-10-23 Gaussian小架构联合更新、评分收尾与自动评阅原型
+
+- **结果与状态：** 机器阶段`COMPLETE_DIAGNOSTIC`，本轮主要终点支持固定起点和预算下的SSIM增量；没有改变系统Gate，历史`VALID_FAILED`保持。D0/Dgrad人工评阅完成，质控通过但差值不明确。自动评阅原型仅为辅助原型。
+- **科学认识：** J相较D0：SSIM +0.006500 [0.006398, 0.006602]、PSNR +0.0681 dB、MSE −0.0003063；但原生梯度MSE略差。固定G4生成人口的E_D宏召回差−0.97个百分点、E_C差−0.32个百分点，代理截断+0.0505个百分点。D0/Dgrad盲评为91/100与90/100，差−1个百分点 [−5,+3]，重复18/20、参照20/20。400例自动原型数字折外一致81.16%，但不可辨认召回仅7.69%，不能代替盲审。
+- **目标缺口：** J的16.82 dB/0.7787仍低于项目历史20 dB/0.80检查线；生成E_D宏召回0.8873、类别9为0.548，生成代理截断1.485%。没有J的人眼结果、真实CMOS、物理几何或独立TEST证据。Science论文不同任务PSNR不可直接比较；20 dB/0.80不是论文门槛。
+- **工程完成与验证：** J恰好新增5,000次更新，官方TEST读取0，固定G4的10,000条均作配对重放；所有报告与42项回传核验完成。聚焦pytest 8 passed，Ruff、Windows/云端编译和report-only最终化通过；人工评分独立复算与生产报告一致。云端任务临时源码与4个调试文件按精确路径恢复/清理并回读确认。详见[完整收尾报告](../outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/autodl_backup_attempt_01/closeout_report.md)及[验证收据](../outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/autodl_backup_attempt_01/engineering/final_validation_receipt.json)。
+- **决策影响与下一步：** 当前结果支持继续将J保留为结构增量候选，但不支持可读性、系统达标或采用。唯一建议是另行设计固定G4系数的D0/J原生视图配对盲评，并预先固定质控和样本量；此建议不是新评阅或训练授权。
+
+## 2026-10-23 Gaussian OLS整面功率密度常规记录与近期冻结复核
+
+- **结果与状态：** `VALID_FROZEN_DIAGNOSTIC_COMPLETE`。六端点的5,000张DEV及已保存G1/G4生成人口，在2048/4096网格共完成1,240,000条逐图逐面记录并通过唯一键回读。功率密度采集已接入五个相关Gaussian研究训练入口：起点/恢复点及每500步，使用每类2张固定DEV探针记录十个物理面；探针不入损失。本轮训练更新为0，因此没有声称本轮产生了训练期探针日志，也未改写历史日志。
+- **科学认识：** C45k DEV的OLS输出面均值为4.886 μW；几何平均密度0.01221 W/cm²，有效面积密度0.5884 W/cm²，`A_eff/A_geom=2.132%`。D0/Dgrad的OLS输入场逐样本不变；Dgrad相机面功率下降3.05%、有效密度下降4.63%，原生MSE差+0.001352；逐图等相机总功率对照将差值缩至+0.000306，仍未消除。详细工作范围和曝光/饱和限制见[中文诊断补充报告](../outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output/中文诊断报告_收尾补充.md)。
+- **目标缺口：** 材料实际位置与响应曲线、真实相机暗帧/平场/QE/增益和物理像素参考面仍未标定；当前Gaussian模型无材料层，不能据此声称材料非线性。1%局部扰动在代理曝光10 μs下通过线性化复核，但高曝光受满阱裁剪影响，422/640行误差超过5%。
+- **工程完成与验证：** 平面表1,240,000/1,240,000键唯一，双网格同网格及相干合成检查、NumPy积分和面积/零功率负控通过。局部方向复核改为使用各自网格Jacobian；聚焦回归110项通过。全仓测试有2,887项通过、8项因旧fixture/checkpoint缺失失败，未落在本轮改动路径。AutoDL源码按部署收据恢复3个原文件并移除12个临时新增文件；分块包1,209文件/862,990,998字节已逐项回读。训练更新、优化器、先验采样、官方TEST及硬件操作均为0。见[机器报告](../outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output/machine_report.json)、[逐图逐面表](../outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output/tables/plane_density_per_image.csv.gz)和[源码恢复收据](../outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/attempt_01/deployment/remote_source_restore_receipt.json)。
+- **附图：** [D0/Dgrad整面密度链](../outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output/figures/figure_01_decoder_plane_density_trajectory.png)；[保存生成输入强度范围](../outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output/figures/figure_02_generated_input_intensity_work_range.png)。两图使用逐图中位数和P10–P90，不把图像间分布误标为置信区间；完整PDF/SVG/TIFF、源数据及图形QA回执见本轮补充报告。
+- **决策影响与下一步：** 后续相关Gaussian训练可记录整面功率、两种密度、有效面积占比及固定DEV探针；这些是观测量，不自动调参。材料实验仍需先实测材料输入面、光强响应和相机条件。本轮建议不构成增加训练、改损失/几何或部署材料的授权。
+
+## 2026-10-23 Gaussian J冻结归因、密度与相位诊断
+
+- **结果与状态：** 固定D0/J的5,000张DEV、10,000条旧G4系数和2048/4096网格完成冻结交叉归因、整面密度及条件相位诊断。发现并修正DEV等相机功率列把强度当复振幅平方的问题；20,000条更正列通过L00/L11逐图交叉复核。科学训练更新为0。
+- **科学认识：** J的DEV原生MSE改善0.0003063、SSIM提高0.006500；正确的等相机功率对照仍改善MSE 0.0005317。2×2交互项−0.0010904，支持Encoder/Decoder共同适配。OLS输出/入射功率比约由22.18%降至21.74%，输出有效面积密度约由0.5884降至0.5766 W/cm²；固定旧G4的代理E_D/E_C仍略降，不能归因于相机总功率或OLS整面密度变化。旧质量清单文字已修正：E_D宏召回0.8873高于0.80；仍未达线的是类别9召回0.548、代理裁剪0.01485、PSNR16.82 dB及SSIM0.7787，`VALID_FAILED`保持。
+- **目标缺口：** 当前输出面是模型OLS模态输出/Decoder入口，不是实测光纤端面；真实相位漂移、相机标定、材料响应、J人眼评价和官方TEST均未测量。历史系统状态`VALID_FAILED`保持。
+- **工程完成与验证：** 等功率派生列修复收据、修复前备份、完整逐图表与代码检查见[本轮报告](../outputs/20261023_gaussian_j_frozen_attribution_phase_density_v1/runs/attempt_01/中文诊断报告.md)及[机器报告](../outputs/20261023_gaussian_j_frozen_attribution_phase_density_v1/runs/attempt_01/machine_report.json)。
+- **决策影响与下一步：** 保留J为固定DEV重构候选，不支持采用或启动训练；下一判断优先补独立可读性评价与实际光纤输出面/相位标定。本条建议不构成后继工作授权。
+
+## 2026-10-22 AutoDL本项目收尾文件整理
+
+本项目云端 `outputs` 中12个已收尾二进制文件已先核对D盘恢复副本，再逐项清理；净释放云端数据盘约1.444 GiB。数据盘仍约97%已用，项目外文件与共享任务控制目录未处理。逐文件清单、恢复位置和验收见[整理记录](../outputs/20261022_autodl_storage_cleanup_v3/runs/attempt_01/closeout.md)。
+
+## 2026-10-22 AutoDL组员项目文件清理
+
+按用户明确授权，永久删除回收站中的 `ultralytics-main` 目录、对应ZIP及其回收站记录；共删除81,707个文件，云端可用空间净增约38.92 GiB，现余约40.72 GiB。按用户选择未备份，删除内容不可由本轮恢复。范围和逐文件验收见[整理记录](../outputs/20261022_autodl_teammate_storage_cleanup_v1/runs/attempt_01/closeout.md)。
+
+## 2026-10-22 Gaussian OLS双网格诊断收尾与整面功率密度
+
+- **结果与状态：** 双网格条件诊断及各面功率密度补充完成，真实噪声标定待补。604,200条逐图逐面记录和60,600条模态功率／完整相干场积分核对已回读；上轮6,120,000条双网格消融、4,400条功率汇总键和3,200条噪声键均保留并完成性检查。见[中文收尾报告](../outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/closeout_01/中文收尾报告.md)和[机器报告](../outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/closeout_01/machine_report.json)。
+- **科学认识：** 小Gaussian从step 0到treatment 35k的光纤输出面功率约由4.708e-6增至4.871e-6 W（+3.5%），有效面积由1.179e-9降至8.813e-10 m²（−25.3%）；几何平均密度约+3.5%，有效面积密度约+39.3%，支持“总功率小幅提高并伴随光强集中”。大架构两网格输出面均约7.949e-7 W、有效面积2.664e-9 m²。小架构OLS输出与Decoder入口是同一采样面别名；大架构Encoder缺失历史全场，不能恢复其有效面积。
+- **目标缺口：** 相机噪声仍为代理条件；器件孔径、模式场和坐标未实测。1%局部方向有限扰动出现强烈饱和非线性，方向谱只按切线响应解释。
+- **工程完成与验证：** 最大功率积分相对误差2.91e-7；独立面积积分、相干正负控、均匀场／缩斑／零功率控制通过；聚焦测试9项、Ruff及编译通过。AutoDL临时部署的12个文件均按原先不存在状态恢复并回读。训练更新、优化器、先验采样、TEST读取和硬件操作均为0。
+- **决策影响与下一步：** 整面几何平均密度与有效面积密度已分开报告，不能把密度提升单独解释为耦合改善、硬件可检出或Decoder收益。建议后续取得匹配相机实测标定及大架构Encoder全场；本轮未授权这些后继工作。
+
+## 2026-10-22 Gaussian OLS双网格有效通道诊断（前序状态，已由上节收尾更新）
+
+- **结果与状态：** 四端点双网格逐根消融、协方差及四档代理噪声诊断已有完整结果；1%局部Jacobian有限差分的complex128精度复核仍待重跑，故本轮不将局部方向数视为已验证的有限扰动可观察数。详见[中文报告](../outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/attempt_01/中文诊断报告.md)、[机器报告](../outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/attempt_01/machine_report.json)和[复算状态收据](../outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/attempt_01/engineering/local_direction_complex128_replay_status.json)。
+- **科学认识：** 大架构固定300张TRAIN的单图功率参与数16.77、人口均值功率参与数34.56、跨度47.48 dB；小Gaussian 30k固定DEV分别为24.62、36.25和32.22 dB。冻结单根消融均有较多双网格稳健敏感端口，但其数量不等于100根独立容量。代理噪声D≥3均值在10 μs下，大架构约67.36根、小架构约99.9根；不可外推到真实相机。
+- **目标缺口：** AutoDL SSH环境检查两次在自动权限审查阶段超时，命令未启动；这不是服务器失败。当前真实噪声标定及指定AutoDL的complex128有限差分复算待补；跨架构输入角色不同，不能作受控排名。
+- **工程完成与验证：** 6,120,000条逐图逐根消融记录、协方差谱、累计保留曲线和噪声报告已回传；近饱和独立枚举扩展到28σ并通过稀有下尾验证。聚焦研究测试此前18项通过；最终状态/报告修改后，报告重建、Ruff和编译检查通过，但pytest复跑两次均在自动审批阶段超时、未启动。原同网格和直算/合成检查保持通过；跨网格差异按敏感性报告，未宣称网格收敛。
+- **决策影响与下一步：** 不降低同网格及直算比较阈值，也不因高参与数直接删改通道。先在授权指定的AutoDL环境重跑complex128有限差分并更新本轮报告；真实暗帧/平场等标定仍需后续提供。本轮不含训练、改损失/几何或采用通道压缩模型的授权。
+
+
+## 2026-10-22 Gaussian小架构固定C端点G1/G4原生CMOS盲评正式完成
+
+- **结果与状态：** COMPLETE_DIAGNOSTIC / HUMAN_READABILITY_IMPROVEMENT_SUPPORTED。240条评分正式归档；隐藏重复19/20一致、真实参照19/20判对，均通过预设18/20质控。G1为72/100张符合请求类别，G4为89/100张，等类宏平均收益+17个百分点，原定2000次bootstrap 95%区间[+7,+27]个百分点。见[详细揭盲复核](../outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01/review_analysis.html)、[正式报告](../outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01/final_report.json)。
+- **科学认识：** 固定C的45,000步Decoder、增益与光学参数下，支持G4改善本人口、本评阅者的原生200×200模拟CMOS可读身份。不可辨认由24/100降至8/100，其他数字错误由4/100降至3/100；这是独立方法人口的计数差，不是逐图恢复。两组平均显示灰度几乎相同，不能把收益归因于整体调亮。
+- **目标缺口：** G4类别5由G1的10/10降至7/10，类别2仅6/10；逐类样本少，仅作描述。固定人口G4平均代理截断面积1.2857%，截断与既有重构缺口仍在。单评阅者结论不外推读者间一致性或实物硬件；C的VALID_FAILED与PROJECT_GEOMETRY_UNMEASURED保持。
+- **工程完成与验证：** 同一入口修复跨主机评分路径、旧报告字段及完成状态更新问题后正式收尾。生产页面至评分/报告消费者7项回归通过，Ruff、编译通过。原始评分逐字节归档，独立质控/主要分母/bootstrap与正式报告一致；220张生成/重复PNG固定量化逐像素一致，400行保存logits的预测/余量重算与CSV一致。本次新增光学/Encoder/E_D/E_C前向、采样、梯度、优化器和数据读取均为0。
+- **决策影响与下一步：** 当前G1/G4盲评已结束，不追加评分或调K/增益。唯一建议是另行设计一次固定G4生成方法的光学重构与弱类笔画质量单项训练对照；本轮没有启动后继训练或采用模型。
+
+## 2026-10-22 Gaussian小架构三训练轨迹复现与G1/G4生成确认
+
+- **结果与状态：** COMPLETE_DIAGNOSTIC / G4_PROXY_GAIN_REPEATED_ON_THREE_TRAINING_SCHEDULES。复用C的45,000步端点并新增两条各45,000步训练，合计90,000次科学更新；三端点均通过预设G4代理复现判据。报告见[本轮报告](../outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01/report.json)。
+- **科学认识：** 三端点的G4分类代理收益均通过既定复现判据；这支持跨三条训练轨迹和新采样流的代理复现，不等于人眼可读性。
+- **目标缺口：** 原C仍为VALID_FAILED，两条新端点仍为MEASURED_DIAGNOSTIC_ONLY；独立TEST、人眼、真实器件几何和硬件就绪均未确认。
+- **工程完成与验证：** 三端点合计180,000条生成记录；两条新轨迹各45,000步，冻结参考、样本调度、读出和恢复检查通过，官方TEST读取0。回传与源码恢复已核验。
+- **决策影响与下一步：** 该代理结果支持启动当前已交付的盲评准备，但在评分通过预设质控前不形成可读性结论；原质量状态不变。
+
 
 ## 2026-10-14 前景收益与数字身份/笔画定位：两类人口方向相反，混合证据
 
@@ -15,7 +242,7 @@
 - **结果与状态：** AutoDL任务退出码0，状态`VALID_COMPLETED`。3072/4096/6144网格、共同4.096 mm ROI的9项生产complex64比较全部低于原`1e-4`门槛，最大对齐复场误差`6.01436e-5`；complex128最大`6.01410e-5`。据此完成3072网格零更新响应谱和功率测量。v4原2048窗口`G3_FAIL`保留历史，没有被改写。
 - **科学认识：** 125 μm阵列零相位时，2×2及更大偶数阵列`N_eff≈4`且总耦合约Gaussian 3.751%、LP01 4.794%；增加偶数阵列通道数未提高单场有效维数。奇数阵列因光轴中心fiber位置不同，`N_eff≈1.02–1.04`，说明奇偶几何对齐与通道数量混杂。10×10四种相对阈值下均只有4/100通道有效。固定相位输入响应谱在10×10、1e-3阈值下，Gaussian实幅度有效秩为8、LP01为32；此数学谱对模式和阈值敏感，没有噪声/探测器数据，不能当作实验可用维数。
 - **目标缺口：** phase-only优化尚未运行，K/H矩阵只验证固定相位下输入振幅响应；不能推断外圈fiber经相位优化可达性、最终OLS维度、非线性收益或生成质量。pitch/MFD等仍未测量。Gaussian→decoder/camera、材料与生成训练未验证；旧Generator恢复验收和39/45工程更新计数保持独立不变。
-- **工程完成与验证：** [v5报告](ols_window_dimension_power_v5.md)、[机器JSON](../artifacts/ols_window_dimension_power_v5.json)、[精确AutoDL回传包](../outputs/20261014_ols_window_dimension_power_v5/runs/autodl_backup_attempt_02)及[回传后审计](../outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/post_return_audit.json)已保存。预检PASS，1782条探针记录/5346项预测比较全部通过，最大相对误差`1.543e-15`。161个文件共1,412,737,073字节逐项大小核验通过；云端临时源码已恢复并逐字节核对。聚焦测试5 passed，Ruff和编译通过。正式训练、phase-only优化、数据/evaluator/FID、loss、材料前向和几何修改均为0。
+- **工程完成与验证：** [v5报告](research/ols/ols_window_dimension_power_v5.md)、[机器JSON](../artifacts/ols_window_dimension_power_v5.json)、[精确AutoDL回传包](../outputs/20261014_ols_window_dimension_power_v5/runs/autodl_backup_attempt_02)及[回传后审计](../outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/post_return_audit.json)已保存。预检PASS，1782条探针记录/5346项预测比较全部通过，最大相对误差`1.543e-15`。161个文件共1,412,737,073字节逐项大小核验通过；云端临时源码已恢复并逐字节核对。聚焦测试5 passed，Ruff和编译通过。正式训练、phase-only优化、数据/evaluator/FID、loss、材料前向和几何修改均为0。
 - **决策影响与授权边界：** 当前证据足以支持单独规划固定系统上的phase-only诊断，目标需分开为最大吞吐、最大`N_eff`和均匀100通道交付，并继续同场Gaussian/LP01对照；奇偶中心对齐应作为显式候选因素。没有选出最终通道数或结构，本轮停止，不授权下一轮优化或训练。
 
 ## 2026-10-14 Gaussian/OLS 独立参考闭合 v4：参考有效，G3 仍 FAIL
@@ -23,7 +250,7 @@
 - **结果与状态：** AutoDL 完整任务退出码0，独立CPU带限积分参考为`VALID`；原生产 Gate 保持`VALID_FAILED / G3_FAIL`。GL4 32768节点下最终两级及 GL8 交叉阶数在全部3相位×3点组通过`1e-7`收敛要求。生产complex64最大共同全局相位对齐复场误差`1.6014370095e-4`，complex128为`1.6014355370e-4`，原门槛`1e-4`未变。
 - **科学认识：** 有效参考将结论推进到125个指定位置；生产与参考的误差随窗口增大而降低，但125点不能证明全ROI机制。G3完整ROI仍有效失败；周期边界与FFT频率采样未分离。本轮未证实生产实现新缺陷，也不据此判定Gaussian或光纤架构失败。
 - **目标缺口：** 仍缺完整ROI G3通过或可解释其误差机制的证据；K/H响应矩阵、维度排序、Decoder/camera接口及物理标定未验证。旧生成checkpoint恢复验收独立待办，历史工程更新计数39/45。
-- **工程完成与验证：** [v4报告](ols_g3_reference_closure_v4.md)、[机器证据](../artifacts/ols_g3_reference_closure_v4.json)、[完整AutoDL回传包](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_attempt_01)、[修正预检回传包](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_preflight_rechecks)、[回传后重读审计](../outputs/20261014_ols_g3_reference_closure_v4/runs/attempt_01/post_return_audit.json)。66+13个文件逐项回传与大小核验通过；18份原始积分归档重读通过；修正预检聚焦测试8 passed、编译/Ruff通过；临时云端源码逐项恢复。训练、优化、数据/evaluator/FID、loss、材料和几何更改均为0。
+- **工程完成与验证：** [v4报告](research/ols/ols_g3_reference_closure_v4.md)、[机器证据](../artifacts/ols_g3_reference_closure_v4.json)、[完整AutoDL回传包](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_attempt_01)、[修正预检回传包](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_preflight_rechecks)、[回传后重读审计](../outputs/20261014_ols_g3_reference_closure_v4/runs/attempt_01/post_return_audit.json)。66+13个文件逐项回传与大小核验通过；18份原始积分归档重读通过；修正预检聚焦测试8 passed、编译/Ruff通过；临时云端源码逐项恢复。训练、优化、数据/evaluator/FID、loss、材料和几何更改均为0。
 - **决策影响与授权边界：** G3仍阻断响应谱、维度排序和结构决策。建议另行设计原全ROI误差来源诊断，沿用原窗口、生产complex64和`1e-4`；本轮不授权该后继测量或训练。
 
 ## 历史：2026-10-14 Gaussian/OLS 第二段传播误差定位 v3（由v4补充）
@@ -32,7 +259,7 @@
 - **结果与状态：** AutoDL任务退出码0，`VALID_FAILED / G3_FAIL`。保持原4.096/6.144/8.192 mm窗口、共同4.096 mm ROI及`1e-4`门槛；complex64最坏对齐复场误差`1.601436996e-4`，complex128为`1.601435537e-4`。最坏项为末层xy各1°、2048对4096。
 - **科学认识：** 固定同一第二段入口后，窗口误差仍约`1.60e-4`；第一段ROI误差最大`7.79e-6`、200 μm aperture crop误差最大`2.01e-7`。complex64/128差异很小，坐标最大差仅`4.34e-19 m`。但CPU独立带限积分未达到预设收敛门槛，故只能定位到第二段窗口依赖，不能区分FFT频率采样与周期边界交互；没有找到本轮可证实的生产实现缺陷。
 - **目标缺口：** G3尚未闭合，独立参考的25个ROI采样点未收敛；OLS响应矩阵/维度排序、训练和Gaussian→camera接口仍未验证。
-- **工程完成与验证：** [本轮报告](ols_g3_second_hop_error_isolation_v3.md)、[机器证据](../artifacts/ols_g3_second_hop_error_isolation_v3.json)、[精确回传证据](../outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/autodl_backup_v3_evidence)已保存。云端预检通过，修复遗漏依赖后的回归47 passed；63项回传逐项核对，本地18个复场、37个中间场张量和36张误差图重读均通过。临时云源码已恢复。训练、相位优化、数据/evaluator/FID、loss、材料和几何更新均为0。
+- **工程完成与验证：** [本轮报告](research/ols/ols_g3_second_hop_error_isolation_v3.md)、[机器证据](../artifacts/ols_g3_second_hop_error_isolation_v3.json)、[精确回传证据](../outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/autodl_backup_v3_evidence)已保存。云端预检通过，修复遗漏依赖后的回归47 passed；63项回传逐项核对，本地18个复场、37个中间场张量和36张误差图重读均通过。临时云源码已恢复。训练、相位优化、数据/evaluator/FID、loss、材料和几何更新均为0。
 - **决策影响与授权边界：** 当前不支持维度测量或结构决策。建议先另行解决独立参考的收敛问题，再依原窗口、几何和门槛复核G3。本轮停止，不授权训练、OLS矩阵、材料或相机接口变更。
 
 ## 前序：2026-10-14 Gaussian/OLS 零更新收尾：G3 仍未通过
@@ -40,7 +267,7 @@
 - **结果与状态：** `VALID_FAILED / G3_FAIL`。修复传播核相位精度后，complex64 生产路径共同ROI最坏全局相位对齐复场误差为`1.6014e-4`，仍高于原`1e-4`门槛；complex128为`1.6014e-4`。完整OLS响应矩阵和维度排序按门控未运行。
 - **科学认识：** float32传播核错误已由独立参考与负例证实并在前序任务中修复。该轮中间比较提示窗口相关传播差异，但原因尚未由独立物理参考确认；最新v3将差异定位到固定入口后的第二段，独立积分未收敛，周期边界和频率采样仍未分离。逐fiber latent稳定不替代G3复场门槛。
 - **目标缺口：** v3已把窗口差异定位到第二段，但还缺有效收敛的独立参考；Gaussian维度排序、训练和Gaussian→camera重建接口均未验证。
-- **工程完成与验证：** [零更新收尾报告](ols_gaussian_zero_update_closeout_v2.md)、[机器证据](../artifacts/ols_gaussian_zero_update_closeout_v2.json)、[G3原始复场及精确回传目录](../outputs/20261014_ols_gaussian_zero_update_closeout_v2/runs/autodl_backup_attempt_09_raw)、[逐fiber读出](../outputs/20261014_ols_gaussian_zero_update_closeout_v2/runs/autodl_backup_attempt_10)。AutoDL退出码0，G3为有效失败；临时云源码已按备份逐字节恢复。训练/优化/数据/evaluator/FID/loss/几何改动均为0。
+- **工程完成与验证：** [零更新收尾报告](research/ols/ols_gaussian_zero_update_closeout_v2.md)、[机器证据](../artifacts/ols_gaussian_zero_update_closeout_v2.json)、[G3原始复场及精确回传目录](../outputs/20261014_ols_gaussian_zero_update_closeout_v2/runs/autodl_backup_attempt_09_raw)、[逐fiber读出](../outputs/20261014_ols_gaussian_zero_update_closeout_v2/runs/autodl_backup_attempt_10)。AutoDL退出码0，G3为有效失败；临时云源码已按备份逐字节恢复。训练/优化/数据/evaluator/FID/loss/几何改动均为0。
 - **决策影响与授权边界：** 建议另行定位第二段传播的频率采样与周期边界影响，保持原G3口径；只有生产G3通过后再规划维度测量。本轮停止，不授权训练、维度矩阵、材料或相机接口变更。
 
 ## 2026-10-14 AutoDL连接修复：固定云端训练与长验证
@@ -48,7 +275,7 @@
 - **结果与状态：** `VERIFIED_CONNECTIVITY_RESTORED`；同一Check在Codex受限沙箱内SSH255/DNS报错，在沙箱外退出0。已验证screen、CUDA和SCP完整链路。
 - **科学认识：** 科学判断未改变；此前据沙箱错误推断本机或云端DNS/代理故障的结论撤回。
 - **目标缺口：** 连接修复本身已完成；后续OLS逐通道latent补算和G3重测见本页更新条目，G3仍FAIL。
-- **工程完成与验证：** [连接报告](autodl_connection_repair_v1.md)、[机器证据](../artifacts/autodl_connection_repair_v1.json)；后台任务退出0，CUDA求和符合523776，8文件SCP回传COMPLETE且本地重读通过。未改DNS、密钥、host key或云端源码。
+- **工程完成与验证：** [连接报告](operations/autodl_connection_repair_v1.md)、[机器证据](../artifacts/autodl_connection_repair_v1.json)；后台任务退出0，CUDA求和符合523776，8文件SCP回传COMPLETE且本地重读通过。未改DNS、密钥、host key或云端源码。
 - **决策影响与授权边界：** 后续训练和长数值验证固定AutoDL；本地准备/审阅/备份。根AGENTS明确SSH/SCP使用`require_escalated`，不再因沙箱错误要求用户修服务器；本轮科学更新0并停止。
 
 ## 2026-10-13 Gaussian S12 后续复核：G3 FAIL，维度测量受门控
@@ -56,12 +283,12 @@
 - **结果与状态：** 用户已选定后续仿真用 Gaussian S12 作 OLS 主参考、同几何 LP01 作模式敏感性对照；正式默认模型和旧 checkpoint 不迁移。AutoDL 零更新复核为 `VALID_FAILED / G3_FAIL`：complex64 最坏对齐复场误差 `6.9225e-4`，complex128 为 `1.6014e-4`，门槛均为 `1e-4`。OLS 响应矩阵、秩和维度排序未运行。
 - **科学认识：** 固定物理 ROI、同 dx、共同全局相位对齐后仍失败；高精度 residual 表明问题不只是 complex64 累积误差。误差随窗口的频率间距变化，支持有限窗口离散频率采样影响；global phase 不是主要解释。功率与 fiber latent 误差较小不替代复场 Gate。
 - **目标缺口：** G3 数值收敛和 Gaussian→Decoder→camera 接口尚未闭合；本轮无 OLS 响应矩阵或新维度判断。逐通道复 latent 误差数组尚未补齐；2026-10-14已确认原连接报错源于沙箱隔离，沙箱外连接已恢复。fiber MFD、位置、功率和相机仍是未标定仿真假设。
-- **工程完成与验证：** [复核报告](ols_gaussian_dimension_reaudit_v1.md)、[机器证据包](../artifacts/ols_gaussian_dimension_reaudit_v1.json)、[云端原始读出与回传收据](../outputs/20261013_ols_gaussian_dimension_reaudit_v1/runs/autodl_backup_attempt_01)已保存。原云端测量退出码0；18个复场读出均成功加载且有限；主证据 907,134,033 bytes，逐文件大小核对通过。追加的 `autodl_run -Action Check` 在上传前因 SSH 255/DNS 解析失败，逐通道复 latent 后处理没有启动；云端三份既有源文件已逐字节恢复。训练、数据读取、评价器/FID和loss修改均为0。
+- **工程完成与验证：** [复核报告](research/ols/ols_gaussian_dimension_reaudit_v1.md)、[机器证据包](../artifacts/ols_gaussian_dimension_reaudit_v1.json)、[云端原始读出与回传收据](../outputs/20261013_ols_gaussian_dimension_reaudit_v1/runs/autodl_backup_attempt_01)已保存。原云端测量退出码0；18个复场读出均成功加载且有限；主证据 907,134,033 bytes，逐文件大小核对通过。追加的 `autodl_run -Action Check` 在上传前因 SSH 255/DNS 解析失败，逐通道复 latent 后处理没有启动；云端三份既有源文件已逐字节恢复。训练、数据读取、评价器/FID和loss修改均为0。
 - **决策影响与授权边界：** 保留 Gaussian S12 主参考与 LP01 对照的用户选择；当前不支持 OLS 维度排序。使用已验证沙箱外AutoDL通道补齐已保存复场的逐通道读出，再设计 G3 数值收敛修复确认，之后才规划受控维度测量；该建议不授权训练、结构变更或loss修改。未来训练按物理功率前向、过程监控及结果报告保留功率，不新增功率损失；现有 `L_op` 和相机接口须在 Gaussian 训练前单独核验。
 
 ## 2026-10-13 compact OLS interface scaling：敏感性几何命中，实物候选未成立
 
-- **结果与状态：** [compact OLS scaling 报告](compact_ols_architecture_scaling_report.md)与[结构化测量](../artifacts/compact_ols_scaling_results.json)为VALID_COMPLETED / SIMULATION_SCREEN_MET_SENSITIVITY_PITCH。280个计划扫描点与4个固定距离对照完成；59个phase-only优化结果通过筛选，但全部使用非参考fiber pitch，125 μm参考pitch为0个。
+- **结果与状态：** [compact OLS scaling 报告](research/ols/compact_ols_architecture_scaling_report.md)与[结构化测量](../artifacts/compact_ols_scaling_results.json)为VALID_COMPLETED / SIMULATION_SCREEN_MET_SENSITIVITY_PITCH。280个计划扫描点与4个固定距离对照完成；59个phase-only优化结果通过筛选，但全部使用非参考fiber pitch，125 μm参考pitch为0个。
 - **科学认识：** 当前200 μm aperture、125 μm pitch、z=1.5 mm零相位基线为eta_total 6.471%、N_eff≈4。只优化总耦合能升至55.645%，N_eff仍约4，说明总耦合不能代表100维通道覆盖。最小筛选命中为500 μm aperture、z=0.5 mm、pitch 50 μm，但50 μm pitch小于当前125 μm包层，属于敏感性仿真，不是可加工方案。
 - **目标缺口：** 缺少真实fiber pitch/MFD/包层、relay/illumination尺寸与损耗测量；phase-only每个目标仅从零相位执行24步，并非全局上界。没有由本轮建立的100维参考几何最小接口，也没有制造或材料非线性结论。
 - **工程完成与验证：** 云端预检通过、命令exit 0、结果VALID_COMPLETED；三种目标共20,448诊断优化步，正式训练更新、数据读取、evaluator调用、loss/生产几何改动均为0。telemetry 18条、采集失败0；聚焦测试5项、Ruff、compileall、差异检查通过。
@@ -85,7 +312,7 @@
 
 ## 2026-10-13 物理功率与非线性审计完成：前向物理缺口仍在
 
-- **结果与状态：** [14项审计报告](physical_power_audit.md)和[结构化JSON](../artifacts/physical_power_audit.json)已完成，`AUDIT_COMPLETED_WITH_PHYSICAL_GAPS`。现有2048补零窗口与复LP01 overlap已存在；绝对激光功率、每层材料透射、125 μm实际阵列映射和532 nm材料层尚未接入。独立诊断与参数扫描完成，正式训练、评价器和模型采用均未改。
+- **结果与状态：** [14项审计报告](research/ols/physical_power_audit.md)和[结构化JSON](../artifacts/physical_power_audit.json)已完成，`AUDIT_COMPLETED_WITH_PHYSICAL_GAPS`。现有2048补零窗口与复LP01 overlap已存在；绝对激光功率、每层材料透射、125 μm实际阵列映射和532 nm材料层尚未接入。独立诊断与参数扫描完成，正式训练、评价器和模型采用均未改。
 - **科学认识：** 大传播网格宽4.096 mm，但耦合平面仍200 μm，不能容纳名义1.25 mm阵列。Gaussian无孔径守恒误差2.33×10⁻¹⁵；小窗口负控在守恒时仍发生周期卷回。1 mW/T=.889下520 W/cm²场景覆盖率为LP01 3%、Gaussian 4%；这些是未训练光束及假定数值材料平面的读数，不能解释MNIST收益或证明材料可行性。
 - **目标缺口：** 端面/像面、pitch/MFD/倍率、功率/透射、fiber复transport及532 nm材料曲线/时间条件未知。现有相对L_op不能提供W；文献0.889、0.2493 mW和TaP 520 W/cm²只作条件参考，3×10⁷的Te@532 nm出处未核实。
 - **工程完成与验证：** [最终诊断](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/diagnostics.json)及[预算](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/report.json)保存200条预算、20,000条通道功率、450组覆盖分布、7,200条材料响应。聚焦测试14 passed；Ruff、AST和空白检查通过。开场Mapping缺导入随后在工作树补齐，非本任务改动；完整未训练入口探针现通过。未运行全套pytest。
@@ -406,3 +633,430 @@ attempt_04通过CPU float64解析反例、独立分量梯度和中心有限差�
 随后完成[Generator有限位移响应诊断](../outputs/20261006_m0_generator_finite_displacement_response_v1/runs/attempt_03/report.json)，任务 `M0_GENERATOR_FINITE_DISPLACEMENT_RESPONSE_V1` 为 `VALID_COMPLETED / TRAINING_DISPLACEMENT_MISMATCH_WITH_LOCAL_RESPONSE`。固定B端点、200行拟合TRAIN和2048生产光路；模型、Adam、评价器均冻结，科学更新为0。CUDA预检的8个E_D中心有限差分控制均通过，模型/评价器/Adam冻结检查通过；20个批次各完成44个预声明位移条件，共880次位移、9000行正式前向。保存Adam候选在类别1为8/20有利、10/20有害，在类别7为16/20有利；完整重置Adam候选分别为12/20和13/20有利，均未满足两类同时达到16/20的训练位移条件。作为局部响应正控，等RMS的E_D类别1和类别7梯度位移分别使对应类别20/20行的分数差增加；这说明附近存在可测响应，但不证明分类边界可被训练跨越，也暴露出该类局部位移可能损伤其他类别。结论仅适用于批次条件的有限相位干预，不是共同checkpoint准确率或可读性结果；不支持续训、重置Adam、投影或扩容，训练建议`NONE`、`next_action=NONE`。attempt_03保存了20个测量块、逐行指标和100行固定色阶图；恢复完成态未追加前向。图像报告首次收尾的维度错误及已保留记录不影响随后CPU恢复生成的有效报告。聚焦测试 **11 passed**；变更入口与测试的Windows `compileall`、Ruff及`git diff --check`通过；未重跑全套测试。
 
 随后完成[共同Generator方向的冻结跨人口验证](../outputs/20261006_m0_generator_shared_direction_transfer_v1/runs/attempt_03/report.json)，任务 `M0_GENERATOR_SHARED_DIRECTION_TRANSFER_V1` 为 `VALID_COMPLETED / SHARED_RESPONSE_WITH_CLASS_OR_IMAGE_TRADEOFF`。固定step2500的B端点，从原200行拟合人口保存的批次梯度构造四个共同方向，并将每个相位状态用于完整600行canonical TRAIN（200行构造、100行历史比较、300行确认）；模型、Adam及评价器保持冻结，科学更新为0。READY预检、四评价器目标正控、独立基线重复（最大读数差为0）及冻结核验均通过；10个干预条件共产生6,000行读数，连同600行基线共6,600行。主判定只看300行确认人口：等RMS纯CE方向使类别1和7的E_D分数差分别在30/30行上升，同时类别8在30/30行下降；三类正确数均未改变，类别1/7仍为0/30，宏召回仍为0.30。加入BOGT或保存Adam后类别响应变化，不能从本次冻结对照单独归因。故结果是共同局部响应伴随类别代价，不满足无稳定类别伤害的支持条件；不支持续训或扩容，训练建议`NONE`、`next_action=NONE`。attempt_01/02的无效工程记录保留，只有attempt_03包含有效完整测量；入口及测试见[诊断脚本](../scripts/research/lightgen/diagnose_lightgen_2d_generator_shared_direction_transfer_v1.py)和[回归测试](../tests/research/lightgen/test_lightgen_2d_generator_shared_direction_transfer_v1.py)。本轮聚焦测试 **7 passed**，新增文件`compileall`、Ruff和`git diff --check`通过；未重跑全套测试。
+
+
+## 2026-10-26 G1一次前向SLM输入映射试训
+
+### 结果与状态
+
+按固定C45k、每类一个完整协方差G1先验、冻结Encoder/OLS/Decoder及固定人口完成`diagnostic-only`试训。最终为`VALID_FAILED / MAPPING_NOT_SUPPORTED_WITHIN_FIXED_5000_UPDATE_BUDGET`：映射器更新恰好5,000步，光学系统与评价器更新均为0；没有新增MNIST原图读取。运行身份为`9ef5ae24515c416b8b3ef47b4e9138dc`。
+
+### 科学认识
+
+收尾修订从原200个分片完整重算固定留出人口2,000条（每类200条）；2048和4096网格在阈值`1e-4`下仍为0/2,000。最大单全局相位系数相对L2误差分别为0.616599880593、0.616597600986；未经归一化或功率匹配的原生CMOS相对L2误差分别为0.817143146907、0.817141674362。网格间最大系数差为`4.7972312e-5`、CMOS差为`3.4887105e-5`，低于阈值；主科学判定与5,000步终点不变。
+
+A8与I8仍为非门槛辅助测量，均为0/2,000满足误差阈值；2048下A8均值系数/CMOS误差为0.161409/0.182726，I8为0.160994/0.180403。其跨网格最大误差已分别从A8自身两网格输出重算为系数/CMOS`4.7967214e-5`/`3.4883360e-5`，I8为`4.7743320e-5`/`3.4802693e-5`。源功率249.3 μW时连续/A8/I8平均SLM输出功率约83.887/83.894/83.879 μW。相机换算现统一为`W/m² × 6.25e-12 m²/像素 → W/像素 → 原固定增益`；连续2048裁剪比例为1.140315%，E_D/E_C分别正确1,526/2,000和1,590/2,000，仍只作辅助读出。旧“裁剪100%、E_D/E_C均200/2,000且全判类别3”的解释已撤回。
+
+### 目标缺口
+
+结论仅适用于本次固定G1留出人口、C45k数值光路、理想振幅SLM及5,000步预算；不证明所有G1输入不可制备，也不证明物理光路可用、语义可读性提升或硬件就绪。历史340张人工评分继续保持待评分，未新增评分。
+
+### 工程完成与验证
+
+CUDA READY预检和正式5,000步记录保持原样。复核发现，旧恢复对照的两个分支都从同一第三步检查点恢复，不能作为“原进程不中断第四步 vs 独立恢复第四步”的一致性证据；该旧解释已撤回，历史预检`READY`事实未改写。训练后补验现按真实生产恢复函数比较：原mapper/Adam连续三步后直接执行第四步，独立进程从第三步检查点恢复后执行同一批次；模型、Adam和损失差均为0，RNG与日程精确一致。五次调用均为工程Adam，不增加正式更新；保存恢复证据的再次消费新增Adam调用为0。零更新光路重放及独立NumPy相机换算通过。原200个分片、检查点和attempt均保留。
+
+收尾包回传至新目录，22个文件的收据远端字节、本地记录字节与实际文件尺寸一致；Windows对原备份246个必需文件也逐项检查实际尺寸。Windows独立消费者从原200个分片重算2,000条，状态`WINDOWS_CLOSEOUT_RECONSUMPTION_PASSED`；主判据、逐类连续摘要、量化、功率、裁剪和E_D/E_C均与修订云端结果一致。每类前两条样本共20条，原始CMOS、W/像素、固定增益数组、uint8及渲染裁片逐像素一致。聚焦测试18项通过，Ruff `E4/E9/F821`、编译和`git diff --check`通过。详见[修订收尾报告](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/closeout_report.md)、[修订判定](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/final_decision.json)、[恢复补验](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/engineering_recovery_recheck.json)、[Windows独立复算](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/windows_closeout_reconsumption.json)、[逐像素复核](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/windows_display_pixel_audit.json)、[回传收据](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/transfer_receipt.json)、[原主判据比较诊断](../outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_closeout_repair_01/engineering_recovery/closeout_primary_comparison_diagnostic.json)及[修订入口](../scripts/research/lightgen/execute_lightgen_g1_slm_input_mapping_pilot_v1.py)。
+
+### 决策影响与下一步
+
+本计划到此停止。保留本次数值否定结论，不自动续训、不扩网、不改阈值、不开展G4、量化感知训练、人工评分或实物硬件实验。原C状态`VALID_FAILED`与几何状态`PROJECT_GEOMETRY_UNMEASURED`保持不变。
+
+## 2026-10-27 G1固定线性校正后一次前向制备
+
+### 结果与状态
+
+独立后继任务`LIGHTGEN_G1_SLM_PROJECTED_MAPPING_V2`完成。预检为`READY`，分支按固定规则选择`ALL_20_WITNESSES_TRIGGER_FIXED_5000_UPDATE_TRIAL`：零更新验证人口0/2,000通过，但每类保存顺序前两条共20条均取得完整光路见证。训练从原5,000步映射器起点新增恰好5,000步；光学系统和评价器更新为0。新固定留出人口2,000条最终为`VALID_FAILED`，六项误差全部通过数为0。详见[终点报告](../outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/final_report.md)与[最终判定](../outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/final_decision.json)。
+
+### 科学认识
+
+固定响应矩阵保留200个方向，条件数约15.71，右逆核验最大`|AP-I|`为`5.77e-15`。在第5,000步终点，新留出集2048/4096网格最大系数相对误差为0.479727/0.479725，原生CMOS相对误差为0.694467/0.694465，均明显超过`1e-4`；两网格间系数与CMOS误差为`5.48e-5`和`3.71e-5`，低于阈值。结果说明右逆数值稳定、两网格输出一致，但本次候选的目标系数制备误差仍大；它不证明振幅边界是唯一原因，也不证明G1总体不可制备。A8/I8因连续判据失败未测量。
+
+固定训练探针200条同样为0/200条六项全部通过；其2048/4096最大系数误差为0.463490/0.463489，最大原生CMOS误差为0.697607/0.697605。逐类均值、RMS、中位数及最大值见[训练探针统计](../outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/training_probe_terminal_summary.json)；该探针是辅助测量，最终判定仍只使用固定留出人口。
+
+### 目标缺口
+
+结果仅约束本次固定新留出人口、C45k冻结数值光路、投影映射结构及固定训练预算；不证明人眼可读性、真实器件或相机表现、物理部署或全部G1输入的可制备性。原G1试训的5,000步`VALID_FAILED`保持历史状态；本任务累计谱系包含原映射器5,000步和新增5,000步，不能把差异单独归因于投影结构。原`PROJECT_GEOMETRY_UNMEASURED`与340张待评分状态保持。
+
+### 工程完成与验证
+
+CUDA预检的独立数值、导数、下降方向、完整光路负例和真实恢复对照通过；恢复补验共5次工程Adam调用，正式科学更新仍为5,000。训练、测量和证据保存完成。修复一次终点消费者对二进制checkpoint的读取问题后，从既有2,000条测量输出重新消费，没有重训、重采样或重做光学测量。Windows独立消费者重算全部2,000条，NumPy指标复算通过；终点映射器指令回放最大振幅差`2.44e-6`（限值`5e-6`），245个证据文件的实际尺寸与收据匹配，20张固定展示逐像素复核通过。聚焦云端回归39项通过，变更源文件编译、Ruff及差异检查通过。见[READY预检摘要](../outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/preflight_summary.json)、[Windows独立复核](../outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/windows_reconsumption.json)和[回传收据](../outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/transfer_receipt.json)。
+
+### 决策影响与下一步
+
+本任务按固定预算停止，`training_recommendation=NONE`。不自动续训、改阈值、扩大网络、开展A8/I8量化测量或量化训练、推进G4、评分或实物实验；这些均需单独规划和授权。历史G1状态及物理几何未测量状态不改写。
+
+## 2026-10-28 G1全人口固定公共相位可达性诊断停止点
+
+### 结果与状态
+
+`LIGHTGEN_G1_FULLPOP_FEASIBILITY_DIAGNOSIS_V1`的原始诊断attempt保持关闭态`COMPLETED`。完成指标精度及来源复核后，结论为`CURRENT_PHASE_WITNESS_20_OF_20`：四种预定指令来源中至少一种对20/20条`development_feasibility20`目标取得完整光路见证；固定B公共相位求解本身也为20/20。原全人口B5000和冻结V2各为0/20通过六项联合标准。复核没有增加科学更新或优化器调用，也没有重新运行求解或光路测量。
+
+### 科学认识
+
+在本次20条开发目标、冻结C45k数值光路和预定有界求解预算内，固定公共相位下存在满足原六项`1e-4`标准的振幅指令；自由相位求解同为20/20，没有增加见证数。因此，这组结果削弱“当前公共相位本身阻止这些目标制备”的解释，并保留输入映射优化、训练暴露和学习能力作为待区分的原因。它不是新人口泛化、G1总体可制备性或硬件部署证据。原全人口B5000在这20条上的系数误差均值约`0.02684`、最大约`0.11196`，原生CMOS误差均值约`0.03801`、最大约`0.18950`；V2和B5000的映射输出仍未满足联合标准。
+
+### 目标缺口
+
+20条均来自既有验证人口，角色为开发可达性诊断，不是独立最终留出。历史2,000条留出仍是已消费证据，不能恢复为未见人口。尚未建立更广G1人口的连续制备、语义可读性或实物光路证据；`PROJECT_GEOMETRY_UNMEASURED`及340张待评分状态保持。
+
+### 工程完成与验证
+
+复核修正了固定相位指标中先以complex64乘相位造成的舍入：20条指标重算后数值均更新，门槛判定变化为0，原始测量数组未变。Windows消费者从保存数据重算20条、80组条件及全部六项指标，状态为`WINDOWS_EVIDENCE_RECONSUMPTION_PASSED`；20条CUDA单样本映射指令逐位回放匹配，测量行身份复核116条，固定响应重放最大相对误差`7.90e-15`。相机显示转换核对了4,000,000个像素，NumPy与Torch逐像素一致。原attempt 111项、607,929,403字节；修订回传包8项、12,984,978字节，收据与当前文件大小相符。聚焦测试19项通过，Ruff、编译和差异检查通过。原始attempt与报告未覆盖或改写。详见[原诊断报告](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_attempt_01/final_report.md)、[修订报告](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_review_repair_01/final_report.md)、[Windows复核](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_review_repair_01/windows_reconsumption.json)、[固定相位修订明细](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_review_repair_01/fixed_phase_metric_repair.json)、[回传收据](../outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_review_repair_01/transfer_receipt.json)及[诊断入口](../scripts/research/lightgen/execute_lightgen_g1_fullpop_feasibility_diagnosis_v1.py)。
+
+### 决策影响与下一步
+
+固定相位20/20见证支持将“映射器为何尚未自行产生合法指令”作为后续可学习性研究的候选问题，但不授权训练或改变模型、预算、人口、损失及阈值。本诊断到此停止；不自动续训、扩网、推进A8/I8、G4、人工评分或实物实验。历史`VALID_FAILED`状态保持。
+
+## 2026-10-29 G1语义生成200目标计划停止点
+
+### 结果与状态
+
+`LIGHTGEN_G1_SEMANTIC_EXPOSURE200_V1`为`diagnostic-only`。历史语义复盘已完成；两项无效CUDA预检在同一任务内修复。修复后的训练参照资格预检在固定训练人口第5条（class 0，proposal 4）停止，状态为`TRAINING_REFERENCE_INSUFFICIENT`。未生成READY收据，未创建`attempt_01`，15,000步训练未启动，科学更新与工程Adam调用均为0。这不是`VALID_FAILED`科学终点。
+
+### 科学认识
+
+历史2,000条已消费输出的冻结评价器辅助准确率为：直接Decoder E_D/E_C 75.00%/80.25%，冻结V2 74.85%/80.20%，B5000 75.10%/80.10%；配对预测变化方向混合，不能将语义差异主要归因于映射器，也不能据此判断人眼可读性。训练人口前4条在规定求解预算内取得完整光路见证；第5条未达到预设系数求解阈值，完整光路系数误差约`9.286e-3`；其余195条未进入参照求解。这只表示本计划预算内该条缺少正控见证，不证明其物理不可达或网络无法学习。
+
+### 目标缺口
+
+由于200条训练参照未全部通过，15,000步固定暴露试训、400条终态六项测量和开发集终点语义读数均未执行。历史开发人口已消费，不是独立留出。独立人口上的语义正确性、多样性、新颖性、人眼可读性与实物光路证据仍缺；`PROJECT_GEOMETRY_UNMEASURED`及340张待评分状态保持。
+
+### 工程完成与验证
+
+历史复盘见[语义复盘报告](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_repair_01/semantic_review.md)。本地`py_compile`、聚焦Ruff及11项聚焦测试通过。两项初次预检工程故障已修复并保留快照；Windows独立NumPy复算确认第5条及前4条六项指标与云端差异不超过`1e-14`。三次预检共回传21个文件、137,150,649字节，实际大小、收据、源码快照与运行配置一致。无矩阵加速资格、工程恢复对照或正式训练；云端没有本任务活动screen或READY收据。详见[收尾报告](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/autodl_backup_preflight_repair_02/closeout_report.md)、[Windows预检复核](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/autodl_backup_preflight_repair_02/windows_failure_reconsumption.json)、[回传核验](../outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_01/deployment_01/preflight_transfer_closeout.json)及[研究入口](../scripts/research/lightgen/execute_lightgen_g1_semantic_exposure200_v1.py)。
+
+### 决策影响与下一步
+
+本计划在预先规定的训练参照资格条件处停止。维持原人口、阈值与求解预算时不进入训练，不替换proposal、不追加求解或放宽标准。若要推进语义生成主线，可另行决定是否只针对proposal 4设计有界可达性诊断，再据证据规划训练人口与独立留出；这只是建议，不是本轮授权。原历史失败、物理几何状态和待评分任务不改写。
+
+## 2026-10-31 LightGen 完整光路零更新归因
+
+### 结果与状态
+
+`LIGHTGEN_FULLPATH_ZERO_UPDATE_ATTRIBUTION_V1` 在 attempt_05 完成数值诊断，唯一归因结论为 `UNRESOLVED`。使用既有已消费 2,000 行人口；新增优化器更新、重采样、官方测试读取均为 0。
+
+### 科学认识
+
+固定 DEV 200 张图像的平均 SSIM 从 0.770256 升至 0.774682；同人口 E0G0→E1G1 的 E_D/E_C 宏召回各下降 0.10 个百分点。恢复旧 Encoder 的 E_D 差为 −0.30 pp（95%区间 −0.80 至 +0.15），恢复旧 Generator 为 +0.10 pp（−0.30 至 +0.50）；均未满足预定下界大于零的规则。交互区间均跨零，不能优先指定单一模块，也不据此判断容量不足或损失项因果。
+
+### 目标缺口
+
+结论限于已消费数值人口与冻结仿真评价器；全体 G1 泛化、人眼可读性、器件标定、实物光路及硬件部署尚未验证。
+
+### 工程完成与验证
+
+复用资产与人口身份通过核验；起点/终点前 20 行重放最大差为 0，40 条跨网格正控通过既有 1e-4 容差，所有源模型、Adam、输入资产和评价器状态未变。Windows 独立消费者从保存命令和 raw CMOS 重算 2,000 行并复现 `UNRESOLVED`，读出最大差为 0。定向测试 14 项通过，Ruff 与编译通过。attempt_01 至 attempt_04 为测量前工程接线/资产问题，均未发生参数更新；attempt_05 完成。详见[独立复核报告](../outputs/20261031_lightgen_fullpath_zero_update_attribution_v1/runs/windows_review_01/zero_update_attribution_review.md)、[复算决策](../outputs/20261031_lightgen_fullpath_zero_update_attribution_v1/runs/windows_review_01/recomputed_attribution_decision.json)、[逐样本结果](../outputs/20261031_lightgen_fullpath_zero_update_attribution_v1/runs/autodl_backup_attempt_05/per_sample_results.csv)及[回传收据](../outputs/20261031_lightgen_fullpath_zero_update_attribution_v1/runs/autodl_backup_attempt_05/transfer_receipt.json)。
+
+### 决策影响与下一步
+
+建议停止于本次归因，不优先控制 Encoder 或 Generator，不自动续训、改损失、重采样、扩容或开展硬件工作。任何后续单变量研究需另行确定问题、人口和停止点；本条目不构成新执行授权。
+
+## 2026-11-02 LightGen 训练—生成 OLS 输入分布定位
+
+### 结果与状态
+
+`LIGHTGEN_TRAIN_GENERATION_OLS_SUPPORT_V1` 在 attempt_03 完成，Windows 独立复核通过。唯一结果为 `DIFFERENCE_EXPANDED`。4,000 条 2048 光路输出中，复用 attempt_02 控制 40 条、新增前向 3,960 条；40 条 4096 参考全部复用，没有新增 4096 前向。参数更新、优化器实例、先验重拟合/采样和官方 TEST 读取均为 0。首轮统计遇到 Torch/NumPy 类型错误后，从已保存完整光路输出恢复分析，恢复期间新增前向为 0。
+
+### 科学认识
+
+固定每类 100 张 TRAIN 参考集合、2,000 次配对 bootstrap（seed `202611020970`）下，`G_0=0.11526`，`G_2000=0.12847`，`DeltaG=0.01321`。`G_2000` 的 95% 区间为 `[0.12115, 0.13602]`，`DeltaG` 为 `[0.01269, 0.01375]`；二者下界均大于零，支持本计划预设的“输入分布差异扩大”路线。结论限于已消费人口、固定 TRAIN 诊断参考和当前数值光路，不作模块因果或完整语义成功判断。
+
+旧 55,000 行矩阵重编码缓存与当前 step 0 完整光路的 1e-6 对照仍为 `DIAGNOSTIC_MISMATCH`：2,000 行最大相对误差 `1.27183`、p95 `7.91e-7`；20 条复用正控最大误差 `1.27183`。该偏差按本轮明确批准作为非阻断诊断限制保存，不将旧缓存视为 step 2,000 TRAIN 分布。历史 100 行完整光路回放最大误差为 `7.78e-7`，不消除本轮所见的行级差异。
+
+### 目标缺口
+
+尚未验证独立新先验人口、全体生成分布、人眼可读性、模型采用或实物 SLM/衍射层/OLS/CMOS 链路。本次数值输入分布证据不能替代这些验收。
+
+### 工程完成与验证
+
+attempt_02 的 40 条 2048/4096 正控经过来源模型、TRAIN 行清单和逐行跨网格误差复算后复用；最大复系数与 raw CMOS 跨网格相对误差分别为 `9.33e-6`、`1.95e-5`，均小于 `1e-4`。attempt_03 的 4,000 行输出、生成命令身份、资产冻结、逐行结果和 bootstrap 已由 Windows NumPy 消费者重算；回传收据为 `COMPLETE`（28 个文件，约 78.6 MB）。原始分析异常、修复入口和零前向恢复记录均已保留。聚焦测试 16 项通过，Ruff、`py_compile`、配置/来源预检通过。
+
+详见[Windows 独立复核](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/windows_review_01/independent_review.json)、[独立复算收尾报告](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/windows_review_01/closeout_report.md)、[逐样本分布分析](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/autodl_backup_attempt_03/input_distribution_analysis.json)、[旧缓存诊断](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/autodl_backup_attempt_03/cache_crosscheck.json)、[跨网格复核](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/autodl_backup_attempt_03/cross_grid_reference.json)及[回传收据](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/autodl_backup_attempt_03/transfer_receipt.json)。
+
+### 决策影响与下一步
+
+建议后续单独设计冻结 mapper 与投影、只检查其和终点 Encoder 配合关系的一变量研究。本轮停止于输入分布路线决策；没有授权或自动启动训练、改损失、重拟合先验、重采样、扩容、量化或硬件任务。
+
+## 2026-11-02 LightGen 输入分布诊断勘误与修订（attempt_04）
+
+### 结果与状态
+
+attempt_03 的 `DIFFERENCE_EXPANDED` 结论已被本次修订取代。原控制入口把 population index 当作原图行号，40 条正控均读错；20 个控制位置中仅16张恰属TRAIN，15张的实际标签与声明标签不符。旧正控只保留作故障证据，不进入修订人口。
+
+attempt_04 完成修订测量，Windows 独立复核通过，修订路线仍为 `DIFFERENCE_EXPANDED`。完整人口由attempt_03两端点的3,960条非控制光路输出原样复用，并用40条正确正控替换；新增2048前向40条、4096参考40条。参数更新、优化器实例、先验重拟合/采样及官方TEST读取均为0。
+
+### 科学认识
+
+固定每类100张TRAIN参考、2,000次配对bootstrap（seed `202611020970`）下，`G_0=0.11731424`，95%区间`[0.11036996, 0.12460982]`；`G_2000=0.13052099`，区间`[0.12355036, 0.13783124]`；`DeltaG=0.01320675`，区间`[0.01269096, 0.01374037]`。两项预设下界均大于零，支持在当前已消费人口及固定TRAIN参考集合下，训练—生成OLS输入分布差异扩大。该结果不证明输入适配器或Encoder更新的因果责任，也不代表可读性或硬件通过。
+
+### 目标缺口
+
+结论限于当前数值模型、已消费生成人口和固定TRAIN诊断集合。独立新人口、全体生成分布、人眼可读性、器件标定与SLM→衍射层→OLS→CMOS实物链路仍未验证。
+
+### 工程完成与验证
+
+修复入口在前向前核对manifest源TRAIN行、实际标签和TRAIN身份，并保存实际原始像素与被前向消费的SLM命令。Windows用CUDA重建命令，最大绝对差为0；3,960条复用系数、功率与raw CMOS摘要逐项保持原值。40条控制跨网格最大复系数/raw CMOS相对误差为`8.781e-6` / `1.868e-5`，通过原`1e-4`标准；修正后step 0全部2,000行对旧缓存的最大相对误差为`8.895e-7`，通过原`1e-6`标准。Windows NumPy复算、bootstrap、来源身份及路线均通过。
+
+云端 attempt_04 原始 `closeout_report.md` 因沿用旧模板而错误记载“控制复用40、2048新增3,960、缓存不通过”。该原件保留作工程记录；以[Windows修订收尾报告](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/windows_review_02/closeout_report.md)和[独立复核](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/windows_review_02/independent_review.json)为最终复核依据。修订正控图为[raw CMOS 控制对照](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/windows_review_02/raw_cmos_train_controls_comparison.png)；全量机器输出在[attempt_04本地备份](../outputs/20261102_lightgen_train_generation_ols_support_v1/runs/autodl_backup_attempt_04/)。
+
+### 决策影响与下一步
+
+结果支持另行设计冻结mapper与投影、单独检查其和终点Encoder配合关系的一变量研究；该研究尚未执行或获本轮授权。本轮在一次路线决策处停止，不自动训练、改损失、重拟合先验、重采样、扩容、量化或操作硬件。
+
+## 2026-11-02 LightGen 终点 Encoder 投影配准（attempt_01）
+
+### 结果与状态
+
+LIGHTGEN_TERMINAL_PROJECTION_ALIGNMENT_V1 完成，Windows 独立复核通过。唯一结果为 SEMANTIC_BENEFIT_NOT_SUPPORTED：E_D 宏召回变化 -0.30 pp，配对 95% 区间 [-0.80, +0.20] pp；E_C 变化 +0.10 pp；最小逐类多样性保留 100.07%。因为 E_D 区间下界未大于零，语义收益 Gate 未通过。使用已消费 2,000 行诊断人口；参数更新、优化器实例、先验重拟合/采样和官方 TEST 读取均为 0。
+
+### 科学认识
+
+同一终点 Encoder/Generator 和冻结输入适配器下，P1 将训练参照分布差 G 从 0.13052099 降为 0.12291372，配对 Delta G=-0.00760727，95% 区间 [-0.00803272, -0.00717611]。公共相位对齐目标误差均值由 0.08357 降至 0.01269。这些结果支持配准改善了输入/OLS 对齐机制，但没有建立完整光路语义收益；差距仍为正。总模态功率均值增加约 1.09%。P1 输入预裁剪越界比例均值 4.27%、最大 31.59%，最终命令保持在 [0,1]。
+
+E_D 主要退化在类别 9（-3 pp）和类别 3（-1.5 pp）；类别 6、7 各改善 +1 pp，类别 2 改善 +0.5 pp。这些是固定评价器在本已消费人口上的类别代理变化，不是人眼识读结论。
+
+### 目标缺口
+
+结果只适用于已消费人口和当前数值光路。独立未消费人口、全体先验生成、人眼可读性、论文复现等价性以及实物 SLM→衍射层→OLS→CMOS 部署仍未验证。
+
+### 工程完成与验证
+
+有效产物包含方案内接受测量 2,023 条 2048 前向、20 条 4096 参考和 200 次输入标量导数；另有首次无效 dtype 尝试导致的重复工作，细节见执行历史。AutoDL 生成的 38 个文件已完整回传（1,834,159,502 bytes）。Windows 复核的 P0/P1 命令最大差分别为 7.45e-9 / 1.49e-8，右逆残差 1.47e-14，跨网格系数/raw CMOS 最大误差 2.73e-5 / 1.98e-5；独立 NumPy 距离和 bootstrap 重算通过。定向测试 10 项通过，Ruff 和编译检查通过。
+
+详见[独立复核报告](../outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/windows_review_01/closeout_report.md)、[复核证据](../outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/windows_review_01/independent_review.json)、[执行恢复记录](../outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/windows_review_01/execution_history.json)、[逐样本结果](../outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/autodl_backup_attempt_01/per_sample_results.csv)和[完整 Windows 备份](../outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/autodl_backup_attempt_01/transfer_receipt.json)。
+
+### 决策影响与下一步
+
+当前支持“冻结投影配准改善 OLS 目标对齐/训练分布接近度”，不支持“语义生成候选已改善”。保留 P0、P1 权重及全部证据，不自动调参、训练、重采样或转入硬件；任何独立人口确认均需另行制定研究问题和停止规则。
+
+## 2026-11-02 完整光路语义生成：D/P0/P1路径影响闭环
+
+### 结果与状态
+
+`LIGHTGEN_FULLPATH_EVIDENCE_CLOSURE_V1`完成，独立复审与 NumPy 重算通过。固定人口为已消费诊断人口 2,000 条、每类 200 条；D 直接 OLS 与 P0/P1 完整 SLM 路径使用同一保存目标和 proposal。本轮更新、优化器实例、先验重拟合/新采样和官方 TEST 读取均为 0。
+
+### 科学认识
+
+| 对照 | E_D 宏召回差（95% 配对 CI） | E_C 宏召回差（95% 配对 CI） | 最低逐类多样性保留 | 判定 |
+|---|---:|---:|---:|---|
+| P0−D | +0.70 pp [+0.20, +1.25] | 0.00 pp [−0.60, +0.60] | 97.25% | 符合预设非劣界 |
+| P1−D | +0.40 pp [+0.10, +0.70] | +0.10 pp [−0.15, +0.40] | 97.73% | 符合预设非劣界 |
+
+本人口内 P0 与 P1 均满足两评价器的 −2 pp 下界和逐类 80% 多样性保护。逐类结果仍有下降，例如 P0 的 E_C 类 8 为 −4 pp；总体非劣不表示每类均无退化，也不表示图像相同。相对 D 的 raw CMOS RMS 差分别为 2.22279 和 1.70670 W/m²。
+
+### 目标缺口
+
+结论仅适用于固定数值模型和已消费人口。独立人口语义确认、人眼可读性、总体 G1 分布、与论文规模/物理参数等同及实物光路部署仍未建立；训练与生成先验匹配也仍是后续研究问题。
+
+### 工程完成与验证
+
+AutoDL 完成 2,000 条 D 条件 2048 前向；完成 20 条 D 的 4096 参考、20 条 P1 OLS 重注入及 10 张 TRAIN 的无更新完整路径/梯度检查。D 跨网格 raw CMOS 相对误差为 1.4301e−5（阈值 1e−4）；P1 重注入 raw CMOS 最大绝对误差为 0。Encoder/Generator CMOS 梯度范数为 0.005646/0.002462，模型与 Adam 状态未改变。Windows 从全部 raw CMOS 重建显示与评价器预测，NumPy 显示误差为 0；bootstrap 区间和最终判定一致，逐类多样性独立复算误差小于 1.5e−15。影响路径测试 88 项通过，Ruff 与 `py_compile` 通过。现有联合更新入口已加入真实 TRAIN 行、振幅 SLM、Encoder→OLS→Generator→raw CMOS 及损失绑定护栏。
+
+详见[Windows 独立收尾报告](../outputs/20261102_lightgen_fullpath_evidence_closure_v1/runs/windows_review_01/closeout_report.md)、[独立复核结果](../outputs/20261102_lightgen_fullpath_evidence_closure_v1/runs/windows_review_01/independent_review.json)、[终态决策](../outputs/20261102_lightgen_fullpath_evidence_closure_v1/runs/autodl_backup_attempt_01/final_decision.json)、[回传收据](../outputs/20261102_lightgen_fullpath_evidence_closure_v1/runs/autodl_backup_attempt_01/transfer_receipt.json)。
+
+### 决策影响与下一步
+
+本结果支持在该已消费人口上保留 P0/P1 两条完整数值路径的语义候选；不支持精确等价、模型采用或硬件验收。当前联合训练入口继续要求损失消费同一次真实图像到 CMOS 的光路前向；后续训练计划应固定这一约束。建议后续另行设计独立人口验证。本轮停止于路径保留判断和训练入口验收，不自动启动训练、修改损失或重拟合先验。
+
+## 2026-11-03 完整光路工程闭环修复（attempt_02）
+
+### 结果与状态
+
+`LIGHTGEN_FULLPATH_EVIDENCE_CLOSURE_REPAIR_V1` 的 attempt_02 工程验收及 Windows 独立复核通过。attempt_01 的 `INVALID_HARNESS` 和 attempt_02 恢复 worker 首次失败记录均保留。实际共 5 次成功工程更新调用、3 个 Adam 实例；其中失败 worker 构造过 1 个实例但在更新前退出。源终点和隔离状态回滚通过。科研更新、先验重拟合/采样及官方 TEST 读取均为 0。
+
+### 科学认识
+
+D/P0/P1 在同一已消费生成诊断人口上的既有判断保持 `BOTH_FULL_PATHS_WITHIN_PREDECLARED_MARGIN`；本次工程修复没有产生科研候选，也没有改变科学判断。历史“优化器实例为零”记录已勘误；旧加载/运行的完整实例与更新总数未受仪表记录，统一标为未知。
+
+### 目标缺口
+
+独立新人口、人眼可读性、论文规模/参数等价及实物光路仍未验证。历史 P0 人口保存了 2048 全人口输出但无配对 4096 控制数组，所以 P0 跨网格控制不具备；D、P1 的保存控制误差通过。本次 bootstrap 和语义判定仍只适用于已消费人口。
+
+### 工程完成与验证
+
+更新消费者在 `optimizer.step()` 前核对规范重构/SSIM 梯度；重构、SSIM 断梯度负控在总梯度仍非零时均被拒绝。三步连续更新、第四步直接与独立进程恢复比较、见证绑定及回滚通过；P1 20 条 OLS 后端重注入 raw CMOS/W-per-pixel 最大差均为 0。Windows 只读复核实例/更新数为 0/0，NumPy 重算保存准入量和 D/P0/P1 统计，独立决策一致。定向测试 36 项通过，Ruff、`py_compile` 和 `git diff --check` 通过。有限差分使用已保存记录复核；旧 run 未归档正负扰动向量，报告保留此限制。
+
+详见[收尾报告](../outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/windows_review_02/closeout_report.md)、[独立复核](../outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/windows_review_02/repair_independent_review.json)、[重算决策](../outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/windows_review_02/recomputed_final_decision.json)及[AutoDL 回传收据](../outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/autodl_backup_attempt_02/transfer_receipt.json)。
+
+### 决策影响与下一步
+
+完整光路联合训练入口工程验收通过；单组冻结入口仍不支持，未来训练须继续走真实图像→SLM→Encoder→OLS→Generator→CMOS，且同一次 CMOS 前向进入损失。后继建议是冻结同一终点/适配器，在新的人口上做 D/P0/P1 零更新配对确认；草案为 `DRAFT_ONLY_NOT_AUTHORIZED`，尚未采样。实物里程碑另需 SLM 标定、器件/继像注册、OLS/光纤复传输与相机读出实测，本轮未进行。
+
+## 2026-11-03 HW207 实物数字孪生：C0/C1 完成，C2 未收尾
+
+### 结果与状态
+
+`HW207_MNIST4` 数字孪生线启动，使用实物几何与 HW207_CURRENT 映射开展 MNIST 0–3 四分类诊断。C0 数值基线为 `C0_PASS`：gray 与 binary 两种编码的 test 准确率 97.79% / 97.67%（三种子均值），随机标签负控 24.08% / 24.12%，preflight `READY`，20 项测试通过。C1 为 `C1_NUMERICAL_DIAGNOSTIC_PASS`：8 种传播条件（gray/binary × 0/0.5/1/2 mm）与 16 种数字线性读出全部完成。C2 尚未收尾：最后写入 17:45、无 closeout，当前可见身份为 `C2_AXIS_ALIGNED_DIAGNOSTIC_ONLY`，不登记科学结论。本轮的更新限于数字分类头与线性读出，未更新光学传播模型或器件层。
+
+### 科学认识
+
+C1 在同一测试人口（4,157 条）上给出两组读数：固定 ROI 判决仅 40.70%（ROI-A）与 46.55%（ROI-B），四分类随机为 25%；同一强度数据经训练线性读出可达 94.28–95.95%。传播距离影响很小：1 mm 相对 identity，gray 归一化 100×100 读出变化 0.00 pp、25×25 为 −0.12 pp，binary 最多下降 1.16 pp。因此本轮支持「类别信息存在于输出强度中」，但表明**判决对读数几何敏感、对传播距离不敏感**。该比较只适用于本轮采样、距离与输入；ROI 与训练读出使用不同判决路径，二者差值不能单独归因于传播。
+
+### 目标缺口
+
+全部结果为理想数值传播：缺 DMD 实际收光、输入 relay 共轭、LightGen 器件层与 CMOS 读出实测；C2 的 `hardware_mapping` 与 `coherent_dmd` 均为 `BLOCKED`。四分类结果不足以验证实物光路或光学图像生成，人眼可读性与端到端闭环证据仍未建立。
+
+### 工程完成与验证
+
+C0 在 RTX 4080 CUDA 上运行，人口计数 train 22,279 / validation 2,475 / test 4,157。C1 八条件各 28,911 行；独立回传检查逐块索引、强度、ROI、能量账与混淆矩阵，并以冻结权重重算全部线性 test 预测；本地 CPU 分块与云端整批有 2 个近并列预测不同，按实际记录保留。FP32/FP64 全窗复场相对误差最大 4.41e-7、能量相对误差最大 5.32e-7，均满足 ≤1e-5。C2 的 `axis_population_01` 因写满云端数据盘作废，其输出暂存云端系统盘，生命周期取决于实例；`axis_population_02` 的 26 微镜条件是把整幅 200 μm 缩进 196.56 μm 的缩放假设，不能作为固定视场几何对照。
+
+实物基线包 [HW207 实物与距离基线](../research_assets/lightgen/HW207_实物与距离基线_20261103/README_先读.md) 已固定并自带限制：13 段距离为卷尺照片估读并按厘米取整；SLM 现由临时反射镜代位；LightGen 芯片与 CMOS 仍为预留位置；CMOS 满阱 13.8 ke⁻ 与 43 ke⁻ 冲突未决，532 nm QE 为 `UNKNOWN`。该包自述实物链路「尚无端到端闭环证据」。
+
+详见 [C1 报告](research/lightgen/hw207_mnist4_c1_report.md)、[C2 轴对齐身份记录](research/lightgen/hw207_mnist4_c2_axis_scope_note.md)、[C0 回传摘要](../outputs/20261103_hw207_mnist4_c0_v1/runs/autodl_backup_attempt_01/summary.json)、[C1 回传摘要](../outputs/20261103_hw207_mnist4_c1_v1/runs/autodl_backup_data_01/summary.json)及[数字孪生设计](hardware/207_optical_twin_design.md)。
+
+### 决策影响与下一步
+
+该线当前只支持「值得单独设计 C2 的 DMD 与 relay 接口」，不支持实物光路、生成质量或模型采用判断。C2 收尾前不追加测量、不改阈值、不进入生成或训练；硬件里程碑仍需 SLM 振幅/灰阶标定、器件与继像坐标注册、复传输与功率损耗测量以及相机读出实测。本轮不产生科研授权。
+
+## 2026-11-04 HW207 C3.3 单层可训练相位屏：四分类数值通过，加工闭环仅带宽约束训练通过
+
+> 独立复核修正。52 mm 为照片估读与薄透镜假设导出的距离差，训练采用理想 4f 加离焦。STL 拓扑通过，实际横向为 198×198 µm，200×200 µm 目标未达到。平滑臂未施加额外横向模糊或最小特征限制，完整加工闭环证据不足。以下为原执行记录。
+
+### 结果与状态
+
+`C3.3_PHASE_GRADIENT_PASS`、`C3.3_SINGLE_PHASE_TRAINING_PASS`、`C3.3_2X2_CLASSIFICATION_PASS`、`C3.3_PHASE_TO_HEIGHT_PASS`、`C3.3_STL_GEOMETRY_PASS` 通过；`C3.3_FABRICATION_AWARE_SIMULATION_PASS` 仅平滑约束训练臂通过（−0.05 pp），朴素设计为 `DEGRADED`（−61.55 pp）。历史 C0/C1/C2/C2.1/C3.1–C3.2 状态与 `HW207_CURRENT_MAPPING=BLOCKED` 不变。
+
+### 科学认识
+
+固定 2×2 四区读出与 dz=52 mm 相机离焦，holdout 2,000 条从无相位 14.80% 提升到 95.78–96.02%（3 初始化 × 3 种子，sd 0.10–0.29 pp）；dz=0 理想 4f 只能到 86.5%，且探测能量只剩无相位的 9.3%（能量塌缩）。0 μm 零梯度有两层原因：φ=0 时一阶强度响应物理为零（7.5e-8），且 C3.1 预检用 SGD 无法放大该梯度；换 Adam 后 dz=0 亦可训练。ROI 编号是实质性的：180° 重映射后准确率降至 1.1–1.6%，说明类别确实被路由到固定四区。实测输出几何为 `P(100)L(30)P(80)`（A=−2.333、B=−86.67 mm、共轭 48 mm），CMOS 在共轭面外 52 mm，故 52 mm 是实测共轭差的量级，而非标定值；模型倍率 −6.667 仍为理论候选、不是实测 −0.60。
+
+### 目标缺口
+
+全部为理想数值模型：无 DMD 实际收光、输入 relay 共轭、器件层与 CMOS 读出实测。材料/打印机/532 nm 折射率均为 `UNKNOWN`，最终可加工 STL 标为 `BLOCKED`，仅输出参数化假设场景（Δn=0.5/0.6）。`phase_holdout` 只对本轮训练划分独立。四分类不证明图像生成、语义正确性或人眼可读性。
+
+### 工程完成与验证
+
+单一 `forward_field` 供预检与训练共用（消除 C3.1 预检 `__wrapped__` 与生产 `no_grad` 的分叉）。12 组 AD/中心差分对照，最强分量相对误差 ≤1.7%（φ=0 的 3 个条件因零梯度未通过）；FP32/FP64 强度相对误差 5.6e-7、得分 6.0e-8。数据分层 seed 20261104：18,279 / 2,000 / 2,000。19 个训练 run（dz=52 mm 9 + 平滑 3 + dz=0 7）。新增测试 15 项通过。STL 39,996 三角面、闭合、取向一致、包围盒 200×200 μm、单位 µm；高度 0–1.064 µm（Δn=0.5），最大坡度 ≈45°@2 µm。加工重仿真：朴素设计 95.65%→33.60%（σ=0.8 px 模糊），平滑约束训练设计 95.25%→95.20%，瓶颈为横向分辨率而非高度量化（64 级量化与 20 nm 噪声几乎无损）。
+
+详见 [C3.3 报告](research/lightgen/hw207_mnist4_c33_report.md)、[P0/P2 审计](../outputs/20261104_hw207_mnist4_c33_v1/runs/autodl_backup_attempt_01/p0_p2/audit.json)、[梯度报告](../outputs/20261104_hw207_mnist4_c33_v1/runs/autodl_backup_attempt_01/p0_p2/gradient/gradient_report.json)、[跨种子聚合](../outputs/20261104_hw207_mnist4_c33_v1/runs/autodl_backup_attempt_01/aggregate.json)、[加工重仿真](../outputs/20261104_hw207_mnist4_c33_v1/runs/autodl_backup_attempt_01/export_v4_dz52000_smooth08_s1/fabrication_simulation.json)。
+
+### 决策影响与下一步
+
+支持「四象限能量读出可承载四类信息」的数值结论，不支持实物分类或打印放行。设计必须把打印机横向带宽放进训练，否则打印后不可用。下一步需实测打印机分辨率与材料 Δn，再重算最小特征与 h₂π 并生成可加工 STL；本结果不授权实物打印、器件采用或硬件实验。
+
+## 2026-11-04 HW207 C3.4：加工感知数值诊断完成，实物加工仍阻断
+
+### 结果与状态
+
+本轮总体仍为 `C3.4_PARTIAL_PASS`。历史几何适配 holdout Accuracy 为 95.75%，但全传感器效率 3.245%，低于 7.708% 下限；旧 P3 相位在联合假设加工算子下约 19–20%。新增 `C3.4_PROCESS_AWARE_PREFLIGHT_PASS` 通过，三种子 `C3.4_PROCESS_AWARE_HEIGHT_TRAINING=ASSUMPTION_ONLY_DIAGNOSTIC_COMPLETE`：入选 seed 1/epoch 5，在复用 validation 的 Δn=0.5/0.6 十个加工情景平均 Accuracy 为 95.265%/90.420%。效率分别为 11.008%/10.500%，低于匹配的 P3 基线 39.373%/38.896%。两个新增 STL 仅为参数化诊断往返；`C3.4_FABRICATION_READY=BLOCKED`、`HW207_CURRENT_MAPPING=BLOCKED`。
+
+### 科学认识
+
+C3.3 固定相位从历史理想4f迁移至估算 `P(80)L(30)P(100)`、D=2 mm假设模型时，准确率从95.80%降至48.30%，触发几何适配。新增加工感知高度训练在同一假设模型和复用 validation 上把硬加工情景四区准确率提高到95.27%（Δn=0.5）与90.42%（Δn=0.6）；但输出效率约11%，低于未加工 P3 基线约39%。这支持加工算子可被纳入优化的数值解释，同时保留效率权衡；不能外推到真实打印机或材料。
+
+### 目标缺口
+
+C3.4 的估算几何、D=2 mm孔径及标量DMD代理不是HW207标定。加工感知分支与 P3 使用同一 validation，且该 validation 已参与 P3 选模；官方 MNIST test 未加载，新增分支未打开 holdout。P3 使用的 C0 train 样本池已在 C3.3 不同数据角色中使用；C3.4 holdout 也与旧 C3.3/P2 holdout 重叠，因此没有项目级独立测试。材料 Δn、打印机横向响应、DMD实物收光、LightGen复透射、输出倍率/像差、CMOS身份和坐标仍待实测。不得把参数化STL当作加工就绪文件，也不得把分类结果当作图像生成验证。
+
+### 工程完成与验证
+
+C3.3审计覆盖201个文件、19/19可推理训练相位及24/24 STL记录；P1候选传播模型检查通过但标记为非硬件标定。P3三种子、P4–P6以及attempt05的三种子加工感知训练均退出码0；attempt05远端26项定向测试通过，本地cgroup v1 CPU配额采集器新增2项定向测试通过。独立复核从 attempt05 的逐行分数/预测数组重算40个“模型×Δn×加工实现”条件：40项的预测、Accuracy、Macro-F1和混淆矩阵全部一致。新增2个STL各41,612面，闭合/法向/高度往返检查通过；通用三角面对相交算法未运行。attempt05回传27/27文件、7,792,568字节完成。输入场缓存1.66 GiB和本次临时输出均放在系统盘。三步 microbatch64 预检相对microbatch2基线为12.50×，不是整次训练提速倍数。
+
+attempt05共174个30秒资源采样点，任务墙钟约88分钟；GPU利用率均值91.40%、中位数97%、峰值100%，显存18,235/32,760 MiB。CPU原始值按主机128核归一，复核cgroup v1实际配额为16核后，校正均值38.45%、中位数26.00%、P95 99.78%；CPU有短时满载但不是持续瓶颈。系统盘空闲最低14.32 GiB，数据盘最低0.609 GiB，主机可用内存最低407.96 GiB。原始采样保留，校正版见[资源摘要](../outputs/20261104_c34/runs/autodl_backup_processaware05/resource_summary_corrected.json)和[校正CSV](../outputs/20261104_c34/runs/autodl_backup_processaware05/resource_telemetry_corrected.csv)。完整回传见[attempt05备份](../outputs/20261104_c34/runs/autodl_backup_processaware05)。
+
+### 决策影响与下一步
+
+C3.4新增证据说明：在本次假设的几何和加工算子下，单层高度图可重新优化以恢复固定四ROI分类；全传感器效率仍需与准确率一起评价。实物材料/打印机参数、未被前序阶段使用的独立评估人口和HW207输入/输出映射仍缺失，故总状态不变。建议先取得实测加工参数并建立独立评估人口，再另行决定是否开展下一轮优化；此建议不授权新训练、实际打印或硬件实验。
+
+## 2026-11-05 HW207 C3.5：加工感知分类数值诊断收尾（总体部分通过）
+
+### 结果与状态
+
+总体为 `C3.5_PARTIAL_PASS`：P0 能量口径审计有历史逐行复算限制；P1 为诊断候选；P2 为加工假设下数值完成；P3 修正后完成 7 候选×38 情景；P4 独立评估阻断；P5 仅参数化 STL。`C3.5_FABRICATION_READY=BLOCKED`、`HW207_CURRENT_MAPPING=BLOCKED` 保持。
+
+### 科学认识
+
+C3.3 固定相位从理想 Model A 的 95.80% 迁移到估算 Model B 后为 48.30%。C3.5 加工感知 P2 在复用开发验证集上为 95.35%；修正后 P3 的 1,000 行子集名义条件为 94.9%，Δn=0.6 为 90.4%。P2 对设定 PSF、最小特征及组合不利情景敏感；所有值均是数值假设。四 ROI 决策是 CMOS 后电子积分/argmax，不是纯全光端到端判决。
+
+### 目标缺口
+
+MNIST 0–3 独立评估人口已耗尽；没有材料 532 nm 复透射、打印机横向/高度工艺、HW207 实测 Relay/CMOS 坐标与 DMD 收光证据。参数化 STL 未完成通用自交检查，也没有实际打印验证。
+
+### 工程完成与验证
+
+修正 P3 单因素场景后，AutoDL 定向测试 15 项通过；代表性预检和完整 P3 均退出码 0。回传 266 个 NPZ 并独立复算：每条件 1,000 行、每类 250 行、样本顺序一致、ROI argmax 零差异，ROI/区外对 CMOS 能量相对误差最大 `1.60×10⁻⁷`。本地 Windows 测试收集遇 NumPy DLL 初始化错误，故该环境没有执行测试体。详情见 [C3.5 报告](research/lightgen/hw207_mnist4_c35_report.md)、[原始摘要](../outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/c35_summary.json)、[修正后 P3 复算](../outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_p3_recheck_02/attempt_06_p3_recheck/p3_independent_recalc.json)。
+
+### 决策影响与下一步
+
+C3.5 可按假设工艺条件下的数值筛选收尾，不能据此放行打印或实物分类。建议先闭合材料、打印机、Relay、DMD 和 CMOS 测量，再另行决定独立验证；本状态记录不授权训练、打印、器件采用或硬件操作。
+
+## 2026-11-06 HW207 C3.7：保存证据复核收尾（部分完成）
+
+### 结果与状态
+
+C3.7 以 C3.7_PARTIAL_PASS 收尾：现有训练候选未同时达到分类、核心聚焦和能量目标。冻结基线、E2、E3 seed 11/23、E7 seed 23 在同一 2,000 行开发验证集上对齐复算。Accuracy / η均值分别为 94.55%/46.28%、92.80%/10.46%、88.40%/51.64%、89.05%/50.00%、87.95%/50.61%。完整表格与全部混淆矩阵见[C3.7报告](research/lightgen/hw207_mnist4_c37_report.md)。
+
+### 科学认识
+
+E2 的 92.8% Accuracy 伴随 10.46% 平均 η、7.03% P10 和 3.63% 最低效率；正确核心能量仅占输入 1.16%，不能将 CMOS 归一化核心比上升解释为绝对聚焦能量增加。E3 seed 23 为 89.05% Accuracy、50.00% η均值、42.25% P10，核心/CMOS 中位 9.92%，未达原阈值。撤回几何上界、架构容量耗尽、类别解普遍不兼容等旧断言。E4 的末端验证绕过加工算子；E5 的保存结果精确对应历史未加工高度支路，不能作为加工后设计分数。
+
+### 目标缺口
+
+P0 采样收敛的 100 行只来自类别 0；当前梯度规则下的有效核验未验证。C3.7 验证人口已用于选模，独立评估阻断。有效材料与打印机参数、DMD/Relay/LightGen/CMOS 实测绑定、重复采集以及器件加工验证均缺失；FABRICATION_READY、HW207_CURRENT_MAPPING 与 INDEPENDENT_EVAL 仍阻断。
+
+### 工程完成与验证
+
+CPU 审计核验基线、E2、两条 E3 与 E7 的行序、标签和输入能量，并重算分类、混淆矩阵、η及正确 ROI/核心相对输入能量。E6 排除；E4 标为末端加工绑定无效；E5 分开核对 height_only 与 processed 阶段。五份正式训练历史按唯一 epoch 去重为 16 个 epoch、4,000 次更新；E6 无效记录另有 750 次更新；正式训练 groups 未包含 spread。P4 结果限每候选 200 张开发样本与 18 个假设场景。P5 有 9 个图件条目/27 个列出文件名，图像可读性未验证。未运行 CUDA、传播、训练、evaluator、加工复仿真或硬件实验。原验收 JSON 保留未覆盖；本次在独立 `_05` 目录重跑 CPU 审计，结果与 `_04` 逐字节一致：[CPU 审计脚本](../outputs/20261105_hw207_mnist4_c37_v1/runs/closeout_codex_01a18b9f_05/audit_c37_closeout.py)、[审计结果](../outputs/20261105_hw207_mnist4_c37_v1/runs/closeout_codex_01a18b9f_05/audit_result.json)和[更正验收 JSON](../outputs/20261105_hw207_mnist4_c37_v1/runs/closeout_codex_01a18b9f_05/corrected_acceptance.json)。既有 `_01`–`_04` 目录保留。最近 Codex 会话列表未见其他活动会话；DS 暂停依据用户报告，未作外部独立检查。AutoDL `screen -ls` 状态仍沿用 `_03` 的只读记录（当时无活动会话），本次未访问 AutoDL。
+
+### 决策影响与下一步
+
+本轮只支持对已保存开发验证数据及明确假设的数值结论，不支持材料、加工放行或实物映射。建议后续如另行决定推进，先修复 E4/E5 的加工阶段绑定，再补足四类采样、当前梯度规则及独立评估证据。后续动作是无自动执行；本轮不授权新训练、打印或硬件实验。
+
+## 2026-11-06 HW207 C3.8：共享相位四分类与 CMOS 路由收尾（部分通过）
+
+### 结果与状态
+
+C3.8 以 `C3.8_PARTIAL_PASS` 收尾。冻结的 T3 seed 23 展示候选在复用的 2,000 行开发验证集上 Accuracy 91.05%、Macro-F1 91.03%，正确核心/输入 4.013%；全局峰值进入正确 ROI/核心为 82.0%/77.6%，低于 90%/进一步 90% 目标。平均效率 38.284%、P10 30.802%；相对 C3.5 P1 保留 82.73%/78.24%，P10 保持检查未通过。六个正式候选保留了完整分类/能量 Pareto 对照，含 T2 seed 37 的 2.463% 平均效率和 0.259% 正确核心/输入能量塌缩。详情见[C3.8报告](research/lightgen/hw207_mnist4_c38_report.md)。
+
+### 科学认识
+
+当前 Model-B 数值假设下，共享单相位屏能够把四类映射到固定 ROI 并取得超过 90% 的开发集分类准确率，但光斑路由仍未达目标，且种子间能量差异明显。正式训练启用 T2/T3 损失，未启用 `spread`；五项目标只通过 P2 预检及 T4 pilot，不能声称正式五项联合训练已验证。结果不是独立泛化、HW207 实物或加工性能证据。
+
+### 目标缺口
+
+官方 MNIST test 未打开，P0/P3/P4 使用的是复用开发验证人口；P4 有全量行级指标，但 P5 单样本原始 CMOS 图仅保留 36 张。材料、打印机横向响应、实物 Relay/DMD/LightGen/CMOS 映射和坐标标定未闭合。`INDEPENDENT_EVAL_BLOCKED`、加工放行和 `HW207_CURRENT_MAPPING=BLOCKED` 保持不变。
+
+### 工程完成与验证
+
+P0–P5 有对应结果。P1 独立 Fresnel、解析传播、FP32/FP64 与采样检查通过；P2 五项梯度、差分、三步更新、负控和恢复通过并经独立复核；P3 六个正式 run 合计 25 个唯一 epoch、6,250 次更新；P4 冻结推理覆盖 2,000 行；P5 交付 9 组 × 3 格式图件。独立 CPU 审计复算六个候选指标，并从 36 张原始 CMOS 图复算 ROI/核心积分、总能量和峰值位置；36 个 P4/P5 文件均 SHA256 匹配。P5 图件经过目视检查。原始文件和早期传输失败收据保留，未运行新的 CUDA、传播、evaluator、训练、加工复仿真或硬件操作。审计脚本与结果见[本地收尾证据](../outputs/20261105_hw207_mnist4_c38_v1/runs/autodl_backup_attempt_05_closeout_01/c38_closeout_independent_audit.json)。
+
+### 决策影响与下一步
+
+C3.8 支持继续研究数值光学分类路由，但不支持采用模型、迁移实物、加工放行或图像生成能力声明。正式启用完整联合目标、建立独立评估人口和测量实物光路均需另行决策。当前后续动作为**无自动执行**，本轮不授权追加训练、打印或硬件实验。
+
+
+## 2026-11-06 证据与表述更正及后续科研判断
+
+**结果与状态：** 保留 C3.8_PARTIAL_PASS。现有运行与归档结束，原计划未完整执行：正式训练只有 T2/T3，完整五项 T4 仅进入 pilot。此前“P0–P5指定工作均有保存结果”不能理解为所有计划要求完成。
+
+**科学认识：** 六个正式候选的相位与最佳 epoch、ROI argmax和保存预测一致，现有数值结果保留。展示候选 T3 seed23 的 Accuracy 91.05%、Macro-F1 91.03%；η均值/P10/最小值为38.284%/30.802%/17.851%，正确核心/输入4.013%。其实际初始化是 C3.7 E3 seed23：相对该起点，Accuracy提高2.00个百分点，但η下降11.719个百分点、正确核心/输入下降1.235个百分点；相对C3.5 P1的核心能量增益仍成立。不能把两种比较混为训练收益。
+
+逐类召回率为91.6%/95.0%/84.2%/93.4%；峰值进入对应数值ROI为93.4%/57.4%/85.2%/92.0%，进入核心为92.0%/47.6%/82.6%/88.2%。类别1是主要峰值定位断点，类别2是主要分类断点。正确核心平均占CMOS能量10.30%，正确ROI占29.26%，错误三个ROI合计41.63%，四ROI整体外29.11%。保存的全CMOS质心到目标核心中心距离均值361.99 μm、中位356.99 μm；这不是局部光斑拟合质心。
+
+**目标缺口：** seed11/23/37分别绑定C3.5 P1、C3.7 E3和随机相位，属于初始化与种子组合，不能估计纯随机种子稳定性。完整T4正式训练未执行。图件采用物理y向上、origin=lower，实际ROI编号0/1/2/3对应左下/右下/左上/右上，与配置的top_left等名称不一致；数值编号和原始预测保持不变，不通过事后重编号提高分数。独立评估及HW207_CURRENT_MAPPING继续阻断。
+
+**工程完成与验证：** 本地C3.7更正验收文件实际存在于 outputs/20261105_hw207_mnist4_c37_v1/runs/closeout_codex_01a18b9f_05/corrected_acceptance.json（_01亦存在）。C3.8的false记录反映运行时未绑定该输入，不能表述为本地文件不存在；P0的unique_epoch_audit为空，历史epoch审计未由该字段完成。保留原始JSON，不覆盖历史收据。完成审计只检查各run损失集合的并集，不能证明同一最终模型联合使用五项。核心峰值90%是附件的进一步目标；80%效率保持来自实现配置，应作为配置检查报告，不作为实物标准。已有数值自洽性检查保留，不将其扩大为完整计划验收。
+
+**决策影响与下一步：** 本阶段按部分完成收尾，无自动执行。补做科研对“结束本阶段”不是必要条件；若要回答原计划的完整五项联合优化问题，则至少一条T4正式训练是必要的缺失对照。先修正坐标合同及验收消费者，再固定同一初始化和样本预算比较T3/T4，避免立刻重跑六组或扩大权重搜索。T2随机起点η仅2.463%，说明去除能量约束不值得优先；T3随机起点最后两epochη仍由12.32%升至19.30%，不足以判断收敛或容量上限。优先研究类别1峰值竞争及能量权衡，不据现有结果改变几何或增加层数。独立人口尚未绑定时，任何补做仍是开发性证据；实物与打印不在此次授权内。以上科研路线仅为建议，本次不启动。
+
+## 2026-11-06 HW207 全链路冻结相位数值孪生 P0–P7（部分通过）
+
+### 结果与状态
+
+P0 七候选与 2,475 行 C0 验证索引审计通过；P1 统一前向接口和部分参考检查通过，但零距离/单频/完整 FP32-FP64 核验未在本 attempt 执行，记 `P1_PARTIAL_PASS`；P2 工程状态为 `PREFLIGHT_READY`，科学接受为 `P2_PARTIAL_PASS`：独立 Fresnel、反号负例、32×32缩减网格CPU/GPU复场及输入端 4096→8192 采样通过，输出镜面网格/CMOS全帧采样未收敛。P3/P5/P6 因 P2 阻断未执行；P4 固定四 ROI 仅为假设坐标接口；总体 `HW207_FROZEN_PHASE_NUMERICAL_TWIN_PARTIAL_PASS`。详情见[全链路报告](research/lightgen/hw207_physical_frozen_phase_report.md)。
+
+### 科学认识
+
+输出镜面网格 4096²→8192² 全 CMOS 强度相对 L1 最大 34.31%，四个代表样本中有 1 个固定 ROI 判决变化。2→4 子像素 CMOS 面积积分的全帧相对 L1 仍为 4.75%，但这四个样本的 ROI 能量差低于 0.003% CMOS 总能量且判决一致。仅是小样本数值诊断，不是全量分类表现。C3.8 的 91.05% 仍限其原 Model-B 开发验证条件；其相位未在本轮统一全链路完成 P5。
+
+### 目标缺口
+
+实际输出镜孔径/焦距、输入与输出 Relay 主平面和距离、DMD收光/姿态、LightGen复透射、CMOS身份与像素仿射/读出校准未闭合。没有本轮七候选 Accuracy、混淆矩阵或候选排名；独立评估、实物映射和加工放行保持阻断。
+
+### 工程完成与验证
+
+AutoDL RunId `fd8d3a9dc82e471a8528558e6cf598eb` 完成 P0/P2 无更新预检，16 行生产冒烟全部有限；官方 test 未开。定向测试本地和 AutoDL 均 10/10 通过，`py_compile` 与 `git diff --check` 通过。P2 审计重算了数据绑定、精化选网格和 Gate 逻辑；成对网格 CMOS 图未保存，因此全帧 L1 未由本地像素独立复算。保存证据见[P0/P2 回传](../outputs/20261106_hw207_physical_frozen_phase_v1/runs/autodl_backup_attempt_05_preflight/transfer_receipt.json)和[CPU证据审计](../outputs/20261106_hw207_physical_frozen_phase_v1/runs/attempt_05/closeout_codex_01/p2_evidence_audit_v4.json)。
+
+### 决策影响与下一步
+
+优先核实实际输出镜有效孔径并修正传播采样；再用收敛全链路重放冻结相位。现阶段没有充分依据追加训练。T4正式训练仅是声称“五项损失已正式验证”的必要补项，须在全链路有效后另行评估。打印、硬件控制和后续训练均未授权；停止于 `WAITING_FOR_USER_REVIEW`，不执行 P8。

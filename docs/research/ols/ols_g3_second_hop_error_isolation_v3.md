@@ -53,7 +53,7 @@ CPU独立参考按照固定dx的非周期带限角谱积分和复合四点Gauss�
 - 云端15项临时源码覆盖已逐项比对：7项原有文件从备份恢复，8项原本不存在的临时文件已删除；临时部署目录清除。详见云端恢复收据。
 - 63项精确证据回传收据为`COMPLETE`，远端/本地字节数逐项匹配。本地重新读取报告、收敛JSON、18个有限复场、37个有限中间场张量及36张有限误差图，全部通过。
 
-机器证据为[结构化结果](../artifacts/ols_g3_second_hop_error_isolation_v3.json)，精确原始回传包见[AutoDL证据备份](../outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/autodl_backup_v3_evidence)；云端运行目录为[attempt_01](../outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/attempt_01)。
+机器证据为[结构化结果](../../../artifacts/ols_g3_second_hop_error_isolation_v3.json)，精确原始回传包见[AutoDL证据备份](../../../outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/autodl_backup_v3_evidence)；云端运行目录为[attempt_01](../../../outputs/20261014_ols_g3_second_hop_error_isolation_v3/runs/attempt_01)。
 
 ## 决策影响与下一步
 

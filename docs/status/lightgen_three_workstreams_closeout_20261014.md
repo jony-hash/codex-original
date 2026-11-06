@@ -31,7 +31,7 @@ OLS v5 只证明指定模拟系统和离散窗口下的数值复场一致性、�
 
 身份分析读取 17,500 行保存记录，核验 7,500 个配对键及 2,070 行混淆汇总；按人口、训练种子、类别和四种正确性转移选出 230 对，保留 16 个空层。190 个 raw 块和 460 个端点完成生产视图回放；CPU 结果与 AutoDL 回传结果逐项比对。报告、机器验证、固定样本表及 HTML 图册见 [身份定位 attempt_02](../../outputs/20261014_m0_generator_identity_stroke_localization_v1/runs/attempt_02/)。
 
-OLS v5 的预检、1782 个探针和 5346 项预测比较通过，161 个回传文件共 1,412,737,073 字节逐项核验；详见 [v5 报告](../ols_window_dimension_power_v5.md)、[机器结果](../../artifacts/ols_window_dimension_power_v5.json)与[AutoDL 回传包](../../outputs/20261014_ols_window_dimension_power_v5/runs/autodl_backup_attempt_02/)。恢复工程证据见 [attempt_02 收尾记录](../../outputs/20261012_autodl_training_workflow_improvement_v1/runs/attempt_01/closeout.md)及同目录的恢复分析、终点验证和传输核对文件。
+OLS v5 的预检、1782 个探针和 5346 项预测比较通过，161 个回传文件共 1,412,737,073 字节逐项核验；详见 [v5 报告](../research/ols/ols_window_dimension_power_v5.md)、[机器结果](../../artifacts/ols_window_dimension_power_v5.json)与[AutoDL 回传包](../../outputs/20261014_ols_window_dimension_power_v5/runs/autodl_backup_attempt_02/)。恢复工程证据见 [attempt_02 收尾记录](../../outputs/20261012_autodl_training_workflow_improvement_v1/runs/attempt_01/closeout.md)及同目录的恢复分析、终点验证和传输核对文件。
 
 本次仓库收尾更新了状态、交接、路线图和项目导航，修正v5报告相对链接，并清理两批指定的合成pytest产物。聚焦验证 **78 passed**。Windows全套pytest为 **2498 passed, 13 deselected, 25 subtests passed, 9 failed, 7 errors**（538.01秒），未通过：8项失败和7项错误涉及读取其他研究线的`outputs/`证据时出现Windows权限拒绝；另1项失败属于同时进行的OLS v6新测试，未由本次收尾修改。v6会话保持活跃，该文件和配置均未纳入本次收尾。
 

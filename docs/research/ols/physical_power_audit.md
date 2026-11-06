@@ -20,7 +20,7 @@
 2. 当前保存的云端前景研究采用 `ExpandedGenerator`：Encoder仍为两层100×100；Generator为两张100×100旧相位面加两张400×400新增相位面，共340,000参数。它不是本次目标的两层100×100 Decoder。本轮不加载或评价这些训练端点。
 3. 维护的正式 v2 条件运行时使用 identity OLS，合同明确没有fiber。`optics/lightgen.py` 和 `fiber_ols.py` 是另一个2+4架构代理，不是当前LP01研究链。
 
-本轮源码实例化确认小架构 phase shape `(2,1,100,100)`、传播shape `(2048,2048)`。开场零更新 `forward_from_image(ones)` 在 `ComplexOLSState.__post_init__` 因未导入 `Mapping` 报 `NameError`，见[开场观察](../outputs/20261013_physical_power_audit_v1/runs/opening_entrypoint_probe.json)。审计期间该工作树新增 `from typing import Any, Mapping`（当前第14行，非本任务所写）；随后attempt_02/03的完整未训练入口探针通过。**开场失败是工程观察，当前已不能列为仍未解决的物理缺口。** 两次source状态均保留，不归功于本轮诊断代码，也不因此声称训练端点通过。
+本轮源码实例化确认小架构 phase shape `(2,1,100,100)`、传播shape `(2048,2048)`。开场零更新 `forward_from_image(ones)` 在 `ComplexOLSState.__post_init__` 因未导入 `Mapping` 报 `NameError`，见[开场观察](../../../outputs/20261013_physical_power_audit_v1/runs/opening_entrypoint_probe.json)。审计期间该工作树新增 `from typing import Any, Mapping`（当前第14行，非本任务所写）；随后attempt_02/03的完整未训练入口探针通过。**开场失败是工程观察，当前已不能列为仍未解决的物理缺口。** 两次source状态均保留，不归功于本轮诊断代码，也不因此声称训练端点通过。
 
 ## 关键文件与证据索引
 
@@ -109,7 +109,7 @@
 
 ## 独立诊断的实际结果
 
-最终诊断：[attempt_03/diagnostics.json](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/diagnostics.json)；原始通过的A/B/C在attempt_01保存，并在02/03显式复用。attempt_01的D因诊断封装未重绑Generator出口平面而失败，修复诊断后重跑D/E；[failure.json](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_01/failure.json)保持不变。02/03逐级读数完整相等；03在完整入口探针之后复核所有模型state_dict不变。
+最终诊断：[attempt_03/diagnostics.json](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/diagnostics.json)；原始通过的A/B/C在attempt_01保存，并在02/03显式复用。attempt_01的D因诊断封装未重绑Generator出口平面而失败，修复诊断后重跑D/E；[failure.json](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_01/failure.json)保持不变。02/03逐级读数完整相等；03在完整入口探针之后复核所有模型state_dict不变。
 
 | Diagnostic | 实测结果 | 解释 |
 | --- | --- | --- |
@@ -136,17 +136,17 @@
 | P_after_decoder_2 | 0.0006825294607206623 |
 | P_camera | 0.0006825292523939066 |
 
-各样本／100通道完整记录见[absolute_power.json](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/absolute_power.json)与[复系数证据](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/component_power_evidence.pt)。LP01四种输入coupling为71.6963%、71.6794%、71.6742%、74.8294%；Gaussian为18.8413%、18.8415%、18.8414%、19.1656%。两者pitch、waist和mode support都不同，此差异不能单独归因于模式家族，更不能据此选择模型。
+各样本／100通道完整记录见[absolute_power.json](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/absolute_power.json)与[复系数证据](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03/component_power_evidence.pt)。LP01四种输入coupling为71.6963%、71.6794%、71.6742%、74.8294%；Gaussian为18.8413%、18.8415%、18.8414%、19.1656%。两者pitch、waist和mode support都不同，此差异不能单独归因于模式家族，更不能据此选择模型。
 
 ## 功率预算、通用材料与覆盖扫描
 
-最终[预算报告](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/report.json)以attempt_03实际复系数为输入。扫描P_laser为0.2493/1/10/100/300 mW、每层功率T为1/0.95/0.889/0.8/0.7；不重新运行未改变的线性光路，而使用已验证的线性缩放。两个Encoder的幅度因子为`(√T)²=T`，因此材料前功率乘`T²`；四层无材料出口乘`T⁴`。
+最终[预算报告](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/report.json)以attempt_03实际复系数为输入。扫描P_laser为0.2493/1/10/100/300 mW、每层功率T为1/0.95/0.889/0.8/0.7；不重新运行未改变的线性光路，而使用已验证的线性缩放。两个Encoder的幅度因子为`(√T)²=T`，因此材料前功率乘`T²`；四层无材料出口乘`T⁴`。
 
-- [power_budget.csv](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/power_budget.csv)：200条模型预算，保留每种输入的overlap coupling。
-- [channel_power.csv](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/channel_power.csv)：20,000条通道功率及峰值光强，row-major。没有100通道等功率假设。
-- [coupling_sensitivity.csv](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/coupling_sensitivity.csv)：125条单独的总耦合0.1/0.3/0.5/0.7/0.9假设。仅用于尚无真实125 μm端面overlap模型的预算；不替代当前模型算出的coupling，也不产生逐通道均分。
-- [coverage.csv](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/coverage.csv)和[coverage_distributions.jsonl](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/coverage_distributions.jsonl)：450组覆盖。每组保留4×100的r_i及batch、每个样本、每个通道的mean/median/p10/p50/p90/max/min。`r<0.1`、`0.1≤r≤10`、`r>10`三类完整覆盖；非线性覆盖只作分布诊断，不设全通道硬阈值。
-- [material_response.csv](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/material_response.csv)：7,200条四模型响应。I_sat为10、100、520、10³、10⁴、10⁵、10⁶、10⁷、3×10⁷ W/cm²。
+- [power_budget.csv](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/power_budget.csv)：200条模型预算，保留每种输入的overlap coupling。
+- [channel_power.csv](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/channel_power.csv)：20,000条通道功率及峰值光强，row-major。没有100通道等功率假设。
+- [coupling_sensitivity.csv](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/coupling_sensitivity.csv)：125条单独的总耦合0.1/0.3/0.5/0.7/0.9假设。仅用于尚无真实125 μm端面overlap模型的预算；不替代当前模型算出的coupling，也不产生逐通道均分。
+- [coverage.csv](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/coverage.csv)和[coverage_distributions.jsonl](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/coverage_distributions.jsonl)：450组覆盖。每组保留4×100的r_i及batch、每个样本、每个通道的mean/median/p10/p50/p90/max/min。`r<0.1`、`0.1≤r≤10`、`r>10`三类完整覆盖；非线性覆盖只作分布诊断，不设全通道硬阈值。
+- [material_response.csv](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/material_response.csv)：7,200条四模型响应。I_sat为10、100、520、10³、10⁴、10⁵、10⁶、10⁷、3×10⁷ W/cm²。
 
 新增 `material_nonlinearity_diagnostic.MaterialNonlinearity.forward(field, intensity_w_cm2, params)` 只在诊断中使用。四模型公式：
 
@@ -159,7 +159,7 @@
 
 光强使用：Gaussian为`I_peak=2P_i/(πw²)/10⁴` W/cm²；LP01为`P_i max|u_i|²/10⁴`（采样且经cell截断的模态），没有把LP01无条件套成Gaussian。**这里材料平面假定等于数值OLS平面；实际端面映射未知。** 扫描将每通道峰值用于lumped传输，是敏感性近似；不是在空间分布I(x,y)上积分材料损耗，也没有处理非线性后的模式畸变。接口本身支持local field，独立验证使用`I=|U|²/10⁴`；后续真实薄膜建模应使用空间积分和模式重投影。
 
-[材料独立验证](../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/material_validation.json)实际核对四模型功率透射、相位、解析I导数／符号、中心差分和不增能；测试还注入错用T振幅，最终值检查会拒绝，未修改生产接口作“修复”。
+[材料独立验证](../../../outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02/material_validation.json)实际核对四模型功率透射、相位、解析I导数／符号、中心差分和不增能；测试还注入错用T振幅，最终值检查会拒绝，未修改生产接口作“修复”。
 
 | 场景（4种输入×100通道） | linear | nonlinear coverage | saturated | r_max |
 | --- | --- | --- | --- | --- |
@@ -176,11 +176,11 @@
 
 | 新增文件 | 功能与隔离边界 |
 | --- | --- |
-| [physical_power_diagnostics.py](../src/ldm_project/v2/application/research/lightgen/physical_power_diagnostics.py) | A–E、入口单次标定及现有组件trace；不建optimizer、不读数据／checkpoint、不调用evaluator |
-| [material_nonlinearity_diagnostic.py](../src/ldm_project/v2/application/research/lightgen/material_nonlinearity_diagnostic.py) | 四种静态被动材料方程、physical intensity接口、覆盖分布、独立值／导数／符号复核；不被正式训练链导入 |
-| [check_physical_power_v1.py](../scripts/research/lightgen/check_physical_power_v1.py) | 现有研究目录的独立CPU CLI，统一执行建议的多项diagnostics，拒绝已有output目录 |
-| [power_budget.py](../scripts/research/lightgen/power_budget.py) | 读取显式通过的组件证据，核对复系数／100通道W与不增能，再执行条件扫描；不修改光学模型 |
-| [test_physical_power_audit_v1.py](../tests/research/lightgen/test_physical_power_audit_v1.py) | 14项回归，包含遗漏面积、错乘T振幅、保存证据增能的负例，生产producer一直通到最终诊断consumer |
+| [physical_power_diagnostics.py](../../../src/ldm_project/v2/application/research/lightgen/physical_power_diagnostics.py) | A–E、入口单次标定及现有组件trace；不建optimizer、不读数据／checkpoint、不调用evaluator |
+| [material_nonlinearity_diagnostic.py](../../../src/ldm_project/v2/application/research/lightgen/material_nonlinearity_diagnostic.py) | 四种静态被动材料方程、physical intensity接口、覆盖分布、独立值／导数／符号复核；不被正式训练链导入 |
+| [check_physical_power_v1.py](../../../scripts/research/lightgen/check_physical_power_v1.py) | 现有研究目录的独立CPU CLI，统一执行建议的多项diagnostics，拒绝已有output目录 |
+| [power_budget.py](../../../scripts/research/lightgen/power_budget.py) | 读取显式通过的组件证据，核对复系数／100通道W与不增能，再执行条件扫描；不修改光学模型 |
+| [test_physical_power_audit_v1.py](../../../tests/research/lightgen/test_physical_power_audit_v1.py) | 14项回归，包含遗漏面积、错乘T振幅、保存证据增能的负例，生产producer一直通到最终诊断consumer |
 
 本轮最终实际命令（在仓库根、支持的Windows环境执行）：
 
@@ -189,7 +189,7 @@ python -B -m scripts.research.lightgen.check_physical_power_v1 --output-dir outp
 python -B -m scripts.research.lightgen.power_budget --diagnostic-dir outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_attempt_03 --output-dir outputs/20261013_physical_power_audit_v1/runs/diagnostic-only_budget_02
 ```
 
-这些目录已经存在，命令会拒绝覆盖；今后复现应使用新的明确run路径。首次完整A/B/C命令不带reuse参数，已保存在attempt_01。验收记录见[delivery_verification.json](../outputs/20261013_physical_power_audit_v1/runs/delivery_verification.json)：从20,000行CSV独立复算所有通道和，不增能；450组JSONL覆盖分类复算误差0；每组100通道非均匀功率完整保留。CSV功率总和最大差5.55×10⁻¹⁷ W。链接和五段反馈顺序核对通过。没有新训练或后继自动动作。
+这些目录已经存在，命令会拒绝覆盖；今后复现应使用新的明确run路径。首次完整A/B/C命令不带reuse参数，已保存在attempt_01。验收记录见[delivery_verification.json](../../../outputs/20261013_physical_power_audit_v1/runs/delivery_verification.json)：从20,000行CSV独立复算所有通道和，不增能；450组JSONL覆盖分类复算误差0；每组100通道非均匀功率完整保留。CSV功率总和最大差5.55×10⁻¹⁷ W。链接和五段反馈顺序核对通过。没有新训练或后继自动动作。
 
 ## 下一轮最小计划与停止点
 

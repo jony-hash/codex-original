@@ -84,7 +84,7 @@ AutoDL使用 `/root/miniconda3/bin/python`、Python 3.12.3、PyTorch 2.5.1+cu124
 
 执行中暴露了维度探针循环索引作用域错误；修正并通过本地compile、Ruff和5项聚焦测试后，利用已保存复场、参考值和伴随行缓存续跑。云端最终命令退出码0，机器报告和维度指标均完整。最后的控制台摘要曾因读取了错误的JSON键而打印`dimension=null`；独立重读确认报告中的`OLS_dimension_and_power.status=COMPLETE_ZERO_UPDATE_DIAGNOSTIC`且维度指标文件完整，随后仅修正了本地CLI摘要键，未改云端测量结果。运行目录保存了当时实际部署的源码快照。云端临时覆盖的4个原有源码逐字节恢复；8个原先不存在的临时文件已移除，恢复收据为 `VERIFIED`。
 
-完整AutoDL证据包位于[精确回传目录](../outputs/20261014_ols_window_dimension_power_v5/runs/autodl_backup_attempt_02)，包含161个逐项核对文件、共1,412,737,073字节；包括18份ROI复场、18份第二段固定点记录、K/H矩阵、奇异值、探针与功率指标、源快照、负控、日志及退出/资源记录。[回传后重读审计](../outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/post_return_audit.json)确认全部文件大小匹配，矩阵形状和有限值通过，探针预测、G3报告与机器指标相互一致。机器结果在[JSON报告](../artifacts/ols_window_dimension_power_v5.json)。
+完整AutoDL证据包位于[精确回传目录](../../../outputs/20261014_ols_window_dimension_power_v5/runs/autodl_backup_attempt_02)，包含161个逐项核对文件、共1,412,737,073字节；包括18份ROI复场、18份第二段固定点记录、K/H矩阵、奇异值、探针与功率指标、源快照、负控、日志及退出/资源记录。[回传后重读审计](../../../outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/post_return_audit.json)确认全部文件大小匹配，矩阵形状和有限值通过，探针预测、G3报告与机器指标相互一致。机器结果在[JSON报告](../../../artifacts/ols_window_dimension_power_v5.json)。
 
 ## 决策影响与下一步：
 

@@ -33,7 +33,7 @@
 - [参考配置](D:/codex-original/configs/reference/lightgen_power_proxy.yaml)：参考/未标定参数，不作为实测值。
 - [正式v2合同](D:/codex-original/docs/architecture/v2_runtime.md)：基础2+2/100×100/2 μm；identity OLS不是SMF验收。
 - [缩放与打印边界](D:/codex-original/docs/archive/v67_ideal_phase_boundary.md)：设计参数与制造标定分开。
-- [物理前向记录](D:/codex-original/docs/physical_power_integration_v1.md)：可选模型已实现、诊断未通过，无实物验收。
+- [物理前向记录](D:/codex-original/docs/research/ols/physical_power_integration_v1.md)：可选模型已实现、诊断未通过，无实物验收。
 
 ## 复现
 

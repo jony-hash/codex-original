@@ -84,7 +84,12 @@ because a script or configuration still exists.
 - `docs/status/`: current handoff, the mutable hypothesis ledger, dated
   experiment facts, and specialized diagnostic status records. The first
   current snapshot is authoritative; dated entries are provenance.
+- `docs/research/`: research route maps and dated reports grouped by family;
+  `research/ols/` indexes the OLS window/dimension/phase series.
+- `docs/hardware/`: physical device and measurement documents.
 - `docs/archive/`: immutable historical handoffs, reports, and acceptance JSON.
+
+Placement and linking rules live in [`docs/AGENTS.md`](AGENTS.md).
 
 `PROJECT_MEMORY.md` stores durable navigation, `CURRENT_STATUS.md` stores the
 current high-level state, `status/current_handoff.md` stores the latest delta

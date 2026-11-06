@@ -14,7 +14,7 @@
 
 ## 工程完成与验证
 
-证据见[机器报告](../artifacts/autodl_connection_repair_v1.json)、[相同命令对照](../outputs/20261014_autodl_connection_repair_v1/runs/attempt_01/connection_comparison.json)和[精确回传收据](../outputs/20261014_autodl_connection_repair_v1/runs/autodl_backup_attempt_01/transfer_receipt.json)。沙箱外Check重复连接成功；云端为Python3.12.3、PyTorch2.5.1+cu124、RTX4080，项目导入来源正确。screen工程任务退出0，CUDA整数求和观测与期望均为523776；遥测1次、采集失败0次。回传8个文件，全部大小匹配；本地重读probe、退出状态和收据后确认PASS。云端没有源码覆盖、DNS/代理/密钥/host-key修改；只新增本次工程输出。
+证据见[机器报告](../../artifacts/autodl_connection_repair_v1.json)、[相同命令对照](../../outputs/20261014_autodl_connection_repair_v1/runs/attempt_01/connection_comparison.json)和[精确回传收据](../../outputs/20261014_autodl_connection_repair_v1/runs/autodl_backup_attempt_01/transfer_receipt.json)。沙箱外Check重复连接成功；云端为Python3.12.3、PyTorch2.5.1+cu124、RTX4080，项目导入来源正确。screen工程任务退出0，CUDA整数求和观测与期望均为523776；遥测1次、采集失败0次。回传8个文件，全部大小匹配；本地重读probe、退出状态和收据后确认PASS。云端没有源码覆盖、DNS/代理/密钥/host-key修改；只新增本次工程输出。
 
 根AGENTS和AutoDL操作说明已加入实际消费规则：Codex的AutoDL SSH/SCP、Check/Start/Status/Pull显式使用`exec_command.sandbox_permissions=require_escalated`，沿用已授权任务权限。普通用户PowerShell运行方式不变，不自动降低SSH安全校验，也不静默转到本地。
 

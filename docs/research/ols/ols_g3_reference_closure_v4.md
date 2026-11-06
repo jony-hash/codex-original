@@ -33,9 +33,9 @@ G3 是后续 OLS 响应谱、绝对功率和维度决策的先决检查，当前
 
 完整任务在 AutoDL `autodl-monthly`、`/root/miniconda3/bin/python` 上运行；环境为 Python 3.12.3、PyTorch 2.5.1+cu124、CUDA 12.4、RTX 4080。完整任务观察耗时 1557.123 秒；遥测 26 条，采集失败 0。频率行分块 64、位置批量 16。云端预检覆盖生产解析平面波、非周期积分 sinc/相干叠加、遗漏面积/复相位/半像素坐标负例，以及第二段独立调用；负例均按预期被拒绝。回传后在本地重新读取 18 份积分归档并重算全部 125 点及逐级收敛，结果通过；完整报告中 CPU 重读与原报告判定一致。
 
-预检复核还发现一个报告字段问题：原始完整报告及原始`preflight.json`中，双像素复相位负控的细节布尔值为`false`，而同一预检的聚合负控判定为通过。两份原始文件保持原样，保存在[完整回传证据目录](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_attempt_01)；研究专用检查改为消费独立丢相位误差阈值，并添加对应回归用例。修正后的云端预检显示`lost_phase_rejected=true`，聚焦测试`8 passed`，Python编译退出码 0；本地 Ruff 与编译通过。该工程修正不改变传播公式、生产路径或 G3 结果。
+预检复核还发现一个报告字段问题：原始完整报告及原始`preflight.json`中，双像素复相位负控的细节布尔值为`false`，而同一预检的聚合负控判定为通过。两份原始文件保持原样，保存在[完整回传证据目录](../../../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_attempt_01)；研究专用检查改为消费独立丢相位误差阈值，并添加对应回归用例。修正后的云端预检显示`lost_phase_rejected=true`，聚焦测试`8 passed`，Python编译退出码 0；本地 Ruff 与编译通过。该工程修正不改变传播公式、生产路径或 G3 结果。
 
-完整运行精确回传 66 个文件、3,854,400 字节；修正预检精确回传 13 个文件、257,514 字节，逐项大小核对完成。临时覆盖的 4 个既有云端源码逐字节恢复，9 个原本不存在的临时文件按路径清理；两份 restoration receipt 均为 `RESTORED_AND_VERIFIED`。完整原始云端报告、原始失败尝试、修正预检及失败重试日志都保存在 [完整回传证据目录](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_attempt_01) 与 [预检复核回传目录](../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_preflight_rechecks)。[回传后本地重读审计](../outputs/20261014_ols_g3_reference_closure_v4/runs/attempt_01/post_return_audit.json) 为 `LOCAL_RETURNED_EVIDENCE_READBACK_PASS`。
+完整运行精确回传 66 个文件、3,854,400 字节；修正预检精确回传 13 个文件、257,514 字节，逐项大小核对完成。临时覆盖的 4 个既有云端源码逐字节恢复，9 个原本不存在的临时文件按路径清理；两份 restoration receipt 均为 `RESTORED_AND_VERIFIED`。完整原始云端报告、原始失败尝试、修正预检及失败重试日志都保存在 [完整回传证据目录](../../../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_attempt_01) 与 [预检复核回传目录](../../../outputs/20261014_ols_g3_reference_closure_v4/runs/autodl_backup_preflight_rechecks)。[回传后本地重读审计](../../../outputs/20261014_ols_g3_reference_closure_v4/runs/attempt_01/post_return_audit.json) 为 `LOCAL_RETURNED_EVIDENCE_READBACK_PASS`。
 
 完整运行日志还保留了一条 PyTorch 提示：构造基线 LP01 runtime 时，`nn.Module.to(dtype=real_dtype)` 将复数注册缓冲区转为实数。固定本轮配置的 LP01 模态由实值径向剖面构成、transport 为恒等矩阵，两者虚部均为零；这条提示不涉及自由空间 G3 场传播，也没有显示本轮读出差异。但非恒等复数 transport 或具有非零复相位的模式不能沿用这种 dtype 转换；应在后续引入前独立修复/验证。本轮未修改该共享前向路径。
 

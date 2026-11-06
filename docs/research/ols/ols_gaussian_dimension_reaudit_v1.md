@@ -1,4 +1,4 @@
-# Gaussian 主参考下的 OLS 零更新复核
+﻿# Gaussian 主参考下的 OLS 零更新复核
 
 ## 结果与状态
 
@@ -51,7 +51,7 @@ complex64 全部 9 个相位/窗口比较的最坏对齐误差为 `6.9225e-4`，
 
 Gaussian S12 的公式与模式接口已有独立数值验证，且用户已选择它作为未来模拟主参考；本轮新发现是跨窗口复场的数值收敛仍未闭合。二者并不矛盾：模式定义通过，不等于当前生产传播离散化已经满足 G3，也不等于实物 fiber 参数已经标定。
 
-此前 [physical reachability/convergence attempt_06](../outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_06/physical_reachability_and_convergence_v2.json) 的 G3 对齐复场误差约 `6.62e-4` 保留为历史测量；本轮结果写入新的 attempt，没有覆盖旧报告。既有 compact 维度扫描也保留在[原始结果](../outputs/20261013_compact_200um_ols_dimension_optimization_v1/runs/autodl_backup_results/full_measurement/compact_200um_ols_dimension_results.json)。该扫描没有保存优化相位屏，故不把其优化端点声称为本轮已验证或可重放结果。
+此前 [physical reachability/convergence attempt_06](../../../outputs/20261013_physical_reachability_and_convergence_v2/runs/diagnostic-only_attempt_06/physical_reachability_and_convergence_v2.json) 的 G3 对齐复场误差约 `6.62e-4` 保留为历史测量；本轮结果写入新的 attempt，没有覆盖旧报告。既有 compact 维度扫描也保留在[原始结果](../../../outputs/20261013_compact_200um_ols_dimension_optimization_v1/runs/autodl_backup_results/full_measurement/compact_200um_ols_dimension_results.json)。该扫描没有保存优化相位屏，故不把其优化端点声称为本轮已验证或可重放结果。
 
 fiber 几何、MFD、真实复传输矩阵、探测噪声、相机响应与实际功率校准仍未知。因此本轮不支持真实阵列可达性、实验有效维数、非线性材料阈值或硬件部署结论。
 
@@ -59,11 +59,11 @@ fiber 几何、MFD、真实复传输矩阵、探测噪声、相机响应与实�
 
 已在 AutoDL `autodl-monthly`、`/root/miniconda3/bin/python`、PyTorch 2.5.1+cu124、RTX 4080 上运行。零更新代表性预检通过，包含生产有限裁切相位栈、Gaussian/LP01 投影、模式范数/被动性、complex64 投影、complex128 NumPy 参考、解析平面波和相位/裁切负控。完整测量耗时观测 86.37 s，云端命令退出码 0，遥测采集 2 次、采集失败 0 次；科学状态仍是 `VALID_FAILED`。
 
-18 个共同 ROI 原始复场（3 相位 × 2 精度 × 3 窗口）已回传并加载验证：每个张量为 2048×2048，complex64/complex128 类型正确，全部有限。主回传 26 个文件、共 907,134,033 bytes；独立预检回传 7 个文件、共 5,700 bytes；两份收据均为 `COMPLETE` 且逐文件大小匹配。完整逐 fiber 误差、功率、相位、输入配置、命令、日志、退出状态、遥测、部署源码以及云端原源码备份见 [attempt_01 证据目录](../outputs/20261013_ols_gaussian_dimension_reaudit_v1/runs/autodl_backup_attempt_01) 和 [preflight_01 证据目录](../outputs/20261013_ols_gaussian_dimension_reaudit_v1/runs/autodl_backup_preflight_01)。原始 complex ROI 张量是 `g3_common_roi_fields.pt`；维度响应矩阵未生成，因为 G3 门控失败。
+18 个共同 ROI 原始复场（3 相位 × 2 精度 × 3 窗口）已回传并加载验证：每个张量为 2048×2048，complex64/complex128 类型正确，全部有限。主回传 26 个文件、共 907,134,033 bytes；独立预检回传 7 个文件、共 5,700 bytes；两份收据均为 `COMPLETE` 且逐文件大小匹配。完整逐 fiber 误差、功率、相位、输入配置、命令、日志、退出状态、遥测、部署源码以及云端原源码备份见 [attempt_01 证据目录](../../../outputs/20261013_ols_gaussian_dimension_reaudit_v1/runs/autodl_backup_attempt_01) 和 [preflight_01 证据目录](../../../outputs/20261013_ols_gaussian_dimension_reaudit_v1/runs/autodl_backup_preflight_01)。原始 complex ROI 张量是 `g3_common_roi_fields.pt`；维度响应矩阵未生成，因为 G3 门控失败。
 
-云端原有的物理运行时、fiber operator 和相位栈各自备份后临时覆盖；运行结束后均由备份恢复并逐字节比较通过。临时诊断入口、配置及云端原先不存在的 Gaussian/材料模块已移除。云端保留本轮输入、日志和可重放源码副本；本地新增执行器与配置分别为 [诊断脚本](../scripts/research/lightgen/diagnose_ols_gaussian_dimension_reaudit_v1.py) 和 [冻结配置](../configs/research/lightgen/ols_gaussian_dimension_reaudit_v1.yaml)。本地 `compileall`、CLI、配置/相位输入核验及 Ruff `F821/F841` 检查通过；未运行全仓 pytest。
+云端原有的物理运行时、fiber operator 和相位栈各自备份后临时覆盖；运行结束后均由备份恢复并逐字节比较通过。临时诊断入口、配置及云端原先不存在的 Gaussian/材料模块已移除。云端保留本轮输入、日志和可重放源码副本；本地新增执行器与配置分别为 [诊断脚本](../../../scripts/research/lightgen/diagnose_ols_gaussian_dimension_reaudit_v1.py) 和 [冻结配置](../../../configs/research/lightgen/ols_gaussian_dimension_reaudit_v1.yaml)。本地 `compileall`、CLI、配置/相位输入核验及 Ruff `F821/F841` 检查通过；未运行全仓 pytest。
 
-为补齐上述逐通道复 latent 误差，已准备独立的 saved-field 后处理入口 [postprocessor](../scripts/research/lightgen/postprocess_ols_gaussian_dimension_latent_errors_v1.py)，本地 `py_compile` 和 Ruff 检查通过。云端后处理没有启动：本轮追加的 `autodl_run -Action Check` 在提交命令前以 SSH 255 退出，提示无法解析 `connect.westb.seetacloud.com`；本机系统 DNS（127.0.0.1）、显式 1.1.1.1 查询均超时，HTTPS DNS 查询也因本地代理 127.0.0.1 不可用而失败。因此没有上传脚本、投影复场或产生后处理结果/收据。原始复场仍已完整回传；恢复 AutoDL 网络/SSH 解析后，只需对已保存 G3 common-ROI 字段执行这个零更新投影，不需重跑传播或维度测量。
+为补齐上述逐通道复 latent 误差，已准备独立的 saved-field 后处理入口 [postprocessor](../../../scripts/research/lightgen/postprocess_ols_gaussian_dimension_latent_errors_v1.py)，本地 `py_compile` 和 Ruff 检查通过。云端后处理没有启动：本轮追加的 `autodl_run -Action Check` 在提交命令前以 SSH 255 退出，提示无法解析 `connect.westb.seetacloud.com`；本机系统 DNS（127.0.0.1）、显式 1.1.1.1 查询均超时，HTTPS DNS 查询也因本地代理 127.0.0.1 不可用而失败。因此没有上传脚本、投影复场或产生后处理结果/收据。原始复场仍已完整回传；恢复 AutoDL 网络/SSH 解析后，只需对已保存 G3 common-ROI 字段执行这个零更新投影，不需重跑传播或维度测量。
 
 本地没有修改训练入口、production runtime、OLS 几何或 loss；本轮新增的生产代码文件仅是独立诊断脚本，另有固定配置、机器报告和状态导航更新。
 
@@ -71,7 +71,7 @@ fiber 几何、MFD、真实复传输矩阵、探测噪声、相机响应与实�
 
 ## 决策影响与下一步
 
-**2026-10-14连接纠正：** 相同AutoDL Check在Codex沙箱内报SSH255，在沙箱外成功；screen、CUDA工程探针和SCP回传均通过。此前“本机DNS/代理需要修复”的推断撤回，实际应使用已授权的沙箱外网络通道，详见[连接修复记录](autodl_connection_repair_v1.md)。逐通道latent后处理仍未执行，但连接不再阻塞；本轮连接修复不改变以下G3科学结果。
+**2026-10-14连接纠正：** 相同AutoDL Check在Codex沙箱内报SSH255，在沙箱外成功；screen、CUDA工程探针和SCP回传均通过。此前“本机DNS/代理需要修复”的推断撤回，实际应使用已授权的沙箱外网络通道，详见[连接修复记录](../../operations/autodl_connection_repair_v1.md)。逐通道latent后处理仍未执行，但连接不再阻塞；本轮连接修复不改变以下G3科学结果。
 
 后续仿真主参考采用 Gaussian S12，LP01 作为相同几何下的模式敏感性对照；这项用户选择已记录，不自动修改生产默认模型或旧 checkpoint。当前 G3 继续 FAIL，因此不对 OLS 维度作结构排序，也不开始训练。
 
