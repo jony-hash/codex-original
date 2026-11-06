@@ -1,4 +1,4 @@
-﻿# 全量 CPU 验证记录（2026-11-07）
+# 全量 CPU 验证记录（2026-11-07）
 
 ## 状态
 
@@ -58,7 +58,17 @@ tests/research/scaled_chen/test_scaled_chen_output_semantic_evaluator_requalific
 
 ## 云端结果（AutoDL）
 
-待 Codex 执行，步骤见 [`docs/operations/full_suite_autodl.md`](../../operations/full_suite_autodl.md)。回传日志后补填此节。
+**未完成：运行在 5% 附近停滞 20 分钟以上，已终止；不构成代码判定。**
+
+执行记录：
+
+- 云端 GitHub 直连克隆过慢（3 分钟约 16 MB），改用增量 bundle：本地 `git bundle create` 取 `b9d865e..262a4a1`（33.4 MB），scp 31 秒传到 `/root/autodl-tmp/`，在云端仓库 fetch 后以 `git worktree add --detach` 检出到 `/root/autodl-tmp/fs-ws`（HEAD `262a4a1`，含 `--full`）。
+- 云端环境：Python 3.12.3、pytest 9.0.3、`ldm-project` editable 指向旧树；用 `PYTHONPATH=/root/autodl-tmp/fs-ws/src` 覆盖。ruff 与 pymupdf 原缺失，已安装（0.17.4 / 当前版本）。
+- 第一次运行在收集阶段失败：`ModuleNotFoundError: No module named 'pymupdf'`（2 个 TE 测试）。
+- 安装 pymupdf 后第二次运行到约 5% 后停滞：无子进程、进程停在 eventfd 等待，宿主 load average 约 28；`py-spy` 因容器缺少 `SYS_PTRACE` 无法取栈。
+- 终止进程；`/root/autodl-tmp/fs-ws` 工作树保留供重跑，磁盘剩余约 1.3 GB。
+
+建议重跑方式：在宿主负载低时执行，加 `--timeout`（若安装 pytest-timeout）或 `timeout 1800` 外层看门狗；仍用 `PYTHONPATH=<worktree>/src`，并把日志回传到本文件。
 
 ## 附录：`docs/archive/` 既有断链
 

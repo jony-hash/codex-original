@@ -33,3 +33,10 @@ scp autodl-monthly:/root/autodl-tmp/full_suite_<commit>.log C:\TEMP\
 ## 预期差异
 
 Linux 与 Windows 的路径、字体、内存和部分 torch 行为可能不同；云端失败不等于本地失败，反之亦然。两条结果都只作证据，不自动触发修复。
+
+## 实测（2026-11-07）
+
+- GitHub 直连克隆过慢（3 分钟约 16 MB）；改用增量 bundle：本地 `git bundle create inc.bundle <cloud-head>..<target>`，scp 后在云端仓库 `git fetch`，再 `git worktree add --detach` 检出，不动云端脏工作树。
+- 云端缺 `ruff` 与 `pymupdf`，需先安装；`ldm-project` 的 editable 指向旧树，用 `PYTHONPATH=<worktree>/src` 覆盖。
+- 本次在约 5% 处停滞 20 分钟以上（宿主 load average 约 28，无子进程），已终止。重跑请加外层 `timeout` 看门狗，并在负载低时执行。
+- 详细记录见 [full_suite.md](../governance/20261107/full_suite.md)。
