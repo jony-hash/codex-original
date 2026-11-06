@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache_*/
 .pytest-tmp-*/
 .tmp_pytest_cache*/
+_pytest_*/
 /v/cache/
 mpcdar-preflight-tmp/
 .mypy_cache/
@@ -36,6 +37,12 @@ outputs/*
 
 # 本地数据集与缓存
 data/
+
+# 文献与证据包：体积大，留在本地或外部归档。
+# 已跟踪的 research_assets/lightgen/science_adv7434/ 证据包保持跟踪。
+research_assets/*
+!research_assets/lightgen/science_adv7434/
+!research_assets/lightgen/science_adv7434/**
 
 # 操作系统生成文件
 .DS_Store
