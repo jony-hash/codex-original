@@ -1,0 +1,97 @@
+schema: lightgen_small_gaussian_structural_continuation_ab.v1
+task_id: LIGHTGEN_SMALL_GAUSSIAN_STRUCTURAL_CONTINUATION_AB_V1
+semantic_authority_id: USER_APPROVED_SMALL_GAUSSIAN_STRUCTURAL_CONTINUATION_AB_20261020
+execution_source_semantics_id: small_gaussian_structural_continuation_ab_v1
+source:
+  baseline_task_id: LIGHTGEN_SMALL_GAUSSIAN_SYSTEM_BASELINE_V1
+  baseline_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+  checkpoint_step: 30000
+  model_identity:
+    encoder: [2, 100, 100]
+    ols: gaussian_s12_v1
+    ols_geometry:
+      port_pitch_m: 2.0e-5
+      field_1e_radius_m: 3.5e-6
+      transport: identity
+    decoder: [2, 100, 100]
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+training:
+  seed: 2026101501
+  source_completed_updates: 30000
+  continuation_updates: 5000
+  batch_size: 10
+  samples_per_class_per_batch: 1
+  optimizer: Adam
+  learning_rate: 0.001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  branch_order: [control, treatment]
+  checkpoint_interval: 500
+  progress_interval: 100
+  checkpoints_at: [0, 2500, 5000]
+loss:
+  control: fixed_source_bogt
+  treatment: fixed_source_bogt_plus_gaussian_window_ssim
+  structural_definition: mean_1_minus_ssim_after_global_gain_clamp_0_1_then_adaptive_pool_28
+  ssim_window: 7
+  ssim_sigma: 1.5
+  data_range: 1.0
+  padding: 3
+  lambda_calibration: match_initial_combined_encoder_decoder_gradient_norm_of_weighted_rec_and_unweighted_ssim_once
+  lambda_multiplier: 1.0
+  freeze_lambda_after_calibration: true
+  freeze_source_camera_gain_and_bogt_weights: true
+optics:
+  wavelength_m: 5.32e-7
+  input_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  small:
+    encoder_layers: 2
+    encoder_shape: [100, 100]
+    generator_layers: 2
+    generator_shape: [100, 100]
+    phase_parameters: 40000
+    slm_shape: [200, 200]
+    phase_pixel_pitch_m: 2.0e-6
+    layer_spacing_m: 1.5e-3
+    ols_basis: gaussian_s12_v1
+    ols_ports: 100
+    ols_transport: identity
+    port_pitch_m: 2.0e-5
+    field_1e_radius_m: 3.5e-6
+    geometry_status: PROJECT_GEOMETRY_UNMEASURED
+    relay: existing_4f_input_and_b0_output
+    propagation_grid_candidates: [2048, 4096]
+    production_propagation_grid: 2048
+    common_complex_roi_m: 1.6e-4
+  window_complex_relative_error_max: 1.0e-4
+evaluation:
+  evaluator_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  evaluator_role: frozen_confirmation_only
+  common_view: fixed_gain_then_clamp_0_1_then_adaptive_average_pool_28
+  common_target: original_mnist_28x28
+  generated_samples_per_class: 1000
+  classifier_sample_selection: false
+  max_proposals_per_class: 1000000
+  power_relative_covariance_ridge: 1.0e-6
+  shape_pairs_per_class: 10000
+  paired_bootstrap_resamples: 2000
+  paired_bootstrap_seed: 2026102004
+quality_gate:
+  reconstruction_psnr_db_min: 20.0
+  reconstruction_ssim_min: 0.80
+  generation_macro_recall_min: 0.80
+  generation_recall_per_class_min: 0.60
+  proxy_clipping_fraction_max: 0.01
+  generated_to_dev_tv_ratio_min: 0.25
+output:
+  experiment_root: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/attempt_01
+  evidence_tier: diagnostic_only
+  formal_result_budget_bytes: 536870912

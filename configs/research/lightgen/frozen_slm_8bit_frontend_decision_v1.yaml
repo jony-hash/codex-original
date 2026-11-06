@@ -1,0 +1,81 @@
+schema: lightgen_frozen_slm_8bit_frontend_decision.v1
+task_id: LIGHTGEN_FROZEN_SLM_8BIT_FRONTEND_DECISION_V1
+semantic_authority_id: USER_APPROVED_FROZEN_SLM_8BIT_FRONTEND_DECISION_20261026
+evidence_tier: diagnostic_only
+source:
+  replay_attempt_dir: outputs/20261025_lightgen_frozen_slm_8bit_replay_v1/runs/attempt_01
+  replay_run_id: 01a34fe66f3743b2a8eb7701c7a9e9fd
+  reachability_attempt_dir: outputs/20261025_lightgen_frozen_slm_ols_reachability_v1/runs/attempt_01
+  reachability_run_id: 04390141af8c48278cfd3578f3688e0c
+  attribution_attempt_dir: outputs/20261025_lightgen_frozen_slm_8bit_error_attribution_v1/runs/attempt_01
+  attribution_run_id: acebbbb1ba6f41b9a2addbfa170fda8a
+  reachability_config: configs/research/lightgen/frozen_slm_ols_input_reachability_v1.yaml
+  attribution_config: configs/research/lightgen/frozen_slm_8bit_error_attribution_v1.yaml
+  native_review_attempt_dir: outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01
+  native_review_run_id: 768fcdd57733430d8c290221f0a3142b
+population:
+  methods: [G1, G4]
+  samples_per_method: 100
+  samples_per_class_per_method: 10
+  identities: 200
+  preflight_samples: 20
+  G4_semantic_samples: 100
+encoding:
+  conditions: [A8_amplitude_linear, I8_intensity_linear]
+  code_levels: 256
+  rounding: floor_255x_plus_0_5
+  A8_decode: gray_div_255_then_square_for_production_intensity
+  I8_decode: sqrt_gray_div_255_then_square_for_production_intensity
+optimizer:
+  matrix_grid: 2048
+  maximum_full_coordinate_scans: 20
+  coordinate_order: odd_forward_even_reverse
+  checkpoint_coordinate_interval: 5000
+  stop_coefficient_relative_error: 1.0e-6
+  preserve_original_verified_direct_witnesses: true
+  public_phase_only: true
+  target_absolute_amplitude: true
+optics:
+  checkpoint_step: 45000
+  source_power_w: 2.493e-4
+  encoder_layers: 2
+  decoder_layers: 2
+  OLS_basis: gaussian_s12_v1
+  propagation_grids: [2048, 4096]
+  global_gain: frozen_C_checkpoint
+  phase_masks: frozen
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+measurement:
+  coefficient_witness_limit: 1.0e-4
+  native_cmos_witness_limit: 1.0e-4
+  cross_grid_relative_error_limit: 1.0e-4
+  response_matrix_prediction_limit: 1.0e-6
+  power_relative_error_limit: 1.0e-10
+  power_absolute_error_w: 1.0e-15
+  reference_replay_rtol: 2.0e-6
+  reference_replay_atol: 5.0e-8
+  model_updates: 0
+  adam_calls: 0
+  prior_fit: 0
+  new_sampling: 0
+  one_shot_mapping_training: 0
+  human_reviewers: 1
+review:
+  conditions: [continuous, A8_amplitude_linear, I8_intensity_linear]
+  generated_per_condition: 100
+  hidden_duplicates: 20
+  hidden_duplicate_per_class: 2
+  duplicate_condition_counts: {continuous: 7, A8_amplitude_linear: 7, I8_intensity_linear: 6}
+  real_anchors: 20
+  total_cards: 340
+  shuffle_seed: 2026102601
+  segment_size: 20
+  minimum_same_identity_card_distance: 40
+  minimum_duplicate_consistency: 18
+  minimum_anchor_correct: 18
+  confidence_level: 0.95
+  allowed_semantic_loss: 0.05
+output:
+  experiment_root: outputs/20261026_lightgen_frozen_slm_8bit_frontend_decision_v1/runs/attempt_01
+  preflight_root: outputs/20261026_lightgen_frozen_slm_8bit_frontend_decision_v1/runs/preflight_01
+  final_consumer: recompute_from_saved_gray_matrix_outputs_cards_and_raw_ratings

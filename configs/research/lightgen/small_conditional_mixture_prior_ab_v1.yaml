@@ -1,0 +1,66 @@
+schema: lightgen_small_conditional_mixture_prior_ab.v1
+task_id: LIGHTGEN_SMALL_CONDITIONAL_MIXTURE_PRIOR_AB_V1
+semantic_authority_id: USER_APPROVED_SMALL_GAUSSIAN_CONDITIONAL_MIXTURE_PRIOR_AB_20261021
+evidence_tier: diagnostic_only
+source:
+  task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+  branch: C
+  cumulative_step: 45000
+  model_identity:
+    encoder: [2, 100, 100]
+    ols: gaussian_s12_v1
+    ols_geometry:
+      port_pitch_m: 0.00002
+      field_1e_radius_m: 0.0000035
+      transport: identity
+    decoder: [2, 100, 100]
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  train_label_counts: [5423, 6242, 5458, 5631, 5342, 4921, 5418, 5765, 5351, 5449]
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+optics:
+  propagation_grid: 2048
+  wavelength_m: 0.000000532
+  phase_pixel_pitch_m: 0.000002
+  port_pitch_m: 0.00002
+  gaussian_field_1e_radius_m: 0.0000035
+  ols_transport: identity
+  input_power_w: 0.0002493
+  layer_power_transmission: 0.889
+  decoder_batch_size: 10
+prior:
+  representation: global_phase_gauged_and_divided_by_frozen_modal_scale
+  real_feature_dimension: 200
+  g1_components_per_class: 1
+  g4_components_per_class: 4
+  initialization: kmeans_plus_plus
+  initialization_seed_base: 2026102131
+  maximum_lloyd_iterations: 200
+  covariance: sample
+  covariance_ridge: reuse_original_class_gaussian_1e-6_mean_diagonal
+  empty_cluster_policy: fail
+sampling:
+  samples_per_class: 1000
+  maximum_proposals_per_class: 1000000
+  normal_seed_base: 2026101601
+  component_seed_base: 2026102121
+  rejection: fixed_total_ols_modal_power_bound_only
+  classifier_selection: false
+  per_image_normalization: false
+evaluation:
+  ed_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  ec_checkpoint: outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102141
+  shape_pair_count: 10000
+  minimum_generation_to_dev_tv_ratio: 0.25
+  replay_rtol: 0.000002
+  replay_atol: 0.00000005
+output:
+  experiment_root: outputs/20261021_lightgen_small_conditional_mixture_prior_ab_v1/runs/attempt_01
+  formal_result_budget_bytes: 536870912
+  save_native_images_per_class_per_method: 10

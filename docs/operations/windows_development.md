@@ -297,7 +297,7 @@ are never resolved as current artifacts. Transfer large checkpoints, weights,
 datasets, and tensors through the project's artifact-transfer process rather
 than Git. Do not commit, push, or refresh Sources automatically as part of
 environment setup. See [output artifact notes](output_artifact_notes.md) and
-[Windows-native migration history](../migration_windows_native_20260830.md).
+[Windows-native migration history](../operations/migration_windows_native_20260830.md).
 
 ## Code and binary delivery
 

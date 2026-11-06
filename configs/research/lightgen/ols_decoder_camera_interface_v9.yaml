@@ -1,0 +1,90 @@
+schema: ols_decoder_camera_interface.v9
+source:
+  v8_run_dir: outputs/20261015_v8/runs/autodl_backup_attempt_02_full
+  remote_v8_run_dir: outputs/20261015_ols_four_nine_window_closure_v8/runs/attempt_02
+  report: report.json
+  phase_screens: phase_screens_v8.pt
+  command_archives:
+    candidate_2x2_C: direct_readouts/phase_01_candidate_2x2_C_amplitude_probe_coefficients.npz
+    candidate_3x3_B: direct_readouts/phase_02_candidate_3x3_B_amplitude_probe_coefficients.npz
+  response_matrix_directory: response_matrices
+optics:
+  wavelength_m: 5.32e-7
+  dx_m: 2.0e-6
+  encoder_aperture_m: 2.0e-4
+  encoder_shape: [100, 100]
+  fiber_pitch_m: 1.25e-4
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  layer_power_transmission: 0.889
+  source_power_w: 2.493e-4
+  grids: [4096, 6144, 8192]
+  common_roi_pixels: 2048
+  direct_route_distance_m: 1.5e-3
+  fiber_transport: ideal_identity
+routes:
+  direct:
+    kind: free_space
+    distance_m: 1.5e-3
+  explicit_4f:
+    kind: coherent_4f
+    focal_lengths_m: [1.0e-2, 5.0e-3]
+    segments_m: [1.0e-2, 1.5e-2, 5.0e-3]
+    magnification: -0.5
+    clear_aperture_diameter_m: 2.0e-3
+    lens_power_transmission: 0.98
+decoder:
+  active_shape: [100, 100]
+  pixel_pitch_m: 2.0e-6
+  layer_spacing_m: 1.5e-3
+  layer_power_transmission: 0.889
+  states: [zero_phase, fixed_low_frequency]
+  low_frequency_seed: 2026101609
+  low_frequency_max_order: 2
+  phase_rms_rad: 0.5
+  input_grid_roi: center_100x100
+backend_relay:
+  magnification: -2.5
+  segments_m: [0.1, 0.25]
+  focal_length_m: 0.0714285714285714
+  clear_aperture_m: 0.0266
+  additional_power_transmission: 1.0
+camera:
+  shape: [200, 200]
+  pixel_pitch_m: 2.5e-6
+  field_of_view_m: 5.0e-4
+  quantum_efficiency: 0.5
+  read_noise_e_rms: 1.0
+  dark_current_e_per_pixel_s: 0.0
+  full_well_e: 30000.0
+  primary_exposure_s: 1.0e-3
+  exposure_sweep_s: [1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2]
+  noise_seed: 2026101610
+measurement:
+  pattern_count: 50
+  target_base_command: 0.5
+  command_bounds: [0.25, 0.75]
+  input_perturbation_rms: 0.01
+  relative_svd_thresholds: [1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4]
+  pixel_integral_primary_order: 4
+  pixel_integral_reference_order: 8
+  phase_pattern_seed: 2026101609
+gates:
+  aligned_common_roi_complex64_max: 1.0e-4
+  pixel_integral_relative_l2_max: 1.0e-4
+  matrix_prediction_relative_max: 1.0e-4
+  full_forward_superposition_relative_max: 1.0e-4
+  passivity_relative_tolerance: 1.0e-5
+  complex128_jacobian_absolute_w_per_command: 1.0e-10
+  complex128_jacobian_relative: 1.0e-4
+scope:
+  formal_training_updates: 0
+  phase_optimization_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  fid_calls: 0
+  loss_changes: 0
+  material_forward_calls: 0
+  production_cli_migration: forbidden
+  checkpoint_migration: forbidden
+  automatic_ols_dimension_selection: forbidden

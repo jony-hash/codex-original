@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1600" height="900" viewBox="0 0 1600 900"
+     data-figure-mode="surrogate"
+     data-scientific-status="TARGET_CONCEPT; response curves are illustrative, not measured data">
+  <defs>
+    <marker id="arrow-navy" viewBox="0 0 8 8" refX="7" refY="4"
+            markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#17365D"/>
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 8 8" refX="7" refY="4"
+            markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#71869A"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 8 8" refX="7" refY="4"
+            markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#C96F3B"/>
+    </marker>
+    <pattern id="ols-channels" width="13" height="13" patternUnits="userSpaceOnUse">
+      <circle cx="6.5" cy="6.5" r="3" fill="#D7DEE5" stroke="#71869A" stroke-width="0.8"/>
+      <circle cx="6.5" cy="6.5" r="1.15" fill="#3E6F9E"/>
+    </pattern>
+    <pattern id="phase-cells" width="8" height="9" patternUnits="userSpaceOnUse">
+      <rect x="1" y="1" width="6" height="7" fill="#D7E4EE" stroke="#9AABBA" stroke-width="0.55"/>
+      <path d="M1 4.5H7" fill="none" stroke="#71869A" stroke-width="0.55"/>
+    </pattern>
+    <style>
+      .navy{stroke:#17365D;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+      .blue{stroke:#3E6F9E;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .gray{stroke:#71869A;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+      .fine{stroke:#A9B7C4;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
+      .curve-blue{fill:none;stroke:#3E6F9E;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+      .curve-orange{fill:none;stroke:#C96F3B;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+      .curve-gray{fill:none;stroke:#71869A;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#FFFFFF"/>
+
+  <g id="left-column" data-column="existing-simulation" data-stage="ideal-surrogate">
+    <g id="left-flow" data-stage="ols-to-proxy-to-generator">
+      <path d="M133 370H167" class="navy" fill="none" marker-end="url(#arrow-navy)"/>
+      <path d="M251 370H284" class="navy" fill="none" marker-end="url(#arrow-navy)"/>
+
+      <path d="M61 329L72 319H135V411L124 421H61Z" fill="#D7DEE5" class="navy"/>
+      <rect x="61" y="329" width="63" height="92" fill="#EAF1F6" class="navy"/>
+      <rect x="69" y="337" width="47" height="76" fill="url(#ols-channels)"/>
+
+      <rect x="167" y="338" width="84" height="64" fill="#F8EEE7" stroke="#C96F3B" stroke-width="2.3"/>
+      <path d="M177 391H240M177 391V349" class="gray" fill="none"/>
+      <path d="M183 386C197 386 200 380 207 370C214 359 221 353 237 353" class="curve-orange"/>
+
+      <rect x="284" y="319" width="91" height="102" fill="#EAF1F6" class="navy"/>
+      <g id="left-generator-diffractive-layers" data-structure="thin-phase-plates">
+        <path d="M295 336L301 331H316V405L310 410H295Z" fill="#D7E4EE" stroke="#17365D" stroke-width="1.15"/>
+        <rect x="295" y="336" width="15" height="74" fill="#EDF2F7" stroke="#3E6F9E" stroke-width="1.15"/>
+        <rect x="298" y="339" width="9" height="68" fill="url(#phase-cells)"/>
+        <path d="M310 347C316 350 321 350 326 346M310 373C316 373 321 373 326 373M310 399C316 396 321 396 326 400"
+              fill="none" stroke="#9BC3D0" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M326 336L332 331H347V405L341 410H326Z" fill="#D7E4EE" stroke="#17365D" stroke-width="1.15"/>
+        <rect x="326" y="336" width="15" height="74" fill="#EDF2F7" stroke="#3E6F9E" stroke-width="1.15"/>
+        <rect x="329" y="339" width="9" height="68" fill="url(#phase-cells)"/>
+      </g>
+    </g>
+
+    <path d="M209 405V506" fill="none" stroke="#C96F3B" stroke-width="1.6"
+          stroke-dasharray="5 7" marker-end="url(#arrow-orange)"/>
+
+    <g id="ideal-response-plot" data-stage="ideal-response" data-schematic-only="true">
+      <rect x="57" y="545" width="350" height="205" fill="#FFFFFF" stroke="#D7DEE5" stroke-width="1.7"/>
+      <path d="M91 715H379M91 715V570" class="gray" fill="none" marker-end="url(#arrow-gray)"/>
+      <path d="M105 704C144 704 161 700 177 680C193 660 202 626 225 608C249 590 286 589 365 589" class="curve-orange"/>
+    </g>
+  </g>
+
+  <path id="transition-left-to-center" d="M434 370H480" class="navy" fill="none"
+        stroke-width="3" marker-end="url(#arrow-navy)"/>
+
+  <g id="center-column" data-column="device-measurement" data-stage="smf-material-device">
+    <g id="measurement-device" data-stage="smf-facet-with-film">
+      <path d="M493 370H575" class="navy" fill="none" stroke-width="2.7" marker-end="url(#arrow-navy)"/>
+      <path d="M501 361H561M501 379H561" fill="none" stroke="#9BC3D0" stroke-width="1.45"/>
+
+      <g id="single-mode-fiber-cylinder" data-structure="cylindrical-smf">
+        <path d="M610 306H1000C1016 306 1027 334 1027 370C1027 406 1016 434 1000 434H610C626 434 637 406 637 370C637 334 626 306 610 306Z"
+              fill="#EAF1F6" stroke="#17365D" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M640 316H980V347H640Z" fill="#F7FAFC"/>
+        <path d="M640 393H980V424H640Z" fill="#DDE7EF"/>
+        <path d="M637 370H1000" fill="none" stroke="#3E6F9E" stroke-width="4.2" stroke-linecap="round"/>
+        <ellipse cx="610" cy="370" rx="27" ry="64" fill="#F7FAFC" stroke="#3E6F9E" stroke-width="2.3"/>
+        <ellipse cx="610" cy="370" rx="19" ry="52" fill="none" stroke="#C5D2DC" stroke-width="1.5"/>
+        <ellipse cx="610" cy="370" rx="7" ry="16" fill="#3E6F9E"/>
+        <ellipse cx="1000" cy="370" rx="27" ry="64" fill="#EAF1F6" stroke="#3E6F9E" stroke-width="2.3"/>
+        <ellipse cx="1000" cy="370" rx="18" ry="52" fill="none" stroke="#C5D2DC" stroke-width="1.5"/>
+        <ellipse cx="1000" cy="370" rx="6" ry="15" fill="#3E6F9E"/>
+      </g>
+
+      <g id="nonlinear-film-flush-on-facet" data-attachment="coplanar-with-smf-endface">
+        <ellipse cx="1000" cy="370" rx="27" ry="64" fill="#F8EEE7" fill-opacity="0.62"
+                 stroke="#C96F3B" stroke-width="2.5"/>
+      </g>
+      <path d="M1032 370H1097" class="navy" fill="none" stroke-width="2.7" marker-end="url(#arrow-navy)"/>
+      <path d="M1034 361H1081M1034 379H1081" fill="none" stroke="#9BC3D0" stroke-width="1.45"/>
+    </g>
+
+    <path d="M1000 446V520H640V553" fill="none" stroke="#71869A" stroke-width="1.8"
+          marker-end="url(#arrow-gray)"/>
+    <path d="M959 520V553" fill="none" stroke="#71869A" stroke-width="1.8"
+          marker-end="url(#arrow-gray)"/>
+
+    <g id="amplitude-response-plot" data-stage="amplitude-response" data-schematic-only="true">
+      <rect x="491" y="569" width="298" height="181" fill="#FFFFFF" stroke="#D7DEE5" stroke-width="1.7"/>
+      <path d="M526 716H766M526 716V591" class="gray" fill="none" marker-end="url(#arrow-gray)"/>
+      <path d="M539 706C573 704 588 696 604 676C620 654 629 622 653 609C674 597 708 596 749 596" class="curve-orange"/>
+    </g>
+
+    <g id="phase-response-plot" data-stage="phase-response" data-schematic-only="true">
+      <rect x="810" y="569" width="298" height="181" fill="#FFFFFF" stroke="#D7DEE5" stroke-width="1.7"/>
+      <path d="M845 716H1085M845 716V591" class="gray" fill="none" marker-end="url(#arrow-gray)"/>
+      <path d="M858 706C886 702 907 690 928 671C950 651 970 635 994 622C1018 610 1043 603 1068 599" class="curve-orange"/>
+    </g>
+  </g>
+
+  <path id="transition-center-to-right" d="M1121 370H1167" class="navy" fill="none"
+        stroke-width="3" marker-end="url(#arrow-navy)"/>
+
+  <g id="right-column" data-column="target-model" data-stage="measured-model-in-system">
+    <g id="measured-response-placeholder" data-stage="response-model" data-schematic-only="true">
+      <rect x="1210" y="190" width="312" height="112" fill="#FFFFFF" stroke="#D7DEE5" stroke-width="1.6"/>
+      <path d="M1222 279H1350M1222 207V279" class="gray" fill="none"/>
+      <path d="M1232 271C1253 269 1260 261 1271 246C1281 231 1288 215 1305 210C1317 206 1334 206 1344 206" fill="none" stroke="#C96F3B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M1377 279H1506M1377 207V279" class="gray" fill="none"/>
+      <path d="M1387 271C1410 269 1418 262 1427 248C1437 233 1443 217 1462 210C1475 205 1491 204 1499 201" fill="none" stroke="#3E6F9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+      <path d="M1366 303V328" fill="none" stroke="#C96F3B" stroke-width="1.8"
+          stroke-dasharray="4 5" marker-end="url(#arrow-orange)"/>
+
+    <g id="right-flow" data-stage="ols-to-measured-nonlinearity-to-generator">
+      <path d="M1272 370H1310M1408 370H1442" class="navy" fill="none" marker-end="url(#arrow-navy)"/>
+
+      <path d="M1190 337L1200 327H1272V413L1262 423H1190Z" fill="#D7DEE5" class="navy"/>
+      <rect x="1190" y="337" width="72" height="86" fill="#EAF1F6" class="navy"/>
+      <rect x="1198" y="345" width="56" height="70" fill="url(#ols-channels)"/>
+
+      <rect x="1310" y="339" width="98" height="62" fill="#F8EEE7" stroke="#C96F3B" stroke-width="2.4"/>
+      <path d="M1320 390H1398M1320 390V350" fill="none" stroke="#C96F3B" stroke-width="1.2"/>
+      <path d="M1326 384C1341 384 1346 378 1354 367C1362 356 1371 352 1392 352" class="curve-orange"/>
+
+      <rect x="1442" y="327" width="98" height="96" fill="#EAF1F6" class="navy"/>
+      <g id="right-generator-diffractive-layers" data-structure="thin-phase-plates">
+        <path d="M1451 340L1457 335H1473V407L1467 412H1451Z" fill="#D7E4EE" stroke="#17365D" stroke-width="1.15"/>
+        <rect x="1451" y="340" width="16" height="72" fill="#EDF2F7" stroke="#3E6F9E" stroke-width="1.15"/>
+        <rect x="1454" y="343" width="10" height="66" fill="url(#phase-cells)"/>
+        <path d="M1467 350C1475 353 1479 353 1485 349M1467 376C1475 376 1479 376 1485 376M1467 400C1475 397 1479 397 1485 401"
+              fill="none" stroke="#9BC3D0" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M1485 340L1491 335H1507V407L1501 412H1485Z" fill="#D7E4EE" stroke="#17365D" stroke-width="1.15"/>
+        <rect x="1485" y="340" width="16" height="72" fill="#EDF2F7" stroke="#3E6F9E" stroke-width="1.15"/>
+        <rect x="1488" y="343" width="10" height="66" fill="url(#phase-cells)"/>
+      </g>
+    </g>
+
+    <g id="formula-reserved-area" data-stage="formula-placeholder">
+      <rect x="1190" y="618" width="352" height="132" fill="#FFFFFF" stroke="#D7DEE5" stroke-width="1.7"/>
+    </g>
+  </g>
+</svg>

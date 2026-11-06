@@ -114,6 +114,32 @@ def test_image_and_direct_paths_converge_at_the_same_writer_and_generator() -> N
     assert image_result.raw_camera.tensor.shape[-2:] == (200, 200)
 
 
+def test_amplitude_command_matches_squared_image_path_and_has_finite_zero_pixel_gradient() -> None:
+    runtime = _runtime().eval()
+    amplitude = torch.full((1, 1, 200, 200), 0.35, dtype=torch.float32)
+    amplitude[..., 0, 0] = 0.0
+    amplitude[..., 0, 1] = 1.0
+    amplitude.requires_grad_()
+
+    direct = runtime.forward_from_amplitude(amplitude)
+    image = runtime.forward_from_image(amplitude.square())
+
+    assert direct.image_input is not None
+    assert torch.equal(direct.image_input.slm_amplitude, amplitude)
+    assert torch.allclose(direct.z_ols.coefficients, image.z_ols.coefficients, rtol=1e-6, atol=1e-7)
+    assert torch.allclose(direct.raw_camera.tensor, image.raw_camera.tensor, rtol=1e-6, atol=1e-7)
+    gradient, = torch.autograd.grad(direct.z_ols.coefficients.real.square().sum(), amplitude)
+    assert torch.isfinite(gradient).all()
+    assert float(gradient[..., 0, 0]) != 0.0
+
+    precise = runtime.forward_from_amplitude(amplitude.detach().double())
+    assert precise.z_ols.coefficients.dtype == torch.complex128
+    assert precise.raw_camera.tensor.dtype == torch.float64
+
+    with pytest.raises(ValueError, match="configured SLM plane"):
+        runtime.forward_from_amplitude(torch.ones(1, 1, 199, 200))
+
+
 def test_direct_path_rejects_q_only_and_has_no_controller_prerequisite() -> None:
     runtime = _runtime()
     with pytest.raises(TypeError, match="complex"):

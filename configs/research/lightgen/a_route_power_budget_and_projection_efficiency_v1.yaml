@@ -1,0 +1,27 @@
+task_id: A_route_power_budget_and_projection_efficiency_v1
+source_run: outputs/20261027_a_route_conditional_input_reachability_v1/runs/attempt_01
+source_windows_mirror: outputs/20261027_a_route_conditional_input_reachability_v1/runs/autodl_backup_attempt_01
+optical_checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+mapper_checkpoint: outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+input_identity: original_saved_320_validation_SLM_commands_no_resampling
+main_grid: 2048
+reference_grid: 4096
+reference_selection: first_three_saved_proposal_ids_per_class
+optical_microbatch: 1
+gram_rtol: 1.0e-12
+tolerances:
+  replay_relative: 2.0e-6
+  view_rtol: 2.0e-6
+  view_atol: 5.0e-8
+  power_closure: 1.0e-8
+  independent_reference: 1.0e-10
+  passivity: 1.0e-5
+  cross_grid_coefficients_and_detector: 1.0e-4
+material: {family: saturation, proxy_strength: 0.4, proxy_saturation_scale: 1.0}
+reference_intensity: exact_previous_matched_m1_json_value
+ls_use: diagnostic_only_never_generator_input
+efficiency_acceptance_threshold: null
+optimizer_updates: 0
+prior_refits: 0
+test_reads: 0
+documentation_write_set: new_package_only_no_CURRENT_STATUS_or_prior_results

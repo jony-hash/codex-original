@@ -1,0 +1,138 @@
+{
+  "status": "C0_BLOCKED",
+  "packages": {
+    "P1": "PASS",
+    "P2": "COMPUTED_PREFLIGHT_INCOMPLETE",
+    "P3": "PASS",
+    "P4": "PASS",
+    "P5": "PASS",
+    "P6": "REPORT_COMPLETE_ACCEPTANCE_BLOCKED"
+  },
+  "population": {
+    "train": [
+      5331,
+      6068,
+      5362,
+      5518
+    ],
+    "validation": [
+      592,
+      674,
+      596,
+      613
+    ],
+    "test": [
+      980,
+      1135,
+      1032,
+      1010
+    ]
+  },
+  "classification": {
+    "gray": {
+      "chosen_decay": 0.0001,
+      "mean_test_accuracy": 0.9778686552802501,
+      "sample_sd": 0.004389773295861118,
+      "test_accuracies": [
+        0.9728169352898725,
+        0.9800336781332691,
+        0.9807553524176088
+      ]
+    },
+    "binary": {
+      "chosen_decay": 0,
+      "mean_test_accuracy": 0.9766658648063508,
+      "sample_sd": 0.003757637563582677,
+      "test_accuracies": [
+        0.9723358191003127,
+        0.9790714457541496,
+        0.9785903295645898
+      ]
+    }
+  },
+  "binary_minus_gray": -0.0012027904738993733,
+  "mapping": {
+    "gray": {
+      "count": 28911,
+      "mode": "bilinear align_corners=False",
+      "bbox_mean_um": [
+        102.3461686336513,
+        139.1450321410867
+      ],
+      "mean_foreground_delta": -0.0016460404838161055,
+      "mean_edge_delta": -0.023322520933431713,
+      "mean_roundtrip_mae": 0.02445470461748995,
+      "seconds": 5.978967699978966
+    },
+    "binary": {
+      "count": 28911,
+      "mode": "nearest-exact",
+      "bbox_mean_um": [
+        102.99782525310917,
+        139.7419107765746
+      ],
+      "mean_foreground_delta": 0.0008381629080259011,
+      "mean_edge_delta": 0.0037720123792371846,
+      "mean_roundtrip_mae": 0.020715878059822317,
+      "seconds": 6.263246699993033
+    }
+  },
+  "target": {
+    "identity": "HW207_TARGET_DIAGNOSTIC",
+    "assumption": "ASSUMED_FULL_FIELD_DIAGNOSTIC",
+    "pitch_um": 2,
+    "wavelength_nm": 532,
+    "field_um": [
+      200,
+      200
+    ],
+    "source_grid": [
+      28,
+      28
+    ],
+    "target_grid": [
+      100,
+      100
+    ],
+    "source_features": 784
+  },
+  "current": {
+    "identity": "HW207_CURRENT_MAPPING",
+    "status": "BLOCKED",
+    "missing": [
+      "DMD integration",
+      "ON/OFF collection direction",
+      "input relay conjugacy and coordinate mapping"
+    ]
+  },
+  "tests": {
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "test_ids": [
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_four_regions_and_outside",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_ties_and_invalid_geometry",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_invalid_target[True]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_invalid_target[1.0]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_invalid_target[-1]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_invalid_target[4]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_nonphysical_input[nan]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_nonphysical_input[inf]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_nonphysical_input[-1]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_nonphysical_input[1j]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_nonphysical_input[1]",
+    "tests.research.lightgen.test_hw207_mnist4_roi_v1::test_float32_accumulation_uses_float64",
+    "tests.research.lightgen.test_hw207_mnist4_c0_v1::test_split_roles_and_reproducibility",
+    "tests.research.lightgen.test_hw207_mnist4_c0_v1::test_input_and_mapping[False]",
+    "tests.research.lightgen.test_hw207_mnist4_c0_v1::test_input_and_mapping[True]",
+    "tests.research.lightgen.test_hw207_mnist4_c0_v1::test_uniform_mapping_identity_and_status",
+    "tests.research.lightgen.test_hw207_mnist4_c0_v1::test_selection_uses_validation_only_and_is_reproducible",
+    "tests.research.lightgen.test_hw207_mnist4_c0_v1::test_saved_population_if_requested",
+    "tests.research.lightgen.test_chen_lightgen_400_mnist_baseline_v1::test_fixed_config_and_balanced_schedule_cover_each_train_row",
+    "tests.research.lightgen.test_ols_decoder_mnist_reconstruction_v12::test_v12_roi_power_integrates_pixel_area"
+  ],
+  "head": "043e2544594642669914355d35040124b64459b7",
+  "acceptance_blocker": "Required predeclared negative control and complete representative preflight receipt were not recorded before model selection. Classifier results are exploratory until a valid preflight and authorized rerun."
+}

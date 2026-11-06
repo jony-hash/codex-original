@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_PHYSICAL_CMOS_2X2_V1",
+  "status": "DIAGNOSTIC_ONLY_PREFLIGHT_BLOCKED",
+  "session_source_id": "01a1a9b1-5c54-7d81-9999-0cb3b09557a2",
+  "scope": {
+    "purpose": "Prepare a traceable physical calibration and fixed 2x2 CMOS ROI model; do not claim optical routing until calibrated evidence exists.",
+    "hardware_operation": false,
+    "phase_optimization": false,
+    "fabrication_or_stl": false,
+    "historical_runs_are_immutable": true
+  },
+  "user_confirmed_state": {
+    "optical_path_assembled": true,
+    "all_optical_devices_connected": true,
+    "source": "User statement in the current task plan",
+    "measurement_implication": "Assembly status does not establish device serials, optical reference planes, distances, port directions, conjugacy, camera mapping, or readout calibration."
+  },
+  "optics": {
+    "wavelength_nm": 532.0,
+    "dmd": {
+      "family": "F9000 / DLPC900 + DLP9000",
+      "array_rows": 1600,
+      "array_columns": 2560,
+      "micromirror_pitch_um": 7.56,
+      "tilt_deg": 12.0,
+      "fill_factor": 0.92,
+      "spec_source": "https://www.ti.com/product/DLP9000",
+      "system_identity_status": "USER_CONFIRMED_FAMILY; unit serial, firmware, installed orientation and ON/OFF collection not independently verified"
+    },
+    "input_relay": {
+      "nominal_focal_lengths_mm": [150.0, 150.0],
+      "source_distance_mm": 350.0,
+      "distance_status": "HISTORICAL_PHOTO_ESTIMATE_NOT_CURRENT_CALIBRATION",
+      "dmd_to_first_lens_mm": null,
+      "second_lens_to_phase_layer_mm": null,
+      "magnification_and_affine": null
+    },
+    "phase_layer": {
+      "target_grid": [100, 100],
+      "target_pitch_um": 2.0,
+      "target_width_um": 200.0,
+      "installed_state": "USER_CONFIRMED_ASSEMBLED",
+      "physical_identity_material_stack_and_complex_transmission": null
+    },
+    "classification_plane": {
+      "name": "Pi_cls",
+      "position_from_phase_layer_mm": null,
+      "measured_field_or_psf": null
+    },
+    "output_lens": {
+      "nominal_focal_length_mm": 30.0,
+      "historical_phase_layer_to_lens_mm": 80.0,
+      "historical_lens_to_camera_mm": 100.0,
+      "distance_status": "HISTORICAL_PHOTO_ESTIMATES_NOT_CURRENT_CALIBRATION",
+      "principal_plane_positions_mm": null,
+      "clear_aperture_mm": null,
+      "actual_conjugate_and_magnification": null,
+      "design_magnification_abs": 1.0
+    },
+    "cmos": {
+      "rows": 2048,
+      "columns": 2048,
+      "pixel_pitch_um": 6.5,
+      "sensor_family": "GSENSE2020",
+      "camera_unit_identity": null,
+      "actual_readout_mode_binning_roi_and_pixel_map": null,
+      "gain_exposure_dark_flat_qe_at_532nm_and_saturation_calibration": null,
+      "spec_source": "https://www.tucsen.com/dhyana-401d-product/"
+    }
+  },
+  "fixed_cmos_geometry": {
+    "coordinate_origin": "top-left of the 200 um design window",
+    "x_axis": "right",
+    "y_axis": "down",
+    "window_um": [200.0, 200.0],
+    "window_sensor_registration": null,
+    "roi_layout": [
+      {"roi": 0, "class": 0, "x_um": [35.0, 85.0], "y_um": [35.0, 85.0]},
+      {"roi": 1, "class": 1, "x_um": [115.0, 165.0], "y_um": [35.0, 85.0]},
+      {"roi": 2, "class": 2, "x_um": [35.0, 85.0], "y_um": [115.0, 165.0]},
+      {"roi": 3, "class": 3, "x_um": [115.0, 165.0], "y_um": [115.0, 165.0]}
+    ],
+    "integration": "pixel-integrated detector signal times physical pixel-area overlap fraction; transform must be explicitly supplied",
+    "classification": "argmax of four ROI energies; exact ties and zero-energy frames abstain"
+  },
+  "historical_distance_estimates_mm": [
+    {"segment": "01", "from": "laser", "to": "beam_expander", "value_mm": 30.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "02", "from": "beam_expander", "to": "mirror_1", "value_mm": 100.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "03", "from": "mirror_1", "to": "PF_1", "value_mm": 130.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "04", "from": "PF_1", "to": "PBS", "value_mm": 70.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "05", "from": "PBS", "to": "beam_splitter", "value_mm": 90.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "06", "from": "beam_splitter", "to": "temporary_reflector_at_DMD_position", "value_mm": 70.0, "source": "2026-11-03 tape-photo table; single pass", "current": false},
+    {"segment": "07", "from": "beam_splitter", "to": "mirror_2", "value_mm": 100.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "08", "from": "mirror_2", "to": "relay_L2", "value_mm": 60.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "09", "from": "relay_L2", "to": "relay_L1", "value_mm": 350.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "10", "from": "relay_L1", "to": "PF_2", "value_mm": 90.0, "source": "2026-11-03 tape-photo table", "current": false},
+    {"segment": "11", "from": "PF_2", "to": "phase_layer_position", "value_mm": 60.0, "source": "2026-11-03 tape-photo table; installation position estimate", "current": false},
+    {"segment": "12", "from": "phase_layer_position", "to": "f30_lens", "value_mm": 80.0, "source": "2026-11-03 tape-photo table; installation position estimate", "current": false},
+    {"segment": "13", "from": "f30_lens", "to": "CMOS_position", "value_mm": 100.0, "source": "2026-11-03 tape-photo table; installation position estimate", "current": false}
+  ],
+  "relay_diagnostic_scenarios": {
+    "nominal_150_150_4f": {"focal_lengths_mm": [150.0, 150.0], "magnification_signed": -1.0, "not_hardware_measurement": true},
+    "nominal_150_30_4f": {"focal_lengths_mm": [150.0, 30.0], "magnification_signed": -0.2, "not_hardware_measurement": true},
+    "nominal_150_39_68_4f": {"focal_lengths_mm": [150.0, 39.68], "magnification_signed": -0.2645333333333333, "not_hardware_measurement": true}
+  },
+  "output_lens_sensitivity_scenarios": {
+    "focal_length_mm": 30.0,
+    "object_distances_mm": [42.857142857142854, 60.0, 80.0],
+    "camera_distance_reference_mm": 100.0,
+    "scenario_basis": {
+      "42.857142857142854": "thin-lens object distance conjugate to a 100 mm image distance",
+      "60.0": "ideal 1:1 thin-lens reference",
+      "80.0": "historical photo estimate from phase-layer position to f30 lens; only an object-distance scenario if Pi_cls is at the phase surface, which is unverified"
+    },
+    "status": "ILLUSTRATIVE_THIN_LENS_SENSITIVITY_NOT_A_MEASURED_UNCERTAINTY_RANGE"
+  },
+  "phase_candidates_to_audit_when_model_is_calibrated": [
+    {"name": "C3.5_P1_seed11", "path": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p1_energy_constrained/target_0.400000_seed_11/phase_energy_constrained.npy", "source_type": "simulated_phase", "source_report": "docs/research/lightgen/hw207_mnist4_c35_report.md"},
+    {"name": "C3.5_P2_process_aware", "path": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p2_process_aware/phase_after_nominal_process.npy", "height_path": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p2_process_aware/height_map_um.npy", "source_type": "process_assumption_candidate", "source_report": "docs/research/lightgen/hw207_mnist4_c35_report.md"},
+    {"name": "C3.7_E2_seed11", "path": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E2_seed11/phase_rad.npy", "source_type": "simulated_phase", "source_report": "docs/research/lightgen/hw207_mnist4_c37_report.md"},
+    {"name": "C3.7_E3_seed11", "path": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E3_seed11/phase_rad.npy", "source_type": "simulated_phase", "source_report": "docs/research/lightgen/hw207_mnist4_c37_report.md"},
+    {"name": "C3.7_E3_seed23", "path": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E3_seed23/phase_rad.npy", "source_type": "simulated_phase", "source_report": "docs/research/lightgen/hw207_mnist4_c37_report.md"},
+    {"name": "C3.7_E7_seed23", "path": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E7_seed23/phase_rad.npy", "source_type": "simulated_phase", "source_report": "docs/research/lightgen/hw207_mnist4_c37_report.md"},
+    {"name": "C3.8_T3_seed23_old_model_reference", "path": "outputs/20261105_hw207_mnist4_c38_v1/runs/autodl_backup_attempt_05_closeout_01/p3/formal/T3_seed23/phase_rad.npy", "source_type": "trained_simulated_phase_old_large_roi_model", "source_report": "docs/research/lightgen/hw207_mnist4_c38_report.md"}
+  ],
+  "data_roles": {
+    "c3_5_c3_7_c3_8_development_population": "historically reused for selection and evaluation; not independent",
+    "mnist_official_test": "HISTORICALLY_USED; do not reopen as an independent test",
+    "independent_evaluation": "BLOCKED_PENDING_DATA_USAGE_LEDGER_AND_UNUSED_POPULATION"
+  },
+  "preflight": {
+    "outer_gate": "At least one provenance-bound frozen phase, under measured P0-P4 geometry and camera calibration, achieves >=90% fixed-ROI argmax on a genuinely unused evaluation population; peak and centroid routing are reported separately and cannot substitute for classification.",
+    "missing_inputs": [
+      "current DMD and optical-element identity/port/direction record",
+      "current reference-plane distances, lens principal planes, and aperture measurements",
+      "DMD-to-phase-layer affine mapping and spatial-resolution calibration captures",
+      "measured classification-plane location/PSF and output-lens conjugacy",
+      "CMOS unit/readout identity, pixel registration, dark/flat, gain, exposure, and 532 nm response",
+      "measured phase-layer identity and complex transmission linked to each candidate",
+      "independent evaluation rows approved by the data-usage ledger"
+    ],
+    "decision_if_missing": "PREFLIGHT_BLOCKED; do not run candidate forward comparisons or phase optimization",
+    "decision_if_gate_passes": "compare every frozen candidate under identical measured geometry and fixed ROIs; train only if all P0-P4 checks pass and no frozen candidate meets the declared routing objective",
+    "decision_if_valid_gate_fails": "report the exact failed physical interface; do not claim optical routing or start a downstream redesign without the predeclared conditional step"
+  },
+  "references": {
+    "f9000_vendor": "https://en.fldiscovery.com/product/f9000/",
+    "ti_dlp9000": "https://www.ti.com/product/DLP9000",
+    "tucsen_dhyana_401d": "https://www.tucsen.com/dhyana-401d-product/",
+    "gpixel_gsense2020": "https://gpixel.com/en/pro_details_1193.html"
+  }
+}

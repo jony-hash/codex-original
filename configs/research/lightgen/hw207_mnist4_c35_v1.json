@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C35_ENERGY_AND_PROCESS_DIAGNOSTIC",
+  "status": "DIAGNOSTIC_ONLY",
+  "wavelength_nm": 532.0,
+  "geometry": {
+    "model": "C3.4 Model B",
+    "status": "TAPE_ESTIMATE_AND_NUMERICAL_ASSUMPTION_ONLY",
+    "screen_to_lens_mm": 80.0,
+    "lens_focal_length_mm": 30.0,
+    "lens_to_cmos_mm": 100.0,
+    "aperture_diameter_mm": 2.0,
+    "lens_plane_pitch_um": 4.0,
+    "camera_shape": [2048, 2048],
+    "camera_pixel_pitch_um": 6.5,
+    "phase_grid": [100, 100],
+    "phase_pitch_um": 2.0,
+    "roi_source": "C3.3 fixed four-quadrant ROI, translated into the C3.4 full CMOS frame"
+  },
+  "data": {
+    "mnist_train_image_path": "data/MNIST/raw/train-images-idx3-ubyte",
+    "mnist_train_label_path": "data/MNIST/raw/train-labels-idx1-ubyte",
+    "c0_indices_path": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/indices.json",
+    "c34_split_source": "stratified split of the 22,279 C0 training rows",
+    "train_count": 18279,
+    "validation_count": 2000,
+    "previously_used_holdout_count": 2000,
+    "independent_holdout_status": "BLOCKED_ALL_MNIST_0_TO_3_ROWS_PREVIOUSLY_USED"
+  },
+  "sources": {
+    "c33_frozen_phase": "outputs/20261104_hw207_mnist4_c34_v1/runs/autodl_backup_c33_source_01/train_dz52000_zero_s3/phase.pt",
+    "c33_bandlimited_phase": "outputs/20261104_hw207_mnist4_c34_v1/runs/autodl_backup_c33_source_01/train_dz52000_smooth08_s1/phase.pt",
+    "c34_p3_phase": "outputs/20261104_hw207_mnist4_c34_v1/runs/autodl_backup_c34_closeout_01a18b9f/p3_formal/phase_rad.npy",
+    "c34_attempt05_height": "outputs/20261104_c34/runs/autodl_backup_processaware05/formal/seed_1/best_height.pt",
+    "c34_p3_summary": "outputs/20261104_hw207_mnist4_c34_v1/runs/autodl_backup_c34_closeout_01a18b9f/p3_formal/training_summary.json",
+    "c34_attempt05_summary": "outputs/20261104_c34/runs/autodl_backup_processaware05/formal/training_summary.json"
+  },
+  "energy": {
+    "metric": "eta_phase_to_cmos",
+    "numerator": "sum(I_CMOS) * pixel_pitch_um^2 over the complete 2048x2048 active frame",
+    "denominator": "sum(abs(E_phase_input)^2) * phase_pitch_um^2",
+    "historical_reference_floor": 0.07707634567450197,
+    "historical_reference_floor_status": "EFFICIENCY_THRESHOLD_UNVERIFIED",
+    "pareto_targets": [0.07707634567450197, 0.4],
+    "adaptive_lagrange_rho": 200.0
+  },
+  "training": {
+    "optimizer": "Adam",
+    "learning_rate": 0.05,
+    "epochs": 15,
+    "logical_batch_size": 64,
+    "microbatch_size": 64,
+    "seeds": [11, 23],
+    "p2_seed": 37,
+    "trainable_parameter_p1": "one 100x100 phase map only; exp(i*phase) enforces periodic optical transmission",
+    "trainable_parameter_p2": "one 100x100 physical height map only",
+    "phase_smoothness_weight": 0.001,
+    "classification_margin_weight": 0.5,
+    "roi_leakage_weight": 0.05,
+    "resume": "epoch checkpoint includes model, optimizer, schedule and RNG state"
+  },
+  "fabrication_assumptions": {
+    "delta_n_scenarios": [0.5, 0.6],
+    "psf_sigma_px": 0.8,
+    "minimum_feature_radius_px": 1,
+    "height_levels": 64,
+    "height_noise_nm": 20.0,
+    "height_noise_seeds": [11, 23, 37, 41, 53],
+    "edge_height_bias_nm": [-20.0, 20.0],
+    "maximum_height_um": 1.2,
+    "substrate_thickness_um": 1.2,
+    "status": "ASSUMPTION_ONLY_NOT_PRINTER_OR_MATERIAL_MEASUREMENTS",
+    "amplitude_transmission": "UNKNOWN; unit amplitude retained as a numerical assumption"
+  },
+  "sensitivity": {
+    "validation_rows_per_class": 250,
+    "apertures_mm": [0.5, 1.0, 2.0],
+    "delta_n": [0.5, 0.6],
+    "psf_sigma_px": [0.0, 0.4, 0.8, 1.2],
+    "minimum_feature_radius_px": [0, 1, 2],
+    "height_noise_seeds": [11, 23, 37, 41, 53]
+  },
+  "run": {
+    "session_source_id": "01a18b9f-206d-7c61-96a3-0da3a49efb8c",
+    "local_run_dir": "outputs/20261105_hw207_mnist4_c35_v1/runs/attempt_01",
+    "autodl_system_work_dir": "/root/autodl-tmp/codex-original/outputs/20261105_hw207_mnist4_c35_v1/runs/attempt_01"
+  }
+}

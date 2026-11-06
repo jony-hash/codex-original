@@ -1,0 +1,1708 @@
+{
+  "schema": "ols_decoder_mnist_reconstruction_closeout.v12",
+  "status": "VALID_FAILED",
+  "task_id": "OLS_DECODER_MNIST_RECONSTRUCTION_V12",
+  "authorization_id": "USER_APPROVED_OLS_DECODER_MNIST_RECONSTRUCTION_20261018",
+  "cloud_control": {
+    "alias": "autodl-monthly",
+    "run_id": "f19927d0e85040f091e9fe77986ac74c",
+    "task_name": "ols-decoder-v12-mnist",
+    "state": "COMMAND_EXITED_ZERO",
+    "exit_code": 0,
+    "remote_run_dir": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01"
+  },
+  "decision_question": "Under a frozen front end and shared 1 ms proxy camera, did either candidate show numerically qualified input-specific MNIST reconstruction gain under the fixed 500-step budget?",
+  "counts": {
+    "engineering_preflight_adam_calls": 10,
+    "scientific_reconstruction_adam_calls": 1000,
+    "updates_per_candidate": 500,
+    "formal_generator_training_updates": 0,
+    "task_evaluator_calls": 0,
+    "fid_calls": 0,
+    "dev_reads": 0,
+    "test_reads": 0,
+    "loss_changes": 0,
+    "material_forward_calls": 0
+  },
+  "preflight": {
+    "status": "READY",
+    "receipt_status": "READY",
+    "check_groups": {
+      "CORRECTNESS_INVARIANTS": "PASS",
+      "RESOURCE_ENVELOPE": "PASS",
+      "IMPLEMENTATION_SELECTION": "PASS"
+    },
+    "signal_recovery_status": "PASS",
+    "negative_controls_passed": true,
+    "frozen_state_passed": true,
+    "report_path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_preflight_05/preflight_report.json"
+  },
+  "data": {
+    "canonical_role": "canonical_mnist_train_fit100_confirmation200_dev_test_unused",
+    "fit_count": 100,
+    "confirmation_count": 200,
+    "fit_per_class": 10,
+    "confirmation_per_class": 20,
+    "sample_seed": 2026101801,
+    "official_dev_reads": 0,
+    "official_test_reads": 0,
+    "population_json": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/data_population.json",
+    "population_arrays": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/fixed_mnist_population.npz"
+  },
+  "fixed_settings": {
+    "wavelength_m": 5.32e-07,
+    "source_power_w": 0.0002493,
+    "pixel_pitch_m": 2e-06,
+    "decoder_layers": 2,
+    "decoder_grid": [
+      4096,
+      6144,
+      8192
+    ],
+    "main_mode": "gaussian_s12",
+    "sensitivity_mode": "lp01",
+    "route": "explicit_4f",
+    "primary_exposure_s": 0.001,
+    "camera_QE": 0.5,
+    "camera_full_well_e": 30000.0,
+    "objective": "clipped_expected_camera_task_mse",
+    "optimizer": {
+      "name": "Adam",
+      "lr": 0.001,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.0
+    }
+  },
+  "window_gate": {
+    "threshold": 0.0001,
+    "scope": "primary Gaussian S12; 300 fixed rows, initial and terminal; pairwise 4096/6144/8192 complex64 common-ROI comparisons",
+    "all_candidates_initial_and_terminal_pass": true
+  },
+  "candidates": {
+    "candidate_2x2_C": {
+      "classification": "VALID_FAILED",
+      "numerical_status": "PASS",
+      "training_status": "COMPLETED",
+      "updates": 500,
+      "terminal_phase_summary": {
+        "phase_rms_rad_by_layer": [
+          0.5145594477653503,
+          0.5712180733680725
+        ],
+        "phase_min_rad_by_layer": [
+          -1.2314801216125488,
+          -1.8716814517974854
+        ],
+        "phase_max_rad_by_layer": [
+          1.141181230545044,
+          1.5551172494888306
+        ],
+        "phase_shape": [
+          2,
+          1,
+          100,
+          100
+        ],
+        "phase_dtype": "torch.float32"
+      },
+      "reconstruction": {
+        "initial_confirmation_mse": 0.7571347930271157,
+        "terminal_confirmation_mse": 0.4997213831046628,
+        "fixed_100_fit_mean_image_confirmation_mse": 0.057236587518769186,
+        "within_class_cyclic_mismatch_confirmation_mse": 0.5012217139795717,
+        "numeric_epsilon": 4.766087827179355e-07,
+        "tau": 4.766087827179355e-06,
+        "all_three_gain_lower_bounds_above_tau": false,
+        "gain_decisions": {
+          "same_image_initial_decoder": {
+            "mean_paired_mse_gain": 0.2574134099224531,
+            "ci95": [
+              0.25569626074597285,
+              0.25908207041701276
+            ],
+            "replicates": 2000,
+            "seed": 2026101803,
+            "passed": true,
+            "lower_bound": 0.25569626074597285,
+            "tau": 4.766087827179355e-06
+          },
+          "fixed_mean_of_100_fit_targets": {
+            "mean_paired_mse_gain": -0.44248479558589354,
+            "ci95": [
+              -0.446634046414109,
+              -0.43818751769531533
+            ],
+            "replicates": 2000,
+            "seed": 2026101803,
+            "passed": false,
+            "lower_bound": -0.446634046414109,
+            "tau": 4.766087827179355e-06
+          },
+          "within_class_cyclically_mismatched_target": {
+            "mean_paired_mse_gain": 0.0015003308749089686,
+            "ci95": [
+              -0.002650593253412406,
+              0.005830653388173054
+            ],
+            "replicates": 2000,
+            "seed": 2026101803,
+            "passed": false,
+            "lower_bound": -0.002650593253412406,
+            "tau": 4.766087827179355e-06
+          }
+        },
+        "class_weighting": "equal by stratified 20-per-class bootstrap",
+        "per_class_confirmation_mse": {
+          "0": {
+            "initial_mse": 0.7122513672517832,
+            "terminal_mse": 0.47651212516955177,
+            "paired_gain": 0.23573924208223146
+          },
+          "1": {
+            "initial_mse": 0.8132249813650262,
+            "terminal_mse": 0.5359396778328522,
+            "paired_gain": 0.27728530353217384
+          },
+          "2": {
+            "initial_mse": 0.7394185135962669,
+            "terminal_mse": 0.48826986142401924,
+            "paired_gain": 0.25114865217224747
+          },
+          "3": {
+            "initial_mse": 0.7526600706266544,
+            "terminal_mse": 0.49269201036947524,
+            "paired_gain": 0.2599680602571792
+          },
+          "4": {
+            "initial_mse": 0.7604054689345628,
+            "terminal_mse": 0.5026932963905677,
+            "paired_gain": 0.2577121725439951
+          },
+          "5": {
+            "initial_mse": 0.761437059228099,
+            "terminal_mse": 0.5041111257438736,
+            "paired_gain": 0.25732593348422533
+          },
+          "6": {
+            "initial_mse": 0.7468802824417795,
+            "terminal_mse": 0.49521211543345733,
+            "paired_gain": 0.2516681670083222
+          },
+          "7": {
+            "initial_mse": 0.7740387478907087,
+            "terminal_mse": 0.5080817958088136,
+            "paired_gain": 0.26595695208189496
+          },
+          "8": {
+            "initial_mse": 0.7472627203043607,
+            "terminal_mse": 0.4920661401157518,
+            "paired_gain": 0.255196580188609
+          },
+          "9": {
+            "initial_mse": 0.7637687186319173,
+            "terminal_mse": 0.5016356827582649,
+            "paired_gain": 0.2621330358736525
+          }
+        },
+        "mean_psnr_db": 3.0168854373587077,
+        "mean_ssim_11x11_gaussian": 0.022057680413126945,
+        "foreground_mse": 0.21367940825692375,
+        "background_mse": 0.5717411637165899
+      },
+      "power_confirmation_distributions": {
+        "gaussian_s12": {
+          "initial": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.4291732e-05,
+              "p10": 1.78816812e-05,
+              "p50": 2.212847e-05,
+              "mean": 2.2644079645e-05,
+              "p90": 2.83241832e-05,
+              "max": 3.92816e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.186408189823851e-05,
+              "p10": 1.370758855046006e-05,
+              "p50": 1.574379984958796e-05,
+              "mean": 1.6102956037684636e-05,
+              "p90": 1.909037982841255e-05,
+              "max": 2.569253592810128e-05
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.6540603215780741,
+              "p10": 0.6732007588818806,
+              "p50": 0.7163310898225752,
+              "mean": 0.7167193841582303,
+              "p90": 0.7612014537454168,
+              "max": 0.8301360463685235
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 0.04758957841250907,
+              "p10": 0.054984310270597914,
+              "p50": 0.06315202506854375,
+              "mean": 0.06459268366500054,
+              "p90": 0.0765759319230347,
+              "max": 0.10305870809507132
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 3.774932017155767,
+              "p10": 3.916466636327382,
+              "p50": 3.974721156737394,
+              "mean": 3.9637876587855043,
+              "p90": 3.9950909543829756,
+              "max": 3.9999427499921807
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.139424421126023e-05,
+              "p10": 1.3164743904781062e-05,
+              "p50": 1.5120318948902423e-05,
+              "mean": 1.5465251722162064e-05,
+              "p90": 1.8334369087824598e-05,
+              "max": 2.4675067834323272e-05
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 9.510937161394395e-06,
+              "p10": 1.0988709072989878e-05,
+              "p50": 1.2622141639440088e-05,
+              "mean": 1.2909626452710654e-05,
+              "p90": 1.5307372632378246e-05,
+              "max": 2.0602030417649075e-05
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 5.552275979425758e-06,
+              "p10": 6.414177778424346e-06,
+              "p50": 7.369438890236779e-06,
+              "mean": 7.536672474088845e-06,
+              "p90": 8.94266513569164e-06,
+              "max": 1.2037283340760041e-05
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 5.55203087060363e-06,
+              "p10": 6.413893788703717e-06,
+              "p50": 7.369111472144141e-06,
+              "mean": 7.536338612226245e-06,
+              "p90": 8.942268414102727e-06,
+              "max": 1.2036751286359504e-05
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 7434585088.0,
+              "p10": 8588684851.2,
+              "p50": 9867792384.0,
+              "mean": 10091721799.68,
+              "p90": 11974367027.199999,
+              "max": 16118112256.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.8242499828338623,
+              "p10": 0.8468825101852417,
+              "p50": 0.8643999993801117,
+              "mean": 0.8657601249217987,
+              "p90": 0.8885675072669983,
+              "max": 0.9117000102996826
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.6139999032020569,
+              "p10": 0.7086919903755188,
+              "p50": 0.7603879272937775,
+              "mean": 0.7571347984671593,
+              "p90": 0.8024906516075134,
+              "max": 0.8327401280403137
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.0,
+              "p90": 0.0,
+              "max": 0.0
+            },
+            "images_with_any_saturated_pixels_1ms": 200,
+            "images_total": 200
+          },
+          "terminal": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.4291732e-05,
+              "p10": 1.78816812e-05,
+              "p50": 2.212847e-05,
+              "mean": 2.2644079645e-05,
+              "p90": 2.83241832e-05,
+              "max": 3.92816e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.186408189823851e-05,
+              "p10": 1.370758855046006e-05,
+              "p50": 1.574379984958796e-05,
+              "mean": 1.6102956037684636e-05,
+              "p90": 1.909037982841255e-05,
+              "max": 2.569253592810128e-05
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.6540603215780741,
+              "p10": 0.6732007588818806,
+              "p50": 0.7163310898225752,
+              "mean": 0.7167193841582303,
+              "p90": 0.7612014537454168,
+              "max": 0.8301360463685235
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 0.04758957841250907,
+              "p10": 0.054984310270597914,
+              "p50": 0.06315202506854375,
+              "mean": 0.06459268366500054,
+              "p90": 0.0765759319230347,
+              "max": 0.10305870809507132
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 3.774932017155767,
+              "p10": 3.916466636327382,
+              "p50": 3.974721156737394,
+              "mean": 3.9637876587855043,
+              "p90": 3.9950909543829756,
+              "max": 3.9999427499921807
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.139424421126023e-05,
+              "p10": 1.3164743904781062e-05,
+              "p50": 1.5120318948902423e-05,
+              "mean": 1.5465251722162064e-05,
+              "p90": 1.8334369087824598e-05,
+              "max": 2.4675067834323272e-05
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 9.28706595004769e-06,
+              "p10": 1.0728922734415392e-05,
+              "p50": 1.232136128237471e-05,
+              "mean": 1.2602231431628751e-05,
+              "p90": 1.4934816317691001e-05,
+              "max": 2.0106977899558842e-05
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 4.932115643896395e-06,
+              "p10": 5.69730445931782e-06,
+              "p50": 6.543258905367111e-06,
+              "mean": 6.6932115305462505e-06,
+              "p90": 7.93783528934e-06,
+              "max": 1.0680548257369082e-05
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 4.930934665026143e-06,
+              "p10": 5.695941217709332e-06,
+              "p50": 6.5416884353908245e-06,
+              "mean": 6.691606197364308e-06,
+              "p90": 7.935920257295947e-06,
+              "max": 1.0677964382921346e-05
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 6602890240.0,
+              "p10": 7627291648.0,
+              "p50": 8759810048.0,
+              "mean": 8960561461.76,
+              "p90": 10626791628.8,
+              "max": 14298594304.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.5483999848365784,
+              "p10": 0.5621175229549408,
+              "p50": 0.5740749835968018,
+              "mean": 0.5754837509989739,
+              "p90": 0.5909000039100647,
+              "max": 0.6136749982833862
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.4275609254837036,
+              "p10": 0.4729571968317032,
+              "p50": 0.5010580122470856,
+              "mean": 0.4997213850915432,
+              "p90": 0.5314187049865723,
+              "max": 0.5500439405441284
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.0,
+              "p90": 0.0,
+              "max": 0.0
+            },
+            "images_with_any_saturated_pixels_1ms": 200,
+            "images_total": 200
+          }
+        },
+        "lp01": {
+          "initial": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.4291732e-05,
+              "p10": 1.78816812e-05,
+              "p50": 2.212847e-05,
+              "mean": 2.2644079645e-05,
+              "p90": 2.83241832e-05,
+              "max": 3.92816e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.1812436241598334e-05,
+              "p10": 1.3626899817609229e-05,
+              "p50": 1.566585160617251e-05,
+              "mean": 1.600841828803823e-05,
+              "p90": 1.906863417389104e-05,
+              "max": 2.5770596039365046e-05
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.6499256207859937,
+              "p10": 0.6684238469003051,
+              "p50": 0.7114869410704185,
+              "mean": 0.7124469683124337,
+              "p90": 0.7566271118035497,
+              "max": 0.8265223726276377
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 0.04738241573043857,
+              "p10": 0.05466064908788299,
+              "p50": 0.0628393566232351,
+              "mean": 0.06421347087059058,
+              "p90": 0.0764887050697595,
+              "max": 0.10337182526821118
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 3.7626246330617663,
+              "p10": 3.9096390429095362,
+              "p50": 3.97434372280219,
+              "mean": 3.9621333050253007,
+              "p90": 3.9953275174031715,
+              "max": 3.999881902555057
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.1341508070472628e-05,
+              "p10": 1.3083634621580132e-05,
+              "p50": 1.5041299320728285e-05,
+              "mean": 1.5370208852800716e-05,
+              "p90": 1.8308422477275597e-05,
+              "max": 2.4743198082433082e-05
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 9.500588930677623e-06,
+              "p10": 1.0958729671983746e-05,
+              "p50": 1.2600692571140826e-05,
+              "mean": 1.2875918714598811e-05,
+              "p90": 1.5334807176259347e-05,
+              "max": 2.0732037228299305e-05
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 5.879233867744915e-06,
+              "p10": 6.775168776584905e-06,
+              "p50": 7.798216302035144e-06,
+              "mean": 7.968109932789958e-06,
+              "p90": 9.481167398917022e-06,
+              "max": 1.2841937859775499e-05
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 5.87901558901649e-06,
+              "p10": 6.774914845664171e-06,
+              "p50": 7.797925263730576e-06,
+              "mean": 7.967812971401145e-06,
+              "p90": 9.480812786932802e-06,
+              "max": 1.2841462194046471e-05
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 7872442368.0,
+              "p10": 9072117964.8,
+              "p50": 10442006016.0,
+              "mean": 10669498460.16,
+              "p90": 12695519744.0,
+              "max": 17195679744.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.8346499800682068,
+              "p10": 0.856677508354187,
+              "p50": 0.8742499947547913,
+              "mean": 0.8752051240205765,
+              "p90": 0.8962625026702881,
+              "max": 0.918524980545044
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.6166358590126038,
+              "p10": 0.7124766647815705,
+              "p50": 0.765556275844574,
+              "mean": 0.7624298340082168,
+              "p90": 0.8096374988555908,
+              "max": 0.8411136865615845
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.0,
+              "p90": 0.0,
+              "max": 0.0
+            },
+            "images_with_any_saturated_pixels_1ms": 200,
+            "images_total": 200
+          },
+          "terminal": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.4291732e-05,
+              "p10": 1.78816812e-05,
+              "p50": 2.212847e-05,
+              "mean": 2.2644079645e-05,
+              "p90": 2.83241832e-05,
+              "max": 3.92816e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.1812436241598334e-05,
+              "p10": 1.3626899817609229e-05,
+              "p50": 1.566585160617251e-05,
+              "mean": 1.600841828803823e-05,
+              "p90": 1.906863417389104e-05,
+              "max": 2.5770596039365046e-05
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.6499256207859937,
+              "p10": 0.6684238469003051,
+              "p50": 0.7114869410704185,
+              "mean": 0.7124469683124337,
+              "p90": 0.7566271118035497,
+              "max": 0.8265223726276377
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 0.04738241573043857,
+              "p10": 0.05466064908788299,
+              "p50": 0.0628393566232351,
+              "mean": 0.06421347087059058,
+              "p90": 0.0764887050697595,
+              "max": 0.10337182526821118
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 3.7626246330617663,
+              "p10": 3.9096390429095362,
+              "p50": 3.97434372280219,
+              "mean": 3.9621333050253007,
+              "p90": 3.9953275174031715,
+              "max": 3.999881902555057
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.1341508070472628e-05,
+              "p10": 1.3083634621580132e-05,
+              "p50": 1.5041299320728285e-05,
+              "mean": 1.5370208852800716e-05,
+              "p90": 1.8308422477275597e-05,
+              "max": 2.4743198082433082e-05
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 9.238846359949093e-06,
+              "p10": 1.0653996469045524e-05,
+              "p50": 1.22466135508148e-05,
+              "mean": 1.2517085719991883e-05,
+              "p90": 1.4912518872733927e-05,
+              "max": 2.014894380408805e-05
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 5.221798801358091e-06,
+              "p10": 6.017266923663556e-06,
+              "p50": 6.92346384312259e-06,
+              "mean": 7.075058438203996e-06,
+              "p90": 8.421052552876062e-06,
+              "max": 1.1389694918761961e-05
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 5.220687853579875e-06,
+              "p10": 6.01598931098124e-06,
+              "p50": 6.921979775142972e-06,
+              "mean": 7.073550123095629e-06,
+              "p90": 8.41926575958496e-06,
+              "max": 1.1387245649530087e-05
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 6990892032.0,
+              "p10": 8055859916.8,
+              "p50": 9269048832.0,
+              "mean": 9472013155.84,
+              "p90": 11274027008.0,
+              "max": 15248373760.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.5546500086784363,
+              "p10": 0.5685474932193756,
+              "p50": 0.5813500285148621,
+              "mean": 0.5836392509937286,
+              "p90": 0.6010299861431122,
+              "max": 0.6351749897003174
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.43133437633514404,
+              "p10": 0.4831302762031555,
+              "p50": 0.5122365355491638,
+              "mean": 0.5100517545640468,
+              "p90": 0.5428254842758179,
+              "max": 0.5622102618217468
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.0,
+              "p90": 0.0,
+              "max": 0.0
+            },
+            "images_with_any_saturated_pixels_1ms": 200,
+            "images_total": 200
+          }
+        }
+      },
+      "numerical_windows": {
+        "initial_gaussian_s12": {
+          "path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/measurements/step_000_initial/candidate_2x2_C/gaussian_s12/window_metrics.json",
+          "rows": 300,
+          "threshold": 0.0001,
+          "comparisons": {
+            "4096_vs_6144": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 3.631103783921084e-06,
+              "p99_aligned_complex64_relative_l2": 3.5258857486630794e-06,
+              "passed": true
+            },
+            "4096_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 4.826602717437067e-06,
+              "p99_aligned_complex64_relative_l2": 4.685931685176618e-06,
+              "passed": true
+            },
+            "6144_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 1.33857506255961e-06,
+              "p99_aligned_complex64_relative_l2": 1.3225972770858925e-06,
+              "passed": true
+            }
+          },
+          "max_over_all_pairs": 4.826602717437067e-06,
+          "all_passed": true,
+          "roi_power_unit": "W; sum(|E|^2) * (2e-6 m)^2"
+        },
+        "terminal_gaussian_s12": {
+          "path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/measurements/step_000500_terminal/candidate_2x2_C/gaussian_s12/window_metrics.json",
+          "rows": 300,
+          "threshold": 0.0001,
+          "comparisons": {
+            "4096_vs_6144": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 3.672161184962064e-05,
+              "p99_aligned_complex64_relative_l2": 3.663948883698996e-05,
+              "passed": true
+            },
+            "4096_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 4.913914575444952e-05,
+              "p99_aligned_complex64_relative_l2": 4.9028869449688805e-05,
+              "passed": true
+            },
+            "6144_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 1.2435628087046423e-05,
+              "p99_aligned_complex64_relative_l2": 1.2406691626582018e-05,
+              "passed": true
+            }
+          },
+          "max_over_all_pairs": 4.913914575444952e-05,
+          "all_passed": true,
+          "roi_power_unit": "W; sum(|E|^2) * (2e-6 m)^2"
+        }
+      },
+      "native_precision_checks": [
+        {
+          "state": "initial",
+          "mode": "gaussian_s12",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 2.026271856135018e-09,
+          "max_complex64_vs_complex128_mse_difference": 3.328915693101564e-07,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000_initial/candidate_2x2_C/gaussian_s12/native_complex128_camera_arrays.npz"
+        },
+        {
+          "state": "initial",
+          "mode": "lp01",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 1.7496502969533101e-09,
+          "max_complex64_vs_complex128_mse_difference": 3.4672835602655994e-07,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000_initial/candidate_2x2_C/lp01/native_complex128_camera_arrays.npz"
+        },
+        {
+          "state": "terminal",
+          "mode": "gaussian_s12",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 1.9036182196536e-09,
+          "max_complex64_vs_complex128_mse_difference": 2.9356952191417207e-07,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000500_terminal/candidate_2x2_C/gaussian_s12/native_complex128_camera_arrays.npz"
+        },
+        {
+          "state": "terminal",
+          "mode": "lp01",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 1.6869551903823953e-09,
+          "max_complex64_vs_complex128_mse_difference": 4.766087827179355e-07,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000500_terminal/candidate_2x2_C/lp01/native_complex128_camera_arrays.npz"
+        }
+      ],
+      "gallery_relative_path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/reconstruction_gallery/candidate_2x2_C_30_fixed_samples.png",
+      "checkpoint_remote_paths": {
+        "initial": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/training/candidate_2x2_C/primary/checkpoint_step_000000.pt",
+        "terminal": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/training/candidate_2x2_C/primary/terminal.pt"
+      }
+    },
+    "candidate_3x3_B": {
+      "classification": "VALID_FAILED",
+      "numerical_status": "PASS",
+      "training_status": "COMPLETED",
+      "updates": 500,
+      "terminal_phase_summary": {
+        "phase_rms_rad_by_layer": [
+          0.5082932710647583,
+          0.601218581199646
+        ],
+        "phase_min_rad_by_layer": [
+          -1.385053038597107,
+          -1.9077564477920532
+        ],
+        "phase_max_rad_by_layer": [
+          1.5691635608673096,
+          1.8515263795852661
+        ],
+        "phase_shape": [
+          2,
+          1,
+          100,
+          100
+        ],
+        "phase_dtype": "torch.float32"
+      },
+      "reconstruction": {
+        "initial_confirmation_mse": 0.08754006555062942,
+        "terminal_confirmation_mse": 0.0835439814312024,
+        "fixed_100_fit_mean_image_confirmation_mse": 0.057236587518769186,
+        "within_class_cyclic_mismatch_confirmation_mse": 0.08519070251604105,
+        "numeric_epsilon": 6.400108694404327e-08,
+        "tau": 6.400108694404327e-07,
+        "all_three_gain_lower_bounds_above_tau": false,
+        "gain_decisions": {
+          "same_image_initial_decoder": {
+            "mean_paired_mse_gain": 0.003996084119427026,
+            "ci95": [
+              0.003628417707687416,
+              0.004403710403173922
+            ],
+            "replicates": 2000,
+            "seed": 2026101803,
+            "passed": true,
+            "lower_bound": 0.003628417707687416,
+            "tau": 6.400108694404327e-07
+          },
+          "fixed_mean_of_100_fit_targets": {
+            "mean_paired_mse_gain": -0.026307393912433207,
+            "ci95": [
+              -0.028567386494026313,
+              -0.024095126432701085
+            ],
+            "replicates": 2000,
+            "seed": 2026101803,
+            "passed": false,
+            "lower_bound": -0.028567386494026313,
+            "tau": 6.400108694404327e-07
+          },
+          "within_class_cyclically_mismatched_target": {
+            "mean_paired_mse_gain": 0.0016467210848386525,
+            "ci95": [
+              -0.0033679095046711544,
+              0.006703441161571506
+            ],
+            "replicates": 2000,
+            "seed": 2026101803,
+            "passed": false,
+            "lower_bound": -0.0033679095046711544,
+            "tau": 6.400108694404327e-07
+          }
+        },
+        "class_weighting": "equal by stratified 20-per-class bootstrap",
+        "per_class_confirmation_mse": {
+          "0": {
+            "initial_mse": 0.11724207681677853,
+            "terminal_mse": 0.10938839670559566,
+            "paired_gain": 0.007853680111182908
+          },
+          "1": {
+            "initial_mse": 0.04722324272476496,
+            "terminal_mse": 0.046213883941444225,
+            "paired_gain": 0.0010093587833207363
+          },
+          "2": {
+            "initial_mse": 0.11024708411934547,
+            "terminal_mse": 0.10716744417895807,
+            "paired_gain": 0.0030796399403873833
+          },
+          "3": {
+            "initial_mse": 0.08673450752141797,
+            "terminal_mse": 0.08493514238516789,
+            "paired_gain": 0.0017993651362500842
+          },
+          "4": {
+            "initial_mse": 0.08216359252851832,
+            "terminal_mse": 0.07683505152193834,
+            "paired_gain": 0.00532854100657998
+          },
+          "5": {
+            "initial_mse": 0.0826057673304596,
+            "terminal_mse": 0.07994701898780726,
+            "paired_gain": 0.0026587483426523248
+          },
+          "6": {
+            "initial_mse": 0.09760154990898362,
+            "terminal_mse": 0.09272497574947788,
+            "paired_gain": 0.004876574159505725
+          },
+          "7": {
+            "initial_mse": 0.0719373524399289,
+            "terminal_mse": 0.0659511312564104,
+            "paired_gain": 0.005986221183518485
+          },
+          "8": {
+            "initial_mse": 0.10181203661327869,
+            "terminal_mse": 0.09885745832519073,
+            "paired_gain": 0.002954578288087974
+          },
+          "9": {
+            "initial_mse": 0.0778334455028181,
+            "terminal_mse": 0.07341931126003343,
+            "paired_gain": 0.004414134242784655
+          }
+        },
+        "mean_psnr_db": 11.105847061249513,
+        "mean_ssim_11x11_gaussian": 0.2621845602989197,
+        "foreground_mse": 0.4023308929454522,
+        "background_mse": 0.0032796655334005735
+      },
+      "power_confirmation_distributions": {
+        "gaussian_s12": {
+          "initial": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.410557e-05,
+              "p10": 1.78584528e-05,
+              "p50": 2.2144425e-05,
+              "mean": 2.276004449e-05,
+              "p90": 2.87189564e-05,
+              "max": 3.9852996e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.8802259305061853e-08,
+              "p10": 2.597959500860725e-08,
+              "p50": 5.102788236399647e-08,
+              "mean": 7.663754326259208e-08,
+              "p90": 1.469126999609216e-07,
+              "max": 3.7697759580623824e-07
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.0006640026994998989,
+              "p10": 0.001209216385190033,
+              "p50": 0.0022526995298459656,
+              "mean": 0.003293106225028777,
+              "p90": 0.0063818736964639956,
+              "max": 0.015428825717893519
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 7.542021381894045e-05,
+              "p10": 0.00010421016850624649,
+              "p50": 0.00020468464646609095,
+              "mean": 0.0003074109236365507,
+              "p90": 0.0005893008422018516,
+              "max": 0.001512144387509981
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 1.1197217019431147,
+              "p10": 1.3198869636481723,
+              "p50": 2.5038744434153903,
+              "mean": 3.1786905821833384,
+              "p90": 6.457126006572275,
+              "max": 8.94426081777209
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.805766025597677e-08,
+              "p10": 2.4950761279285417e-08,
+              "p50": 4.900710237620842e-08,
+              "mean": 7.360257726851671e-08,
+              "p90": 1.4109471493384263e-07,
+              "max": 3.620486950239865e-07
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 1.2809835858718088e-08,
+              "p10": 1.860048879365195e-08,
+              "p50": 3.9364405068909036e-08,
+              "mean": 6.13251715764207e-08,
+              "p90": 1.205528505465736e-07,
+              "max": 3.1429971159013803e-07
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 7.613814467788416e-09,
+              "p10": 1.1419239775989354e-08,
+              "p50": 2.4690674393923473e-08,
+              "mean": 3.8574269614066734e-08,
+              "p90": 7.647566278023987e-08,
+              "max": 2.000156200665515e-07
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 7.613309094267606e-09,
+              "p10": 1.1418598244716804e-08,
+              "p50": 2.4689669864130792e-08,
+              "mean": 3.85729124996459e-08,
+              "p90": 7.647338406968629e-08,
+              "max": 2.0001003520064842e-07
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 10194791.0,
+              "p10": 15290358.5,
+              "p50": 33061321.0,
+              "mean": 51652022.835,
+              "p90": 102403604.8,
+              "max": 267828448.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.0,
+              "p90": 0.0,
+              "max": 0.0
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.019244547933340073,
+              "p10": 0.05066201575100422,
+              "p50": 0.08047455921769142,
+              "mean": 0.08754006586968899,
+              "p90": 0.13322650790214538,
+              "max": 0.19426828622817993
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0056682093045696165,
+              "p50": 0.04202137565219913,
+              "mean": 0.04793196935420849,
+              "p90": 0.09314812543150609,
+              "max": 0.1573324562340374
+            },
+            "images_with_any_saturated_pixels_1ms": 0,
+            "images_total": 200
+          },
+          "terminal": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.410557e-05,
+              "p10": 1.78584528e-05,
+              "p50": 2.2144425e-05,
+              "mean": 2.276004449e-05,
+              "p90": 2.87189564e-05,
+              "max": 3.9852996e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.8802259305061853e-08,
+              "p10": 2.597959500860725e-08,
+              "p50": 5.102788236399647e-08,
+              "mean": 7.663754326259208e-08,
+              "p90": 1.469126999609216e-07,
+              "max": 3.7697759580623824e-07
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.0006640026994998989,
+              "p10": 0.001209216385190033,
+              "p50": 0.0022526995298459656,
+              "mean": 0.003293106225028777,
+              "p90": 0.0063818736964639956,
+              "max": 0.015428825717893519
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 7.542021381894045e-05,
+              "p10": 0.00010421016850624649,
+              "p50": 0.00020468464646609095,
+              "mean": 0.0003074109236365507,
+              "p90": 0.0005893008422018516,
+              "max": 0.001512144387509981
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 1.1197217019431147,
+              "p10": 1.3198869636481723,
+              "p50": 2.5038744434153903,
+              "mean": 3.1786905821833384,
+              "p90": 6.457126006572275,
+              "max": 8.94426081777209
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.805766025597677e-08,
+              "p10": 2.4950761279285417e-08,
+              "p50": 4.900710237620842e-08,
+              "mean": 7.360257726851671e-08,
+              "p90": 1.4109471493384263e-07,
+              "max": 3.620486950239865e-07
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 1.4602431264165716e-08,
+              "p10": 2.0603278905184653e-08,
+              "p50": 4.1574466536076216e-08,
+              "mean": 6.340496432777343e-08,
+              "p90": 1.2280287506882814e-07,
+              "max": 3.173319953475584e-07
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 9.087568919596833e-09,
+              "p10": 1.3147903654697757e-08,
+              "p50": 2.6218239135289423e-08,
+              "mean": 3.992862124491125e-08,
+              "p90": 7.752642190439474e-08,
+              "max": 1.9993106548099604e-07
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 9.083809260346243e-09,
+              "p10": 1.3143424748562894e-08,
+              "p50": 2.6210952519534203e-08,
+              "mean": 3.9920484504740724e-08,
+              "p90": 7.751444854875444e-08,
+              "max": 1.9990179112028272e-07
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 12163902.0,
+              "p10": 17600031.2,
+              "p50": 35098432.0,
+              "mean": 53456522.335,
+              "p90": 103797656.0,
+              "max": 267683488.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 3.950000100303441e-05,
+              "p90": 0.0,
+              "max": 0.00430000014603138
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.01889217458665371,
+              "p10": 0.04679696299135685,
+              "p50": 0.07686975970864296,
+              "mean": 0.08354398178867996,
+              "p90": 0.12475690990686417,
+              "max": 0.18682414293289185
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.005114404673884883,
+              "p50": 0.04006585090768866,
+              "mean": 0.04624024849902546,
+              "p90": 0.0898469836653401,
+              "max": 0.15430893655395375
+            },
+            "images_with_any_saturated_pixels_1ms": 4,
+            "images_total": 200
+          }
+        },
+        "lp01": {
+          "initial": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.410557e-05,
+              "p10": 1.78584528e-05,
+              "p50": 2.2144425e-05,
+              "mean": 2.276004449e-05,
+              "p90": 2.87189564e-05,
+              "max": 3.9852996e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.943520899772011e-08,
+              "p10": 3.187373174284858e-08,
+              "p50": 7.13068111224402e-08,
+              "mean": 9.385683274132361e-08,
+              "p90": 1.8072178562533733e-07,
+              "max": 3.6260942692933895e-07
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.0007542282625749526,
+              "p10": 0.0014888054489735508,
+              "p50": 0.0034358333603522278,
+              "mean": 0.004130185706395646,
+              "p90": 0.008098920207804913,
+              "max": 0.016260957810459414
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 7.795912153116771e-05,
+              "p10": 0.00012785291513376886,
+              "p50": 0.0002860281232348183,
+              "mean": 0.0003764814791067934,
+              "p90": 0.0007249169098489264,
+              "max": 0.001454510336660004
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 1.1060051072007036,
+              "p10": 1.2276188058723452,
+              "p50": 1.7547122622660591,
+              "mean": 2.3155877031215772,
+              "p90": 4.006218710566287,
+              "max": 8.856095199069312
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.86607760355173e-08,
+              "p10": 3.06032262642475e-08,
+              "p50": 6.846367028856548e-08,
+              "mean": 9.011414878301593e-08,
+              "p90": 1.7351411543131687e-07,
+              "max": 3.4814692639884015e-07
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 1.3649991359443447e-08,
+              "p10": 2.424378315879494e-08,
+              "p50": 5.70507232566797e-08,
+              "mean": 7.607768923278968e-08,
+              "p90": 1.4873537281800962e-07,
+              "max": 3.0167186082508124e-07
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 8.467145207191606e-09,
+              "p10": 1.5626348215391772e-08,
+              "p50": 3.740658982565037e-08,
+              "mean": 5.0445164960777334e-08,
+              "p90": 9.94979167501242e-08,
+              "max": 2.0267404465812433e-07
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 8.466639833670797e-09,
+              "p10": 1.562568527901931e-08,
+              "p50": 3.7405424535563725e-08,
+              "mean": 5.044370213092009e-08,
+              "p90": 9.949528489983094e-08,
+              "max": 2.0266926981094002e-07
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 11337464.0,
+              "p10": 20923966.2,
+              "p50": 50088664.0,
+              "mean": 67547899.225,
+              "p90": 133231640.79999998,
+              "max": 271389376.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.0,
+              "p90": 0.0,
+              "max": 0.0
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.018805591389536858,
+              "p10": 0.04776539467275143,
+              "p50": 0.07573201134800911,
+              "mean": 0.08361923455260695,
+              "p90": 0.1308261051774025,
+              "max": 0.20258577167987823
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.00032567317347728116,
+              "p50": 0.0300275975350991,
+              "mean": 0.03793033157053236,
+              "p90": 0.0876980975371544,
+              "max": 0.15936214661852455
+            },
+            "images_with_any_saturated_pixels_1ms": 0,
+            "images_total": 200
+          },
+          "terminal": {
+            "source_input_power_w": {
+              "count": 200,
+              "min": 0.0002493,
+              "p10": 0.0002493,
+              "p50": 0.0002493,
+              "mean": 0.0002493,
+              "p90": 0.0002493,
+              "max": 0.0002493
+            },
+            "after_slm_power_w": {
+              "count": 200,
+              "min": 1.8910347332060337e-05,
+              "p10": 2.3679493226855993e-05,
+              "p50": 2.916495411582291e-05,
+              "mean": 2.9918605091650038e-05,
+              "p90": 3.746381665751338e-05,
+              "max": 5.168090598732233e-05
+            },
+            "before_fiber_roi_power_w": {
+              "count": 200,
+              "min": 1.410557e-05,
+              "p10": 1.78584528e-05,
+              "p50": 2.2144425e-05,
+              "mean": 2.276004449e-05,
+              "p90": 2.87189564e-05,
+              "max": 3.9852996e-05
+            },
+            "fiber_total_power_w": {
+              "count": 200,
+              "min": 1.943520899772011e-08,
+              "p10": 3.187373174284858e-08,
+              "p50": 7.13068111224402e-08,
+              "mean": 9.385683274132361e-08,
+              "p90": 1.8072178562533733e-07,
+              "max": 3.6260942692933895e-07
+            },
+            "fiber_coupling_before_fiber": {
+              "count": 200,
+              "min": 0.0007542282625749526,
+              "p10": 0.0014888054489735508,
+              "p50": 0.0034358333603522278,
+              "mean": 0.004130185706395646,
+              "p90": 0.008098920207804913,
+              "max": 0.016260957810459414
+            },
+            "fiber_coupling_system": {
+              "count": 200,
+              "min": 7.795912153116771e-05,
+              "p10": 0.00012785291513376886,
+              "p50": 0.0002860281232348183,
+              "mean": 0.0003764814791067934,
+              "p90": 0.0007249169098489264,
+              "max": 0.001454510336660004
+            },
+            "fiber_N_eff": {
+              "count": 200,
+              "min": 1.1060051072007036,
+              "p10": 1.2276188058723452,
+              "p50": 1.7547122622660591,
+              "mean": 2.3155877031215772,
+              "p90": 4.006218710566287,
+              "max": 8.856095199069312
+            },
+            "after_4f_input_aperture_w": {
+              "count": 200,
+              "min": 1.86607760355173e-08,
+              "p10": 3.06032262642475e-08,
+              "p50": 6.846367028856548e-08,
+              "mean": 9.011414878301593e-08,
+              "p90": 1.7351411543131687e-07,
+              "max": 3.4814692639884015e-07
+            },
+            "after_decoder_layer1_aperture_w": {
+              "count": 200,
+              "min": 1.5350615001352708e-08,
+              "p10": 2.5879366560843663e-08,
+              "p50": 5.895001109479381e-08,
+              "mean": 7.797123185326883e-08,
+              "p90": 1.511845425739011e-07,
+              "max": 3.0441225362665136e-07
+            },
+            "after_decoder_layer2_output_aperture_w": {
+              "count": 200,
+              "min": 1.0004228556681483e-08,
+              "p10": 1.7023425158413375e-08,
+              "p50": 3.88785412752668e-08,
+              "mean": 5.1695834231146876e-08,
+              "p90": 1.0053114891661606e-07,
+              "max": 2.029398729064269e-07
+            },
+            "after_backend_camera_grid_w": {
+              "count": 200,
+              "min": 1.0000728245529444e-08,
+              "p10": 1.701932319519983e-08,
+              "p50": 3.887066313268406e-08,
+              "mean": 5.1686594049193954e-08,
+              "p90": 1.0051576992964327e-07,
+              "max": 2.029137107228962e-07
+            },
+            "camera_expected_electrons": {
+              "count": 200,
+              "min": 13391726.0,
+              "p10": 22790153.4,
+              "p50": 52050736.0,
+              "mean": 69212226.18,
+              "p90": 134598164.79999998,
+              "max": 271716672.0
+            },
+            "camera_saturation_fraction_1ms": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0,
+              "p50": 0.0,
+              "mean": 0.00010662500173566514,
+              "p90": 0.0,
+              "max": 0.008375000208616257
+            },
+            "primary_task_mse": {
+              "count": 200,
+              "min": 0.018368488177657127,
+              "p10": 0.04432305507361889,
+              "p50": 0.0726228691637516,
+              "mean": 0.07946304244920611,
+              "p90": 0.12300591766834257,
+              "max": 0.19615766406059265
+            },
+            "ideal_power_constrained_mse_lower_bound": {
+              "count": 200,
+              "min": 0.0,
+              "p10": 0.0002604368605894486,
+              "p50": 0.02902941542533307,
+              "mean": 0.036638384862492754,
+              "p90": 0.085469797619457,
+              "max": 0.156349831105986
+            },
+            "images_with_any_saturated_pixels_1ms": 8,
+            "images_total": 200
+          }
+        }
+      },
+      "numerical_windows": {
+        "initial_gaussian_s12": {
+          "path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/measurements/step_000_initial/candidate_3x3_B/gaussian_s12/window_metrics.json",
+          "rows": 300,
+          "threshold": 0.0001,
+          "comparisons": {
+            "4096_vs_6144": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 7.652089825654585e-06,
+              "p99_aligned_complex64_relative_l2": 7.1671714562846035e-06,
+              "passed": true
+            },
+            "4096_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 1.0223755711890325e-05,
+              "p99_aligned_complex64_relative_l2": 9.572198353653773e-06,
+              "passed": true
+            },
+            "6144_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 2.6403422657035395e-06,
+              "p99_aligned_complex64_relative_l2": 2.4785947110780607e-06,
+              "passed": true
+            }
+          },
+          "max_over_all_pairs": 1.0223755711890325e-05,
+          "all_passed": true,
+          "roi_power_unit": "W; sum(|E|^2) * (2e-6 m)^2"
+        },
+        "terminal_gaussian_s12": {
+          "path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/measurements/step_000500_terminal/candidate_3x3_B/gaussian_s12/window_metrics.json",
+          "rows": 300,
+          "threshold": 0.0001,
+          "comparisons": {
+            "4096_vs_6144": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 3.403002641354887e-05,
+              "p99_aligned_complex64_relative_l2": 3.395091980588818e-05,
+              "passed": true
+            },
+            "4096_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 4.5530946768968874e-05,
+              "p99_aligned_complex64_relative_l2": 4.5424239830688225e-05,
+              "passed": true
+            },
+            "6144_vs_8192": {
+              "count": 300,
+              "max_aligned_complex64_relative_l2": 1.1518880831345617e-05,
+              "p99_aligned_complex64_relative_l2": 1.1490050640578192e-05,
+              "passed": true
+            }
+          },
+          "max_over_all_pairs": 4.5530946768968874e-05,
+          "all_passed": true,
+          "roi_power_unit": "W; sum(|E|^2) * (2e-6 m)^2"
+        }
+      },
+      "native_precision_checks": [
+        {
+          "state": "initial",
+          "mode": "gaussian_s12",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 2.6403382338079654e-09,
+          "max_complex64_vs_complex128_mse_difference": 4.446741858066261e-08,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000_initial/candidate_3x3_B/gaussian_s12/native_complex128_camera_arrays.npz"
+        },
+        {
+          "state": "initial",
+          "mode": "lp01",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 2.1451966033298835e-09,
+          "max_complex64_vs_complex128_mse_difference": 4.67107148516277e-08,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000_initial/candidate_3x3_B/lp01/native_complex128_camera_arrays.npz"
+        },
+        {
+          "state": "terminal",
+          "mode": "gaussian_s12",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 2.8216549590014923e-09,
+          "max_complex64_vs_complex128_mse_difference": 6.26175391954531e-08,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000500_terminal/candidate_3x3_B/gaussian_s12/native_complex128_camera_arrays.npz"
+        },
+        {
+          "state": "terminal",
+          "mode": "lp01",
+          "status": "PASS",
+          "precision": "complex128 native production frontend and downstream fields",
+          "representative_rows": 10,
+          "max_gl4_vs_gl8_pixel_power_relative_l2": 2.4072473976973686e-09,
+          "max_complex64_vs_complex128_mse_difference": 6.400108694404327e-08,
+          "saved_arrays_remote": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/precision_checks/step_000500_terminal/candidate_3x3_B/lp01/native_complex128_camera_arrays.npz"
+        }
+      ],
+      "gallery_relative_path": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/reconstruction_gallery/candidate_3x3_B_30_fixed_samples.png",
+      "checkpoint_remote_paths": {
+        "initial": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/training/candidate_3x3_B/primary/checkpoint_step_000000.pt",
+        "terminal": "/root/autodl-tmp/codex-original/outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/attempt_01/training/candidate_3x3_B/primary/terminal.pt"
+      }
+    }
+  },
+  "delivery": {
+    "main_evidence_receipt_status": "COMPLETE",
+    "main_evidence_file_count": 51,
+    "main_evidence_bytes": 1061090935,
+    "main_evidence_receipt": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/transfer_receipt.json",
+    "preflight_transfer_receipt": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_preflight_05/transfer_receipt.json",
+    "camera_archives_reloaded_finite": 8,
+    "full_size_camera_archives_returned": 8,
+    "gallery_images_returned": 2
+  },
+  "decision": {
+    "scientific_gate": "VALID_FAILED",
+    "reason": "Both candidates improved over their own initial decoder, but neither exceeded the fixed fit-mean baseline and neither showed a bootstrap lower bound above numeric tau versus within-class cyclic mismatch.",
+    "training_recommendation": "NONE",
+    "next_action": "NONE",
+    "successor_training_authorized": false,
+    "stop_point": "No further update, tuning, exposure selection, OLS adoption, material study, or formal generator training in this task."
+  },
+  "provenance": {
+    "machine_report": "outputs/20261018_ols_decoder_mnist_reconstruction_v12/runs/autodl_backup_attempt_01_evidence/report.json",
+    "local_config": "configs/research/lightgen/ols_decoder_mnist_reconstruction_v12.yaml",
+    "execution_entrypoint": "scripts/research/lightgen/execute_ols_decoder_mnist_reconstruction_v12.py",
+    "focused_test": "tests/research/lightgen/test_ols_decoder_mnist_reconstruction_v12.py",
+    "quantile_method": "NumPy linear interpolation at p10/p50/p90 across 200 confirmation images"
+  }
+}

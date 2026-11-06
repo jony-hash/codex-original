@@ -1,0 +1,3600 @@
+{
+  "schema": "ols_decoder_camera_interface.v9",
+  "status": "VALID_COMPLETED",
+  "decision_question": "With v8 phases frozen, can the four- and nine-channel complex outputs form numerically credible absolute-power sensor responses through the specified routes, decoder, and proxy camera?",
+  "source": {
+    "phase_screens": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/frozen_encoder_phase_screens_v9.pt",
+    "response_inputs": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/frozen_v8_response_inputs_v9.npz",
+    "source_v8_run_dir": "/root/autodl-tmp/codex-original/outputs/20261015_ols_four_nine_window_closure_v8/runs/attempt_02"
+  },
+  "physical_assumptions": {
+    "wavelength_m": 5.32e-07,
+    "encoder_aperture_m": 0.0002,
+    "pixel_pitch_m": 2e-06,
+    "encoder_propagation_distances_m": [
+      0.0015,
+      0.0015
+    ],
+    "fiber_pitch_m": 0.000125,
+    "assumed_gaussian_mfd_m": 1.4222e-05,
+    "layer_power_transmission": 0.889,
+    "source_power_w": 0.0002493,
+    "fiber_transport": "ideal identity, not measured",
+    "gaussian_s12_primary": true,
+    "lp01_v2p2_same_geometry_sensitivity_control": true,
+    "all_geometry_and_camera_parameters_are_simulation_assumptions": true
+  },
+  "decoder_phase_screens": "decoder_phase_screens_v9.pt",
+  "mapped_route_power_archives_4096_complex64": {
+    "candidate_2x2_C__gaussian_s12__direct": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_2x2_C__gaussian_s12__direct_4096_complex64.json",
+    "candidate_2x2_C__gaussian_s12__explicit_4f": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_2x2_C__gaussian_s12__explicit_4f_4096_complex64.json",
+    "candidate_2x2_C__lp01__direct": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_2x2_C__lp01__direct_4096_complex64.json",
+    "candidate_2x2_C__lp01__explicit_4f": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_2x2_C__lp01__explicit_4f_4096_complex64.json",
+    "candidate_3x3_B__gaussian_s12__direct": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_3x3_B__gaussian_s12__direct_4096_complex64.json",
+    "candidate_3x3_B__gaussian_s12__explicit_4f": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_3x3_B__gaussian_s12__explicit_4f_4096_complex64.json",
+    "candidate_3x3_B__lp01__direct": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_3x3_B__lp01__direct_4096_complex64.json",
+    "candidate_3x3_B__lp01__explicit_4f": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/mapped_route_power/candidate_3x3_B__lp01__explicit_4f_4096_complex64.json"
+  },
+  "camera_diagnostic_images": {
+    "linear_image": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_diagnostic_shared_linear.png",
+    "noise_image": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_noise_example_shared_scale.png",
+    "all_cases_share_linear_power_scale_w_per_pixel": 3.605312492993562e-09,
+    "all_cases_share_noise_electron_scale": 30000.0,
+    "images_are_diagnostic_sensor_maps_not_semantic_generation": true
+  },
+  "contexts": {
+    "candidate_2x2_C__gaussian_s12__direct__zero_phase": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__direct__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__direct__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__gaussian_s12__direct__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.130766273286174e-07,
+              "camera_field_complex_relative_error": 6.490113292100005e-07,
+              "pixel_power_relative_error": 5.554418168614533e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.3909000207198245e-11,
+            "absolute_error": 1.2334719866088378e-19,
+            "reference_norm": 5.159027880377358e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 7,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.58346183164624e-14,
+                "relative_to_left_window_max_singular": 3.0693069492464494e-06,
+                "difference_singular_values": [
+                  1.58346183164624e-14,
+                  1.567501136563804e-14,
+                  1.563822909580486e-14,
+                  1.1175107953141856e-14,
+                  8.135354297563561e-15,
+                  8.070826964941327e-15,
+                  3.3430889086236017e-15,
+                  3.1732080666920085e-15,
+                  2.9845490788995774e-15,
+                  2.328685203015994e-15,
+                  1.0074761731979899e-15,
+                  9.4849881469534e-16,
+                  9.12185449427691e-16,
+                  1.4541725741411025e-17,
+                  2.899628850551366e-26,
+                  3.236898570874398e-34
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 2.1362242197407033e-14,
+                "relative_to_left_window_max_singular": 4.14075521857198e-06,
+                "difference_singular_values": [
+                  2.1362242197407033e-14,
+                  2.11238033257702e-14,
+                  2.112293657069504e-14,
+                  1.5083123837867504e-14,
+                  1.0915430676870068e-14,
+                  1.0908879961222451e-14,
+                  3.604402503326118e-15,
+                  3.4905271953291018e-15,
+                  3.2690021288796673e-15,
+                  2.52386394488844e-15,
+                  1.0823438627561256e-15,
+                  1.0752465428017347e-15,
+                  1.0501757742215957e-15,
+                  1.6102778832370493e-17,
+                  2.1615187791288982e-26,
+                  1.687434046775276e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.743569877828217e-15,
+                "relative_to_left_window_max_singular": 1.1133061266433785e-06,
+                "difference_singular_values": [
+                  5.743569877828217e-15,
+                  5.569406743541384e-15,
+                  5.501442773090116e-15,
+                  3.9497106013739195e-15,
+                  3.575844417393042e-15,
+                  2.854076341840228e-15,
+                  2.7424073563400234e-15,
+                  2.5785938387018143e-15,
+                  2.459005230965803e-15,
+                  2.105467484396513e-15,
+                  8.721273612090629e-16,
+                  6.938650239190741e-16,
+                  6.444455373223191e-16,
+                  2.275899362835002e-18,
+                  1.6117045948246427e-26,
+                  7.486966063804451e-32
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.48248898725878786,
+              "command_max": 0.4995294056107005,
+              "common_roi_complex_relative_error": 2.134953739478456e-07,
+              "camera_field_complex_relative_error": 6.539669546749595e-07,
+              "pixel_power_relative_error": 5.643621361639752e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999985
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.4453572460716362,
+              "command_max": 0.554642727587271,
+              "common_roi_complex_relative_error": 2.1309302118540946e-07,
+              "camera_field_complex_relative_error": 6.506263937529306e-07,
+              "pixel_power_relative_error": 5.588658559615514e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999985
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__zero_phase_complex128.json"
+      }
+    },
+    "candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1416044014776134e-07,
+              "camera_field_complex_relative_error": 6.533189317289101e-07,
+              "pixel_power_relative_error": 5.630650088531662e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 3.186113349980416e-11,
+            "absolute_error": 1.6507601128798018e-19,
+            "reference_norm": 5.181109180845523e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 7,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.863608367065501e-14,
+                "relative_to_left_window_max_singular": 3.5969331956184603e-06,
+                "difference_singular_values": [
+                  1.863608367065501e-14,
+                  1.616209938621212e-14,
+                  1.3334261870417201e-14,
+                  1.3141251304260142e-14,
+                  7.480933795632578e-15,
+                  7.323518331845939e-15,
+                  3.541081495499058e-15,
+                  3.233275646200565e-15,
+                  2.6956512845352545e-15,
+                  2.6427121453350895e-15,
+                  1.2654122134733435e-15,
+                  9.127878371664546e-16,
+                  8.243866091214123e-16,
+                  1.3805647157983904e-17,
+                  2.4585457512204568e-26,
+                  1.0213249845166122e-33
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 2.514822700129153e-14,
+                "relative_to_left_window_max_singular": 4.8538359298273464e-06,
+                "difference_singular_values": [
+                  2.514822700129153e-14,
+                  2.1828012043366973e-14,
+                  1.798780901804748e-14,
+                  1.7742715614839053e-14,
+                  1.0056383378097769e-14,
+                  9.858597268322989e-15,
+                  4.299663286186217e-15,
+                  3.665662918566661e-15,
+                  3.1212076834724136e-15,
+                  3.021957500567831e-15,
+                  1.4329799355829409e-15,
+                  1.0530511858841397e-15,
+                  9.056590161677723e-16,
+                  1.5734601991828324e-17,
+                  2.1898616601526703e-26,
+                  1.5961101884452785e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.962291954816286e-15,
+                "relative_to_left_window_max_singular": 1.343785557118899e-06,
+                "difference_singular_values": [
+                  6.962291954816286e-15,
+                  5.6969827064031785e-15,
+                  4.704495842890347e-15,
+                  4.6397710865367474e-15,
+                  3.496093351285295e-15,
+                  2.6306792724210805e-15,
+                  2.550706718087674e-15,
+                  2.457093947924171e-15,
+                  2.3878382645812763e-15,
+                  2.1137270372206394e-15,
+                  9.267865160338794e-16,
+                  6.646645589257018e-16,
+                  6.468062289453501e-16,
+                  2.2107152495604646e-18,
+                  2.4875669339746405e-26,
+                  3.3335355366494974e-35
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.47714528586167804,
+              "command_max": 0.5009864191049165,
+              "common_roi_complex_relative_error": 2.1308054379872429e-07,
+              "camera_field_complex_relative_error": 6.463896410552003e-07,
+              "pixel_power_relative_error": 5.559301506706602e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000004
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.45451298420095826,
+              "command_max": 0.5470245301448168,
+              "common_roi_complex_relative_error": 2.1290966234788504e-07,
+              "camera_field_complex_relative_error": 6.458048422449438e-07,
+              "pixel_power_relative_error": 5.539494189516736e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000009
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__direct__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1214010704247855e-07,
+              "camera_field_complex_relative_error": 6.415143171181763e-07,
+              "pixel_power_relative_error": 4.6818410021614354e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.4040134693543072e-11,
+            "absolute_error": 1.5501631501674263e-19,
+            "reference_norm": 6.448229886930641e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 6,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.3389054457115298e-14,
+                "relative_to_left_window_max_singular": 2.0763945372737235e-06,
+                "difference_singular_values": [
+                  1.3389054457115298e-14,
+                  1.3366080002583522e-14,
+                  1.3151462207497845e-14,
+                  6.564610884174859e-15,
+                  6.511683849902125e-15,
+                  6.145190512849991e-15,
+                  3.911200165526849e-15,
+                  3.1282250812181875e-15,
+                  2.5244749152062663e-15,
+                  1.9702226130271814e-15,
+                  9.001517689531373e-16,
+                  8.909509074064047e-16,
+                  8.742532280757366e-16,
+                  1.4385391886872238e-17,
+                  2.0257995970625256e-26,
+                  5.858248316941031e-32
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.8096007511738524e-14,
+                "relative_to_left_window_max_singular": 2.806355838210075e-06,
+                "difference_singular_values": [
+                  1.8096007511738524e-14,
+                  1.8088212791333188e-14,
+                  1.7770599962594288e-14,
+                  8.783490141121007e-15,
+                  8.780438514538758e-15,
+                  8.307803037492857e-15,
+                  4.157698911107437e-15,
+                  3.0330954686424177e-15,
+                  2.7272025406684174e-15,
+                  1.8252582826289625e-15,
+                  9.0275456391197e-16,
+                  8.877179435862909e-16,
+                  8.802158231337538e-16,
+                  1.6253141099608963e-17,
+                  1.6721633786491364e-26,
+                  2.5656402268776245e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.43167337925019e-15,
+                "relative_to_left_window_max_singular": 8.423521411902635e-07,
+                "difference_singular_values": [
+                  5.43167337925019e-15,
+                  4.843962033209338e-15,
+                  4.7217552259449e-15,
+                  4.358787263616649e-15,
+                  2.5987499408908215e-15,
+                  2.47332575019788e-15,
+                  2.191682309135935e-15,
+                  1.9546797505273193e-15,
+                  1.906977987713626e-15,
+                  1.8534628986103014e-15,
+                  8.363797381458141e-16,
+                  7.848680313163403e-16,
+                  7.708310895568007e-16,
+                  2.175455797548216e-18,
+                  1.9370007038644862e-26,
+                  2.3703051289296476e-34
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.48248907299698224,
+              "command_max": 0.49952937945682474,
+              "common_roi_complex_relative_error": 2.1298901202688773e-07,
+              "camera_field_complex_relative_error": 6.411032910780482e-07,
+              "pixel_power_relative_error": 4.734316683515764e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999992
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.45989418569354107,
+              "command_max": 0.5401058291897983,
+              "common_roi_complex_relative_error": 2.1292919412984452e-07,
+              "camera_field_complex_relative_error": 6.475645955078191e-07,
+              "pixel_power_relative_error": 4.794343875560458e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999986
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__zero_phase_complex128.json"
+      }
+    },
+    "candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.128164135462971e-07,
+              "camera_field_complex_relative_error": 6.350421522174863e-07,
+              "pixel_power_relative_error": 5.003634472271994e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.891551465229296e-07,
+            "6144": 6.28277179104928e-07,
+            "8192": 5.543155298046445e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.4641039686506624e-11,
+            "absolute_error": 1.4444785816192275e-19,
+            "reference_norm": 5.862084554858376e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 7,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.4976231723692613e-14,
+                "relative_to_left_window_max_singular": 2.554765471494143e-06,
+                "difference_singular_values": [
+                  1.4976231723692613e-14,
+                  1.3149110713773231e-14,
+                  1.290269362758335e-14,
+                  1.2622664251339176e-14,
+                  9.203399524143138e-15,
+                  8.661129232030029e-15,
+                  3.702058052788776e-15,
+                  3.06685580600956e-15,
+                  2.565294178091716e-15,
+                  2.0011124118459277e-15,
+                  9.17175611955682e-16,
+                  8.716212372642399e-16,
+                  8.347092393953656e-16,
+                  1.2733959084763636e-17,
+                  2.4773590842119158e-26,
+                  1.623816776253546e-33
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 2.026289330114708e-14,
+                "relative_to_left_window_max_singular": 3.456606515806275e-06,
+                "difference_singular_values": [
+                  2.026289330114708e-14,
+                  1.77806842202944e-14,
+                  1.7371150758701674e-14,
+                  1.7054682059987088e-14,
+                  1.2389916795675493e-14,
+                  1.1736512654958583e-14,
+                  4.004189312320688e-15,
+                  2.91743960750412e-15,
+                  2.7222035998767477e-15,
+                  1.8724882394877265e-15,
+                  9.016377549668028e-16,
+                  8.674553552842306e-16,
+                  8.437403214928605e-16,
+                  1.408424262776057e-17,
+                  3.011344362841127e-26,
+                  1.0065258848155137e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.521997627316651e-15,
+                "relative_to_left_window_max_singular": 9.419867114898513e-07,
+                "difference_singular_values": [
+                  5.521997627316651e-15,
+                  5.0580798589572675e-15,
+                  4.839041972191632e-15,
+                  4.631514803363963e-15,
+                  4.117794761908322e-15,
+                  3.323836206664211e-15,
+                  3.17932121453429e-15,
+                  2.14256406066836e-15,
+                  2.0004348184330094e-15,
+                  1.9211610832294408e-15,
+                  8.981817741257203e-16,
+                  7.536835424473863e-16,
+                  7.145212954792096e-16,
+                  1.9395538942002447e-18,
+                  2.1264538629790259e-26,
+                  2.738382219204773e-34
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4817074917912958,
+              "command_max": 0.499730490137003,
+              "common_roi_complex_relative_error": 2.1166400219270417e-07,
+              "camera_field_complex_relative_error": 6.377004511180894e-07,
+              "pixel_power_relative_error": 5.097758573517418e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999988
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.44719219562676904,
+              "command_max": 0.5504497739285732,
+              "common_roi_complex_relative_error": 2.1251911691326684e-07,
+              "camera_field_complex_relative_error": 6.352535854665001e-07,
+              "pixel_power_relative_error": 5.002598506365453e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999974
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__gaussian_s12__explicit_4f__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_2x2_C__lp01__direct__zero_phase": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__direct__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__direct__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__lp01__direct__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1312922363958067e-07,
+              "camera_field_complex_relative_error": 6.527913563702239e-07,
+              "pixel_power_relative_error": 5.793196410200496e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.1395555823903415e-11,
+            "absolute_error": 1.1324184650448296e-19,
+            "reference_norm": 5.292774230149589e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 7,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.8608580363790615e-14,
+                "relative_to_left_window_max_singular": 3.515851243164805e-06,
+                "difference_singular_values": [
+                  1.8608580363790615e-14,
+                  1.688423370266566e-14,
+                  1.685148004258945e-14,
+                  1.0432121086530015e-14,
+                  7.405127893036214e-15,
+                  7.315244721644155e-15,
+                  3.4847661003523877e-15,
+                  3.3322766186661403e-15,
+                  3.189946413320629e-15,
+                  2.406326373804621e-15,
+                  9.700916563119085e-16,
+                  9.292944141903433e-16,
+                  9.176160245720793e-16,
+                  1.4569144801666343e-17,
+                  4.159339083966793e-26,
+                  7.886290923817357e-33
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 2.5110552506034822e-14,
+                "relative_to_left_window_max_singular": 4.744315015920633e-06,
+                "difference_singular_values": [
+                  2.5110552506034822e-14,
+                  2.27696545753435e-14,
+                  2.276144309247428e-14,
+                  1.40775031731501e-14,
+                  9.90102775256585e-15,
+                  9.889416124750308e-15,
+                  3.8735900711343834e-15,
+                  3.6872011204875376e-15,
+                  3.513763210339312e-15,
+                  2.5752274198563712e-15,
+                  1.082969704487215e-15,
+                  1.0657551604250425e-15,
+                  9.983310904204423e-16,
+                  1.596161364078726e-17,
+                  4.33418179265443e-26,
+                  1.5997501203699832e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.642388914438257e-15,
+                "relative_to_left_window_max_singular": 1.2549936333492132e-06,
+                "difference_singular_values": [
+                  6.642388914438257e-15,
+                  6.147590077952765e-15,
+                  5.948344085025703e-15,
+                  3.6937043272099544e-15,
+                  3.6789655054030156e-15,
+                  2.817690653635666e-15,
+                  2.6514526959700023e-15,
+                  2.5647940951685643e-15,
+                  2.4946305212695087e-15,
+                  2.2256588901407203e-15,
+                  8.624627454375439e-16,
+                  6.804622470781381e-16,
+                  6.291402801753481e-16,
+                  2.248687025099079e-18,
+                  3.862550468568054e-26,
+                  1.7726023407989395e-32
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.48265804102249443,
+              "command_max": 0.49911030374662796,
+              "common_roi_complex_relative_error": 2.1294449431602733e-07,
+              "camera_field_complex_relative_error": 6.498678269298127e-07,
+              "pixel_power_relative_error": 5.703654021368639e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999985
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.44822310557213835,
+              "command_max": 0.5517768969832586,
+              "common_roi_complex_relative_error": 2.1296848939923723e-07,
+              "camera_field_complex_relative_error": 6.494916740476892e-07,
+              "pixel_power_relative_error": 5.760258527671109e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000018
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__zero_phase_complex128.json"
+      }
+    },
+    "candidate_2x2_C__lp01__direct__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__direct__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__direct__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__lp01__direct__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1261301229565703e-07,
+              "camera_field_complex_relative_error": 6.487229284853314e-07,
+              "pixel_power_relative_error": 5.66462980427515e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 3.331764569942797e-11,
+            "absolute_error": 1.791956939305062e-19,
+            "reference_norm": 5.378402049985868e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 7,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 2.0733558410885448e-14,
+                "relative_to_left_window_max_singular": 3.8549702673329265e-06,
+                "difference_singular_values": [
+                  2.0733558410885448e-14,
+                  1.7088020832052428e-14,
+                  1.4851924038200534e-14,
+                  1.208861217114804e-14,
+                  6.911973253888769e-15,
+                  6.71200172706154e-15,
+                  3.767834851191685e-15,
+                  3.4003804467341626e-15,
+                  2.8527755546159176e-15,
+                  2.799394078474436e-15,
+                  1.2387684130505434e-15,
+                  8.967533856305641e-16,
+                  8.001715410509678e-16,
+                  1.3648780880977564e-17,
+                  5.091664755689836e-26,
+                  1.4754571555223478e-32
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 2.795378134732419e-14,
+                "relative_to_left_window_max_singular": 5.197419266771123e-06,
+                "difference_singular_values": [
+                  2.795378134732419e-14,
+                  2.307432591630787e-14,
+                  2.0031239942888283e-14,
+                  1.6320711571530564e-14,
+                  9.279704454281265e-15,
+                  9.04597480970386e-15,
+                  4.479570631685014e-15,
+                  3.7500214990487575e-15,
+                  3.2037973847689282e-15,
+                  3.0574769963645904e-15,
+                  1.397261486418709e-15,
+                  1.0183983106854655e-15,
+                  8.570414144470539e-16,
+                  1.5515543535215247e-17,
+                  5.526877316915094e-26,
+                  5.676413681725709e-34
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 7.715703785793741e-15,
+                "relative_to_left_window_max_singular": 1.4345734109476491e-06,
+                "difference_singular_values": [
+                  7.715703785793741e-15,
+                  6.027493533898519e-15,
+                  5.268637775841674e-15,
+                  4.27731323480697e-15,
+                  3.597148597137738e-15,
+                  2.6926710273284108e-15,
+                  2.5794119580718333e-15,
+                  2.3658728552775578e-15,
+                  2.298766849917081e-15,
+                  2.155207433908492e-15,
+                  9.072237971899675e-16,
+                  6.336100597180633e-16,
+                  6.242738818365524e-16,
+                  2.1857310117913113e-18,
+                  5.999954980193731e-26,
+                  5.3722481775528346e-33
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4767536036495192,
+              "command_max": 0.5010176634947437,
+              "common_roi_complex_relative_error": 2.1386907078258058e-07,
+              "camera_field_complex_relative_error": 6.447474140037582e-07,
+              "pixel_power_relative_error": 5.54534097523979e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000007
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.45723090985087983,
+              "command_max": 0.545247707320988,
+              "common_roi_complex_relative_error": 2.138990051522726e-07,
+              "camera_field_complex_relative_error": 6.452705570224543e-07,
+              "pixel_power_relative_error": 5.543894539345086e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999998
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__direct__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_2x2_C__lp01__explicit_4f__zero_phase": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__explicit_4f__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__explicit_4f__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__lp01__explicit_4f__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1223583019316606e-07,
+              "camera_field_complex_relative_error": 6.460788940012397e-07,
+              "pixel_power_relative_error": 4.752532017207382e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.43805230173833e-11,
+            "absolute_error": 1.6895316577824737e-19,
+            "reference_norm": 6.929841728899083e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 6,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.359900976525006e-14,
+                "relative_to_left_window_max_singular": 1.9623863637589985e-06,
+                "difference_singular_values": [
+                  1.359900976525006e-14,
+                  1.3572043010706271e-14,
+                  1.3546234355506911e-14,
+                  8.430271011284941e-15,
+                  8.352501850746655e-15,
+                  7.570339364517016e-15,
+                  4.675804002842932e-15,
+                  3.6892348781593044e-15,
+                  3.540309386543849e-15,
+                  3.1576193310063443e-15,
+                  1.3526296618336252e-15,
+                  1.1575965279650315e-15,
+                  1.1217352428321783e-15,
+                  1.5933022620283864e-17,
+                  3.9595662390506354e-26,
+                  9.895555961071532e-34
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.842899230512703e-14,
+                "relative_to_left_window_max_singular": 2.6593703381119524e-06,
+                "difference_singular_values": [
+                  1.842899230512703e-14,
+                  1.8363001985679255e-14,
+                  1.8343345199258955e-14,
+                  1.1273296381355e-14,
+                  1.126096948017338e-14,
+                  1.0238451237449047e-14,
+                  4.9535424779008174e-15,
+                  4.139692879821349e-15,
+                  3.9194352639676135e-15,
+                  3.702914952992642e-15,
+                  1.580702700550935e-15,
+                  1.3363655291865125e-15,
+                  1.2959754149973392e-15,
+                  1.65858283543801e-17,
+                  3.969505689763768e-26,
+                  3.134267345328579e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.8886320032704004e-15,
+                "relative_to_left_window_max_singular": 8.497510318770806e-07,
+                "difference_singular_values": [
+                  5.8886320032704004e-15,
+                  5.073533013585048e-15,
+                  4.851784855462765e-15,
+                  4.557951758093422e-15,
+                  3.286360686603303e-15,
+                  3.0670580137539857e-15,
+                  2.703417011938737e-15,
+                  2.2848515491412296e-15,
+                  2.210925279915246e-15,
+                  2.1144576371328757e-15,
+                  9.187187880186554e-16,
+                  8.482691336345419e-16,
+                  8.17680839108981e-16,
+                  2.162492936953465e-18,
+                  4.7032925661440675e-26,
+                  2.6805353605325216e-34
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4826581419407016,
+              "command_max": 0.4991102762401869,
+              "common_roi_complex_relative_error": 2.1131795815535311e-07,
+              "camera_field_complex_relative_error": 6.489821365551248e-07,
+              "pixel_power_relative_error": 4.836577617198298e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000004
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.44829377521056124,
+              "command_max": 0.5517062879971087,
+              "common_roi_complex_relative_error": 2.1419216440116047e-07,
+              "camera_field_complex_relative_error": 6.475382199451907e-07,
+              "pixel_power_relative_error": 4.846299148114482e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000002
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__zero_phase_complex128.json"
+      }
+    },
+    "candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        22,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1117548195023632e-07,
+              "camera_field_complex_relative_error": 6.360522240559945e-07,
+              "pixel_power_relative_error": 4.932595854632087e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_2x2_C",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 5.895369176693211e-07,
+            "6144": 6.281976848342051e-07,
+            "8192": 5.539514310254796e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.173959892020304e-11,
+            "absolute_error": 1.3660085527191868e-19,
+            "reference_norm": 6.28350393092914e-09,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 7,
+            "0.01": 7,
+            "0.001": 7,
+            "0.0001": 7
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 7,
+            "3": 7,
+            "5": 7
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.5905740585758567e-14,
+                "relative_to_left_window_max_singular": 2.5313524215330888e-06,
+                "difference_singular_values": [
+                  1.5905740585758567e-14,
+                  1.3919748988340767e-14,
+                  1.3638976914614292e-14,
+                  1.2996362505985346e-14,
+                  1.001624469184809e-14,
+                  9.551374437263955e-15,
+                  4.547305038751152e-15,
+                  3.625661925312772e-15,
+                  3.4655715993951122e-15,
+                  3.273988300737957e-15,
+                  1.4684026235193768e-15,
+                  1.120562526276689e-15,
+                  1.051282225592694e-15,
+                  1.3614813331787873e-17,
+                  4.1731633906145924e-26,
+                  1.4806553560595489e-33
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 2.150630086084781e-14,
+                "relative_to_left_window_max_singular": 3.4226653244344947e-06,
+                "difference_singular_values": [
+                  2.150630086084781e-14,
+                  1.8817413006079966e-14,
+                  1.8345088003554392e-14,
+                  1.7532901682534614e-14,
+                  1.3489924720620869e-14,
+                  1.2934579354807486e-14,
+                  4.51080096895135e-15,
+                  4.2148092254689286e-15,
+                  4.016821372749083e-15,
+                  3.610614471216156e-15,
+                  1.7185325183213212e-15,
+                  1.2763855695176636e-15,
+                  1.2464541334041318e-15,
+                  1.5768437288299074e-17,
+                  4.317601901904981e-26,
+                  4.887569555296897e-33
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.91911162339406e-15,
+                "relative_to_left_window_max_singular": 9.420096189017548e-07,
+                "difference_singular_values": [
+                  5.91911162339406e-15,
+                  5.547871046580128e-15,
+                  5.086460604182219e-15,
+                  4.8269623258897525e-15,
+                  4.311799043067851e-15,
+                  3.6262297125417696e-15,
+                  3.435111912816018e-15,
+                  2.4949899906016117e-15,
+                  2.335930445722015e-15,
+                  2.2508539983657582e-15,
+                  1.0215570404805547e-15,
+                  8.334738411054355e-16,
+                  7.840931451053436e-16,
+                  2.0254330841615163e-18,
+                  6.109693765968778e-26,
+                  2.474436865470089e-34
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.48191319986099235,
+              "command_max": 0.499290744618852,
+              "common_roi_complex_relative_error": 2.12379707332483e-07,
+              "camera_field_complex_relative_error": 6.373777429150532e-07,
+              "pixel_power_relative_error": 5.004079038285368e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000007
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.452700322867504,
+              "command_max": 0.5497348575370928,
+              "common_roi_complex_relative_error": 2.135520764697452e-07,
+              "camera_field_complex_relative_error": 6.395809542931541e-07,
+              "pixel_power_relative_error": 5.123812506998166e-07,
+              "passed": true,
+              "direction_index": 6,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000009
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_2x2_C__lp01__explicit_4f__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_3x3_B__gaussian_s12__direct__zero_phase": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__direct__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__direct__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__gaussian_s12__direct__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.2229190565878195e-07,
+              "camera_field_complex_relative_error": 6.475547823518506e-07,
+              "pixel_power_relative_error": 5.132267641753048e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 1.2696997558925734e-12,
+            "absolute_error": 1.101500718016226e-22,
+            "reference_norm": 8.67528494751811e-11,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 2,
+            "0.01": 10,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.0506319676305608e-16,
+                "relative_to_left_window_max_singular": 1.211064704797375e-06,
+                "difference_singular_values": [
+                  1.0506319676305608e-16,
+                  1.0347901748672762e-16,
+                  6.449122298960189e-17,
+                  5.351729991950859e-17,
+                  5.203669908337902e-17,
+                  2.6633986548544546e-17,
+                  1.5625724867443998e-17,
+                  1.5386459154751035e-17,
+                  1.4699273559314707e-17,
+                  1.468962759383017e-17,
+                  9.696314658435408e-18,
+                  6.2361730988134574e-18,
+                  6.1428689036850735e-18,
+                  5.877976541050492e-18,
+                  4.398080036643086e-18,
+                  4.252742821771701e-18,
+                  4.015580411164354e-18,
+                  3.794757840280025e-18,
+                  3.64889941810812e-18,
+                  1.1775380722097718e-18,
+                  1.0169473680575839e-18,
+                  8.35379750168309e-19,
+                  8.252495855875936e-19,
+                  5.142675670886617e-19,
+                  4.659420452589025e-19,
+                  4.023014209550227e-19,
+                  3.9920713139312103e-19,
+                  4.6032054462513734e-20,
+                  4.040410584830404e-20,
+                  2.899012049483688e-20,
+                  2.127842008437157e-20,
+                  1.338090875841856e-20,
+                  3.412372080468776e-21,
+                  2.8146704816285685e-21,
+                  4.286412946732488e-28,
+                  2.9350669108408026e-35
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.400370255757248e-16,
+                "relative_to_left_window_max_singular": 1.6142084408686374e-06,
+                "difference_singular_values": [
+                  1.400370255757248e-16,
+                  1.397989022957281e-16,
+                  7.294923158293132e-17,
+                  7.205651796580812e-17,
+                  5.4110668762161754e-17,
+                  2.045737963394977e-17,
+                  2.0407512539837152e-17,
+                  1.9932134879048846e-17,
+                  1.951640627114053e-17,
+                  1.946707774749305e-17,
+                  1.3130246324772483e-17,
+                  8.360569687025922e-18,
+                  8.207269986174393e-18,
+                  7.927228261689428e-18,
+                  5.738254446115929e-18,
+                  5.698282809335914e-18,
+                  3.338592257707172e-18,
+                  3.2217136085738025e-18,
+                  3.0631740678070957e-18,
+                  1.3117961087879177e-18,
+                  1.0602669747802262e-18,
+                  1.050817436246426e-18,
+                  9.448704913327225e-19,
+                  6.739348363439629e-19,
+                  5.103796655685379e-19,
+                  5.040306448821393e-19,
+                  3.552410655485443e-19,
+                  6.444633843448346e-20,
+                  4.9598381552758785e-20,
+                  3.7307079443359705e-20,
+                  2.5419003814278035e-20,
+                  1.6050467489762093e-20,
+                  4.1452558834306404e-21,
+                  3.345023185107664e-21,
+                  4.213833468702657e-28,
+                  6.195941453412329e-36
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.445111255763875e-17,
+                "relative_to_left_window_max_singular": 7.429288898614163e-07,
+                "difference_singular_values": [
+                  6.445111255763875e-17,
+                  3.748369182150049e-17,
+                  3.6320515519468004e-17,
+                  2.3808906234270004e-17,
+                  1.868936732979547e-17,
+                  1.83132418080754e-17,
+                  6.607563424464756e-18,
+                  6.493055770963058e-18,
+                  6.0245299725870625e-18,
+                  5.964904364549304e-18,
+                  3.917463501313708e-18,
+                  3.772719376933674e-18,
+                  3.4708880935207525e-18,
+                  3.3894076741767736e-18,
+                  2.1856315493256194e-18,
+                  2.1496383512503114e-18,
+                  2.0509327438104126e-18,
+                  1.5113183708907077e-18,
+                  1.4869873315433961e-18,
+                  1.006086050834361e-18,
+                  4.734997632780382e-19,
+                  4.553213387860322e-19,
+                  4.4784744409285445e-19,
+                  3.985760960967736e-19,
+                  2.4487664041852953e-19,
+                  2.357474892076736e-19,
+                  2.1456376226927735e-19,
+                  7.705087147583575e-21,
+                  6.491951268211928e-21,
+                  4.967162653607272e-21,
+                  3.533587762474718e-21,
+                  2.18037408676136e-21,
+                  5.766413786889464e-22,
+                  4.70156871300519e-22,
+                  4.271740104275279e-28,
+                  1.720984355077238e-35
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4754304656962242,
+              "command_max": 0.527473738292199,
+              "common_roi_complex_relative_error": 2.2774763118718154e-07,
+              "camera_field_complex_relative_error": 6.420178885475785e-07,
+              "pixel_power_relative_error": 4.4234002117356843e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.01000000000000001
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.4609518477949729,
+              "command_max": 0.5390484165524349,
+              "common_roi_complex_relative_error": 2.1998123379999013e-07,
+              "camera_field_complex_relative_error": 6.441981455388067e-07,
+              "pixel_power_relative_error": 5.070188691372684e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999995
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__zero_phase_complex128.json"
+      }
+    },
+    "candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.229357273951648e-07,
+              "camera_field_complex_relative_error": 6.450203130642034e-07,
+              "pixel_power_relative_error": 5.093245518723557e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.0317892099502215e-12,
+            "absolute_error": 1.686401743041165e-22,
+            "reference_norm": 8.300082187573393e-11,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 2,
+            "0.01": 10,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 9.073611259790038e-17,
+                "relative_to_left_window_max_singular": 1.0931965137156826e-06,
+                "difference_singular_values": [
+                  9.073611259790038e-17,
+                  8.871841210292294e-17,
+                  7.252250486420461e-17,
+                  6.552224181736158e-17,
+                  5.953887138098092e-17,
+                  2.5916848601302716e-17,
+                  1.6587291581494568e-17,
+                  1.6034937719272757e-17,
+                  1.5248534978293762e-17,
+                  1.517618337254647e-17,
+                  8.301767399704452e-18,
+                  6.926667269921736e-18,
+                  6.868053587790836e-18,
+                  6.326954925289425e-18,
+                  4.576357329615969e-18,
+                  4.4415008328500324e-18,
+                  4.0224792230656106e-18,
+                  3.762864700326981e-18,
+                  3.608641083994817e-18,
+                  1.0717824819908521e-18,
+                  1.0451828656874655e-18,
+                  8.306334524018895e-19,
+                  7.783760027630283e-19,
+                  5.231538401276309e-19,
+                  4.365377899994363e-19,
+                  4.0142046719930843e-19,
+                  3.803646330963405e-19,
+                  4.5497439266400706e-20,
+                  3.8137151351194737e-20,
+                  2.98741110962513e-20,
+                  2.5667392499441537e-20,
+                  1.3649811724289465e-20,
+                  3.6991159832756766e-21,
+                  3.1328692633357622e-21,
+                  3.84730566904208e-28,
+                  5.241914481769265e-35
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.2138096747325366e-16,
+                "relative_to_left_window_max_singular": 1.4624083694353473e-06,
+                "difference_singular_values": [
+                  1.2138096747325366e-16,
+                  1.1945147158349633e-16,
+                  9.695041052878165e-17,
+                  8.611949166396722e-17,
+                  5.466156499322044e-17,
+                  2.6416480571683765e-17,
+                  2.1679817727824934e-17,
+                  2.0922713796126636e-17,
+                  2.0081010404821092e-17,
+                  1.6671890509627826e-17,
+                  1.1208911730486871e-17,
+                  9.355840447335071e-18,
+                  9.26551890622335e-18,
+                  8.557269742267561e-18,
+                  6.110163951591664e-18,
+                  5.9927500200683086e-18,
+                  3.6411639788111115e-18,
+                  3.364353108523465e-18,
+                  3.1649826489770524e-18,
+                  1.3553286956563274e-18,
+                  1.0592748308111267e-18,
+                  9.928143754789666e-19,
+                  8.967753827315857e-19,
+                  6.825956392295198e-19,
+                  5.083688606042526e-19,
+                  4.8589754521878005e-19,
+                  3.482485769739308e-19,
+                  5.633838384763799e-20,
+                  4.5108638597850345e-20,
+                  3.6837784401690196e-20,
+                  3.217781564893533e-20,
+                  1.6475855369969932e-20,
+                  4.6031720345146095e-21,
+                  3.9792011466256546e-21,
+                  4.641054772212304e-28,
+                  2.5956505974520043e-35
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.334670587482046e-17,
+                "relative_to_left_window_max_singular": 7.63206748727636e-07,
+                "difference_singular_values": [
+                  6.334670587482046e-17,
+                  3.203184419957557e-17,
+                  3.1355271257286826e-17,
+                  2.5211222347434855e-17,
+                  2.276975766343258e-17,
+                  2.1445803228579412e-17,
+                  6.824534226276309e-18,
+                  6.5867352791844345e-18,
+                  6.480380014321364e-18,
+                  6.217631558892229e-18,
+                  3.924037144117185e-18,
+                  3.773513671053055e-18,
+                  3.545121702327619e-18,
+                  2.898607304356617e-18,
+                  2.4206300948971512e-18,
+                  2.3834774997497087e-18,
+                  2.1783495207285355e-18,
+                  1.5761666588552462e-18,
+                  1.5566002400347533e-18,
+                  9.876514949989652e-19,
+                  4.798980623450092e-19,
+                  4.4120159314127455e-19,
+                  4.302176946596377e-19,
+                  3.7652254628738373e-19,
+                  2.4420177293516206e-19,
+                  2.2452981058629444e-19,
+                  2.1121836046401504e-19,
+                  7.381384980647578e-21,
+                  6.079905262527908e-21,
+                  4.888174619442276e-21,
+                  4.332296343861327e-21,
+                  2.232364566610962e-21,
+                  6.008589654560464e-22,
+                  5.337596665930302e-22,
+                  4.610875087390871e-28,
+                  4.814110042190622e-36
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.47546056096782485,
+              "command_max": 0.5274812448040339,
+              "common_roi_complex_relative_error": 2.2794955376145866e-07,
+              "camera_field_complex_relative_error": 6.296695045600591e-07,
+              "pixel_power_relative_error": 4.610775443724695e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999997
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.4613326269867461,
+              "command_max": 0.5410125714825448,
+              "common_roi_complex_relative_error": 2.2123680616070867e-07,
+              "camera_field_complex_relative_error": 6.406314353754259e-07,
+              "pixel_power_relative_error": 5.154675567751923e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999985
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__direct__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.243894048507348e-07,
+              "camera_field_complex_relative_error": 6.402588328052079e-07,
+              "pixel_power_relative_error": 4.907898542077352e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 3.0808434198761565e-12,
+            "absolute_error": 3.436524163846123e-22,
+            "reference_norm": 1.1154491467093982e-10,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 10,
+            "0.01": 17,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 3.7044866029863634e-16,
+                "relative_to_left_window_max_singular": 3.321081076864673e-06,
+                "difference_singular_values": [
+                  3.7044866029863634e-16,
+                  3.7029064025165997e-16,
+                  3.0399444933255867e-16,
+                  3.0389134212266125e-16,
+                  1.0191169122197079e-16,
+                  8.929270381099427e-17,
+                  8.820642619837176e-17,
+                  8.483291653506812e-17,
+                  8.07262972072397e-17,
+                  6.672219237618809e-17,
+                  5.918614825885464e-17,
+                  5.875677220918723e-17,
+                  2.3516256550360352e-17,
+                  2.32503960883317e-17,
+                  2.169829861044787e-17,
+                  2.1190911894949058e-17,
+                  2.0646685324105897e-17,
+                  1.8168936310176194e-17,
+                  1.7416167570979083e-17,
+                  1.411013857142054e-17,
+                  8.059816651708481e-18,
+                  7.814280103559593e-18,
+                  6.049055915360506e-18,
+                  5.3641851150714614e-18,
+                  3.9565534529484735e-18,
+                  3.871357333799891e-18,
+                  2.63090253547401e-18,
+                  2.4725330269478014e-19,
+                  1.9563807489178672e-19,
+                  1.4823178603912636e-19,
+                  9.612476661099115e-20,
+                  4.5874118052058364e-20,
+                  1.7216157297556172e-20,
+                  9.727376408130429e-21,
+                  1.8922316123528762e-27,
+                  1.2141930514671094e-34
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.000731880996123e-16,
+                "relative_to_left_window_max_singular": 4.483168060875625e-06,
+                "difference_singular_values": [
+                  5.000731880996123e-16,
+                  5.00023176709052e-16,
+                  4.1048387754019997e-16,
+                  4.103343302619255e-16,
+                  1.3753683212896498e-16,
+                  1.1929455840940418e-16,
+                  1.19186160261006e-16,
+                  1.0881473714405559e-16,
+                  8.186087505346912e-17,
+                  8.035391443936925e-17,
+                  7.272499545043628e-17,
+                  5.5477394495595045e-17,
+                  2.5358271790671155e-17,
+                  2.4980042909856495e-17,
+                  2.379001211839447e-17,
+                  2.3164036878200175e-17,
+                  1.8044990996216634e-17,
+                  1.6996612763744916e-17,
+                  1.5595170180859275e-17,
+                  1.2229834054673938e-17,
+                  7.879286481754934e-18,
+                  7.661498220196438e-18,
+                  5.49939282375492e-18,
+                  4.757831527667215e-18,
+                  3.8618448441616916e-18,
+                  3.784338593851304e-18,
+                  2.3213905628015994e-18,
+                  3.045047085117325e-19,
+                  2.44258166622475e-19,
+                  1.7591833324315485e-19,
+                  1.146895391164705e-19,
+                  5.337806181951613e-20,
+                  2.0748333314989668e-20,
+                  1.1376294028347264e-20,
+                  1.985530116101569e-27,
+                  9.692724636202365e-35
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.3288041040590195e-16,
+                "relative_to_left_window_max_singular": 1.1912763904042806e-06,
+                "difference_singular_values": [
+                  1.3288041040590195e-16,
+                  1.3116787310542314e-16,
+                  1.0812295711013357e-16,
+                  1.0767973732404283e-16,
+                  9.207714565072714e-17,
+                  7.296984837862494e-17,
+                  3.603035993464446e-17,
+                  3.2073068771312845e-17,
+                  3.16983498706301e-17,
+                  2.846614152592918e-17,
+                  2.3820187196286414e-17,
+                  2.1511412149868425e-17,
+                  2.084672419107209e-17,
+                  2.0105458800217412e-17,
+                  1.9151969560491783e-17,
+                  1.8392524910146453e-17,
+                  1.766590322101678e-17,
+                  1.7482743573829458e-17,
+                  1.6675262404171535e-17,
+                  1.611024103912834e-17,
+                  6.540074181655313e-18,
+                  6.343002854064535e-18,
+                  6.037993162843941e-18,
+                  5.369779191577484e-18,
+                  2.989939032166032e-18,
+                  2.92567142166685e-18,
+                  2.68020716212961e-18,
+                  3.6961940725262954e-20,
+                  2.7599535969272527e-20,
+                  2.3200818268185582e-20,
+                  1.55723758863078e-20,
+                  7.279848790556384e-21,
+                  2.775888737207176e-21,
+                  1.609360461719139e-21,
+                  1.678400435920741e-27,
+                  1.293717799508362e-34
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.468920631006544,
+              "command_max": 0.5268985742443419,
+              "common_roi_complex_relative_error": 2.221512621696251e-07,
+              "camera_field_complex_relative_error": 6.371167344013167e-07,
+              "pixel_power_relative_error": 4.951246703316478e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000007
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.459484209481707,
+              "command_max": 0.5405157020670833,
+              "common_roi_complex_relative_error": 2.236934253698181e-07,
+              "camera_field_complex_relative_error": 6.389683172494751e-07,
+              "pixel_power_relative_error": 4.805956538324031e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000004
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__zero_phase_complex128.json"
+      }
+    },
+    "candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.2347840241973586e-07,
+              "camera_field_complex_relative_error": 6.372109281033994e-07,
+              "pixel_power_relative_error": 4.987307617741786e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "gaussian_s12",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.50345376162094e-07,
+            "6144": 7.392929571505467e-07,
+            "8192": 6.728583438245906e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.0821164663834486e-12,
+            "absolute_error": 2.4107688919210365e-22,
+            "reference_norm": 1.1578453611235512e-10,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 10,
+            "0.01": 17,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 4.4257006605100185e-16,
+                "relative_to_left_window_max_singular": 3.822368445316365e-06,
+                "difference_singular_values": [
+                  4.4257006605100185e-16,
+                  3.956838365496901e-16,
+                  3.5240618305424474e-16,
+                  3.0598848749225826e-16,
+                  1.0854397031379458e-16,
+                  1.0330764561855051e-16,
+                  9.730172087511716e-17,
+                  8.583457025467252e-17,
+                  8.471356281239257e-17,
+                  6.989127499660444e-17,
+                  6.517993360546434e-17,
+                  5.891469039047476e-17,
+                  2.876854742137507e-17,
+                  2.4985530430073962e-17,
+                  2.4503319881273603e-17,
+                  2.3425752592098358e-17,
+                  2.0396323865297132e-17,
+                  1.9722980271236226e-17,
+                  1.9062090176949517e-17,
+                  1.3220770952417949e-17,
+                  8.19071187452106e-18,
+                  7.774229841389502e-18,
+                  7.040757631888228e-18,
+                  6.343957362182002e-18,
+                  3.707654651960389e-18,
+                  3.3003130384771466e-18,
+                  3.2456880613847758e-18,
+                  2.531128793109889e-19,
+                  1.5226215222430715e-19,
+                  1.3722422326854907e-19,
+                  1.0812678438707167e-19,
+                  6.02114911974683e-20,
+                  2.6416824223097338e-20,
+                  1.874173345196377e-20,
+                  1.6993701452969928e-27,
+                  8.318725841578046e-35
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.974226997362349e-16,
+                "relative_to_left_window_max_singular": 5.1597924287187085e-06,
+                "difference_singular_values": [
+                  5.974226997362349e-16,
+                  5.341742648185281e-16,
+                  4.758736753004594e-16,
+                  4.1327705718125944e-16,
+                  1.432258657594067e-16,
+                  1.387750029536998e-16,
+                  1.2703973842883975e-16,
+                  1.1454100083197713e-16,
+                  8.919346869793343e-17,
+                  8.64308393171699e-17,
+                  7.982896284606965e-17,
+                  7.006941045645693e-17,
+                  3.135635841248157e-17,
+                  2.891266988041625e-17,
+                  2.7015581450220398e-17,
+                  2.6367859926521003e-17,
+                  2.0871186147351573e-17,
+                  2.005709437865652e-17,
+                  1.881164065087215e-17,
+                  1.3316105469364347e-17,
+                  8.983075047746595e-18,
+                  8.441631897842329e-18,
+                  7.04439995564264e-18,
+                  6.594618440524629e-18,
+                  4.000281525131141e-18,
+                  3.3596698836121603e-18,
+                  3.2811968336586027e-18,
+                  3.195570608256898e-19,
+                  1.8200641081864742e-19,
+                  1.6634440580377922e-19,
+                  1.2931392837570504e-19,
+                  7.052624420740297e-20,
+                  3.250755180251676e-20,
+                  2.2718078964447546e-20,
+                  1.6973385435015647e-27,
+                  2.369062251688939e-34
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.5712028943625949e-16,
+                "relative_to_left_window_max_singular": 1.3570095724968798e-06,
+                "difference_singular_values": [
+                  1.5712028943625949e-16,
+                  1.396343601134424e-16,
+                  1.2463912656307128e-16,
+                  1.0947074027872725e-16,
+                  9.408855264054296e-17,
+                  6.961639090472328e-17,
+                  3.7015602034198317e-17,
+                  3.5833712851766893e-17,
+                  3.301752513114044e-17,
+                  3.043093923266269e-17,
+                  2.6258750391507517e-17,
+                  2.306303316352222e-17,
+                  2.139733611360416e-17,
+                  2.0480726306648786e-17,
+                  1.9037541219233906e-17,
+                  1.86366277928199e-17,
+                  1.8225884953972583e-17,
+                  1.790015596800294e-17,
+                  1.738306134142145e-17,
+                  1.3258239023727636e-17,
+                  6.867874709888532e-18,
+                  6.193114350540774e-18,
+                  6.001361769452819e-18,
+                  5.394834403408719e-18,
+                  2.9540456108660324e-18,
+                  2.860520071458219e-18,
+                  2.735803120197677e-18,
+                  3.929323899309501e-20,
+                  2.4270765734459638e-20,
+                  2.180145301618692e-20,
+                  1.6402916914210804e-20,
+                  9.295807804235767e-21,
+                  4.164506017733845e-21,
+                  2.9866506010292027e-21,
+                  1.698167391529963e-27,
+                  6.426089245385926e-35
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.47416590173728135,
+              "command_max": 0.5280550715022324,
+              "common_roi_complex_relative_error": 2.2194111972492827e-07,
+              "camera_field_complex_relative_error": 6.449406507955282e-07,
+              "pixel_power_relative_error": 5.160095819462305e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000004
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.4612620415996603,
+              "command_max": 0.5376934056394609,
+              "common_roi_complex_relative_error": 2.2280177728590162e-07,
+              "camera_field_complex_relative_error": 6.396436588480232e-07,
+              "pixel_power_relative_error": 5.00713110594481e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999992
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__gaussian_s12__explicit_4f__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_3x3_B__lp01__direct__zero_phase": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__direct__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__direct__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__lp01__direct__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.2037205632175497e-07,
+              "camera_field_complex_relative_error": 6.441659909681646e-07,
+              "pixel_power_relative_error": 5.115773379646999e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 1.9341119198590148e-12,
+            "absolute_error": 1.8375704594202446e-22,
+            "reference_norm": 9.5008486352444e-11,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 2,
+            "0.01": 10,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 1.0043642450787317e-16,
+                "relative_to_left_window_max_singular": 1.057132352193616e-06,
+                "difference_singular_values": [
+                  1.0043642450787317e-16,
+                  9.978308788696198e-17,
+                  6.684973138346696e-17,
+                  4.096533880169868e-17,
+                  3.996292235407291e-17,
+                  2.1376902332125138e-17,
+                  1.4393826662425106e-17,
+                  1.437993791867506e-17,
+                  1.4215206069160907e-17,
+                  1.4052375417873524e-17,
+                  1.0780468547527857e-17,
+                  7.257920972374966e-18,
+                  7.169127393012707e-18,
+                  5.385747746545224e-18,
+                  4.294635480707164e-18,
+                  4.1098238367818585e-18,
+                  3.663204863070449e-18,
+                  3.52589643088223e-18,
+                  3.0859141621045173e-18,
+                  1.2663691179375557e-18,
+                  9.853839266273696e-19,
+                  7.920532026641738e-19,
+                  7.770473519839898e-19,
+                  4.893578354294933e-19,
+                  4.0528582991483365e-19,
+                  3.7602267901781463e-19,
+                  3.687298999762854e-19,
+                  4.900866461111176e-20,
+                  4.419992592691659e-20,
+                  2.1324197019587782e-20,
+                  1.522462362694648e-20,
+                  1.0419838635248957e-20,
+                  3.869251651125113e-21,
+                  2.286617354839306e-21,
+                  3.20234869643226e-28,
+                  1.100385170363692e-34
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.3479455504892023e-16,
+                "relative_to_left_window_max_singular": 1.4187650121952193e-06,
+                "difference_singular_values": [
+                  1.3479455504892023e-16,
+                  1.3475134113933213e-16,
+                  5.930200581092354e-17,
+                  5.529837018847392e-17,
+                  5.328613223790885e-17,
+                  1.925648667836896e-17,
+                  1.9106392687627747e-17,
+                  1.8743681712863178e-17,
+                  1.8672850136414405e-17,
+                  1.8297372317492285e-17,
+                  1.4559684535406247e-17,
+                  9.754644683712882e-18,
+                  9.551208198906354e-18,
+                  7.280110352274676e-18,
+                  4.962804702610429e-18,
+                  4.9386735922302825e-18,
+                  3.2153152473751147e-18,
+                  3.1731815723285918e-18,
+                  2.6910165630607375e-18,
+                  1.287017998863395e-18,
+                  1.0243056717651189e-18,
+                  9.673003847992339e-19,
+                  9.442885346955872e-19,
+                  6.282018942884553e-19,
+                  4.791689647262719e-19,
+                  4.708585664415914e-19,
+                  3.3636082370037223e-19,
+                  6.350076713152143e-20,
+                  6.054941800428444e-20,
+                  2.6042411243655345e-20,
+                  1.8131915570297377e-20,
+                  1.2450774593347464e-20,
+                  4.881181765271656e-21,
+                  2.7450801662275696e-21,
+                  3.590130126099148e-28,
+                  3.9593740811377376e-36
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.568004975079663e-17,
+                "relative_to_left_window_max_singular": 6.913081884409524e-07,
+                "difference_singular_values": [
+                  6.568004975079663e-17,
+                  3.533763615454217e-17,
+                  3.478409503188093e-17,
+                  2.149794285960732e-17,
+                  1.4369110559757434e-17,
+                  1.4127724215727742e-17,
+                  6.30798373364317e-18,
+                  6.0436919859378646e-18,
+                  5.852994302229431e-18,
+                  5.782559386656626e-18,
+                  3.9484867764892676e-18,
+                  3.769558490203538e-18,
+                  3.653851944835279e-18,
+                  3.011945417111287e-18,
+                  2.535054807922748e-18,
+                  2.4850884834696237e-18,
+                  1.88885194825011e-18,
+                  1.2998311909204218e-18,
+                  1.2785950349373349e-18,
+                  1.0531266303825962e-18,
+                  4.937187714988641e-19,
+                  4.857535926117907e-19,
+                  4.494652025562415e-19,
+                  3.8210052820533597e-19,
+                  2.422967314821884e-19,
+                  2.3712085477004264e-19,
+                  2.17156367916968e-19,
+                  7.819423505948487e-21,
+                  7.65808438404629e-21,
+                  3.496152561158872e-21,
+                  2.542795456411539e-21,
+                  1.701729511708526e-21,
+                  6.53510633782093e-22,
+                  3.743458833661779e-22,
+                  5.107354346019728e-28,
+                  7.248562542761343e-36
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4692670930788315,
+              "command_max": 0.527883879686812,
+              "common_roi_complex_relative_error": 2.18942285031649e-07,
+              "camera_field_complex_relative_error": 6.459681153225174e-07,
+              "pixel_power_relative_error": 5.534948437261267e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000035
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.45807583939471147,
+              "command_max": 0.5419241750862073,
+              "common_roi_complex_relative_error": 2.1865974884737794e-07,
+              "camera_field_complex_relative_error": 6.430413098992194e-07,
+              "pixel_power_relative_error": 5.033192385975381e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000004
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__zero_phase_complex128.json"
+      }
+    },
+    "candidate_3x3_B__lp01__direct__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__direct__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__direct__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__lp01__direct__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.1985817551343088e-07,
+              "camera_field_complex_relative_error": 6.41646639473719e-07,
+              "pixel_power_relative_error": 5.23618481429105e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "direct",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 9.98126383219922e-13,
+            "absolute_error": 8.71745171480204e-23,
+            "reference_norm": 8.733815538148422e-11,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 2,
+            "0.01": 10,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 9.026368616307219e-17,
+                "relative_to_left_window_max_singular": 1.0334977427422416e-06,
+                "difference_singular_values": [
+                  9.026368616307219e-17,
+                  8.252353514448342e-17,
+                  6.967469426188966e-17,
+                  6.67464420331872e-17,
+                  5.928911669447802e-17,
+                  2.4968307345270873e-17,
+                  1.5628738719928425e-17,
+                  1.537320047617243e-17,
+                  1.4598306972479612e-17,
+                  1.3979793785039853e-17,
+                  1.0007239598838643e-17,
+                  6.885473694826734e-18,
+                  6.701132496735929e-18,
+                  6.5257062681620505e-18,
+                  5.358160980072347e-18,
+                  4.921356872762536e-18,
+                  3.966562072185027e-18,
+                  3.7590871495870586e-18,
+                  3.4112920939603817e-18,
+                  1.1602866696210967e-18,
+                  9.90851891290951e-19,
+                  7.895006506478841e-19,
+                  7.700185399052871e-19,
+                  4.922824997226002e-19,
+                  4.2475830112146783e-19,
+                  3.753288163763585e-19,
+                  3.655853570919164e-19,
+                  4.464895070212148e-20,
+                  3.422483007682735e-20,
+                  3.106593785448158e-20,
+                  2.4913185612604836e-20,
+                  1.2600454584674337e-20,
+                  4.186350327387652e-21,
+                  2.9146830040307833e-21,
+                  3.7958172697073444e-28,
+                  1.5699468324769922e-36
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.2153531121560715e-16,
+                "relative_to_left_window_max_singular": 1.3915504135060767e-06,
+                "difference_singular_values": [
+                  1.2153531121560715e-16,
+                  1.1142173078256282e-16,
+                  9.026258884965184e-17,
+                  8.592493731146718e-17,
+                  5.2373951679628543e-17,
+                  2.6534146496547865e-17,
+                  2.033151547477289e-17,
+                  1.9967477276455058e-17,
+                  1.9204977960092547e-17,
+                  1.623135250217651e-17,
+                  1.352645636098887e-17,
+                  9.297027269675299e-18,
+                  9.020881323902859e-18,
+                  8.77095887926154e-18,
+                  7.223452990906974e-18,
+                  6.632095896744909e-18,
+                  3.2482462612283067e-18,
+                  3.1471124033333934e-18,
+                  3.0824461486717755e-18,
+                  1.3056476500084074e-18,
+                  9.898922989154951e-19,
+                  9.645402789662165e-19,
+                  8.881916731176876e-19,
+                  6.355768437426383e-19,
+                  4.766112630402252e-19,
+                  4.630405150778011e-19,
+                  3.7419739573135e-19,
+                  5.626844156075125e-20,
+                  4.195157088962952e-20,
+                  3.841078794430984e-20,
+                  3.107807671672029e-20,
+                  1.5134081817370462e-20,
+                  5.351174951677065e-21,
+                  3.729250885651054e-21,
+                  3.744294586763458e-28,
+                  1.4855063445897307e-35
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.552799091616948e-17,
+                "relative_to_left_window_max_singular": 7.502801129567654e-07,
+                "difference_singular_values": [
+                  6.552799091616948e-17,
+                  3.1703705271526146e-17,
+                  2.8970021229892375e-17,
+                  2.3776493103529404e-17,
+                  2.2749422102264928e-17,
+                  2.0938402953937108e-17,
+                  6.4600465614370026e-18,
+                  6.3204178811180094e-18,
+                  6.223514396138391e-18,
+                  5.978776058562886e-18,
+                  3.8744366720068416e-18,
+                  3.552338575510015e-18,
+                  3.4974380234512265e-18,
+                  3.2213672499998716e-18,
+                  2.411336617191165e-18,
+                  2.333182329399991e-18,
+                  2.258978440026083e-18,
+                  1.876610751859524e-18,
+                  1.7249902100537135e-18,
+                  1.0463047405434467e-18,
+                  5.011794700361816e-19,
+                  4.811808678876787e-19,
+                  4.299747938192691e-19,
+                  3.7941305021596767e-19,
+                  2.4687845815901236e-19,
+                  2.2043414546177234e-19,
+                  2.11575629833048e-19,
+                  7.454750514723029e-21,
+                  5.4476311751407995e-21,
+                  5.208956762834742e-21,
+                  4.121668986721357e-21,
+                  2.0355764470474587e-21,
+                  6.684055253619463e-22,
+                  5.018920244075392e-22,
+                  3.132324893781168e-28,
+                  1.115810954486005e-35
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4689297272078842,
+              "command_max": 0.5279329212466699,
+              "common_roi_complex_relative_error": 2.2070383200879404e-07,
+              "camera_field_complex_relative_error": 6.456194597017205e-07,
+              "pixel_power_relative_error": 5.519102259504468e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.01
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.4526488443246799,
+              "command_max": 0.5356007703316724,
+              "common_roi_complex_relative_error": 2.2112200633819986e-07,
+              "camera_field_complex_relative_error": 6.426958415752615e-07,
+              "pixel_power_relative_error": 5.145420206448919e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999997
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__direct__fixed_low_frequency_complex128.json"
+      }
+    },
+    "candidate_3x3_B__lp01__explicit_4f__zero_phase": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__explicit_4f__zero_phase_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__explicit_4f__zero_phase_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__lp01__explicit_4f__zero_phase_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__zero_phase_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.225759267562538e-07,
+              "camera_field_complex_relative_error": 6.358599689763943e-07,
+              "pixel_power_relative_error": 5.338398785142041e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "zero_phase",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__zero_phase_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.768529808058366e-12,
+            "absolute_error": 3.152398820048436e-22,
+            "reference_norm": 1.1386544623333082e-10,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 9,
+            "0.01": 17,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 3.884107444540505e-16,
+                "relative_to_left_window_max_singular": 3.4111464116166257e-06,
+                "difference_singular_values": [
+                  3.884107444540505e-16,
+                  3.883317336574596e-16,
+                  2.9351353374093867e-16,
+                  2.9328726947940054e-16,
+                  1.1337397656992886e-16,
+                  9.043042750563898e-17,
+                  8.537832469856539e-17,
+                  8.509326962331032e-17,
+                  8.263583107037915e-17,
+                  6.895390998896699e-17,
+                  6.180915855477518e-17,
+                  6.125847658520973e-17,
+                  2.552128039692363e-17,
+                  2.5256028960711024e-17,
+                  2.417273850361305e-17,
+                  2.3400593684288752e-17,
+                  2.0528258557776267e-17,
+                  1.9296875311603483e-17,
+                  1.7002527394136983e-17,
+                  1.2873889742348008e-17,
+                  1.0001065109765054e-17,
+                  9.754654556773148e-18,
+                  7.791729274741497e-18,
+                  6.364412023861302e-18,
+                  4.694573756580844e-18,
+                  4.659600420436511e-18,
+                  3.85701951453623e-18,
+                  2.46146055810609e-19,
+                  2.0532389769212674e-19,
+                  1.3939234640365455e-19,
+                  8.603181850025144e-20,
+                  6.424083349050884e-20,
+                  1.8660414350241638e-20,
+                  1.3379313036651184e-20,
+                  1.5777616876455945e-27,
+                  1.7977326138075289e-35
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 5.243248998001887e-16,
+                "relative_to_left_window_max_singular": 4.604787653309236e-06,
+                "difference_singular_values": [
+                  5.243248998001887e-16,
+                  5.24224336930814e-16,
+                  3.9626068529747415e-16,
+                  3.9619782732663914e-16,
+                  1.531577603712693e-16,
+                  1.1503412034092073e-16,
+                  1.140977317641249e-16,
+                  1.1403342540020967e-16,
+                  8.445249081627821e-17,
+                  8.405548267533723e-17,
+                  7.256288091367008e-17,
+                  6.24113997899592e-17,
+                  2.93871863320486e-17,
+                  2.9058533276260026e-17,
+                  2.7829799952639324e-17,
+                  2.704991174201073e-17,
+                  1.883734454783701e-17,
+                  1.7108254882695704e-17,
+                  1.532600429226342e-17,
+                  1.1980072485090406e-17,
+                  1.1381905141045349e-17,
+                  1.121407437790361e-17,
+                  9.094838859650393e-18,
+                  5.899689668235186e-18,
+                  5.545297963194956e-18,
+                  5.5286133071924535e-18,
+                  4.510609291719924e-18,
+                  3.123862292418101e-19,
+                  2.526879091621334e-19,
+                  1.661768437879723e-19,
+                  1.0301408044315831e-19,
+                  7.679642295651494e-20,
+                  2.2589293809040858e-20,
+                  1.6074108515531614e-20,
+                  1.7621044678509385e-27,
+                  1.3169423261682275e-34
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.3872067203533057e-16,
+                "relative_to_left_window_max_singular": 1.218289367074742e-06,
+                "difference_singular_values": [
+                  1.3872067203533057e-16,
+                  1.3717312636689193e-16,
+                  1.0668650263773083e-16,
+                  1.033723952478126e-16,
+                  9.318917518556896e-17,
+                  7.861076471505194e-17,
+                  4.015919190935438e-17,
+                  3.036956851615851e-17,
+                  3.007621428704875e-17,
+                  2.9981300620306274e-17,
+                  2.4074468965015708e-17,
+                  2.2866271336052758e-17,
+                  2.1911992981116116e-17,
+                  2.0232735576898755e-17,
+                  1.8630108004941927e-17,
+                  1.8060246382682645e-17,
+                  1.7918508948380985e-17,
+                  1.7309551063061263e-17,
+                  1.710610077421676e-17,
+                  1.4988147094023328e-17,
+                  6.941438802626784e-18,
+                  6.747364809655735e-18,
+                  6.637849196644684e-18,
+                  5.828960817155737e-18,
+                  3.0958432565254826e-18,
+                  3.004961144042514e-18,
+                  2.9681456128860427e-18,
+                  3.852431539238241e-20,
+                  2.93314930140389e-20,
+                  2.046591770584046e-20,
+                  1.4060343498571747e-20,
+                  9.517841523633257e-21,
+                  2.9709662944972043e-21,
+                  2.1303743663889977e-21,
+                  1.8877308666287397e-27,
+                  9.882718800655893e-35
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.4694382781291488,
+              "command_max": 0.5287534983860233,
+              "common_roi_complex_relative_error": 2.232957929178383e-07,
+              "camera_field_complex_relative_error": 6.384792169177054e-07,
+              "pixel_power_relative_error": 5.368072656588577e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.009999999999999997
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.4587595930081508,
+              "command_max": 0.5412404358376933,
+              "common_roi_complex_relative_error": 2.2207200608808079e-07,
+              "camera_field_complex_relative_error": 6.406470336890868e-07,
+              "pixel_power_relative_error": 5.410523026088556e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000016
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__zero_phase_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__zero_phase_complex128.json"
+      }
+    },
+    "candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency": {
+      "pilot_pattern_indices": [
+        15,
+        32
+      ],
+      "pilot": {
+        "complex64": {
+          "status": "PASS",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_complex64.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": true
+        },
+        "complex128": {
+          "status": "DIAGNOSTIC_FINITE",
+          "result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/pilot_results/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_complex128.json",
+          "all_pixel_integrals_within_1e-4": true,
+          "all_complex64_windows_within_1e-4": null
+        }
+      },
+      "full_measurement_skipped_by_pilot": false,
+      "full_measurements": {
+        "complex64": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex64",
+          "all_complex64_windows_pass": true,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": true,
+          "camera_pixel_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/camera_measurements/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_4096_complex64.npz",
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_complex64.json",
+          "jacobian_central_difference": null,
+          "raw_jacobian_dimension_by_threshold": null,
+          "primary_exposure_snr_direction_counts": null,
+          "cross_window_jacobian_uncertainty": null,
+          "direct_forward_checks": [
+            {
+              "label": "uniform_t0p5",
+              "command_min": 0.5,
+              "command_max": 0.5,
+              "common_roi_complex_relative_error": 2.2159541599845744e-07,
+              "camera_field_complex_relative_error": 6.340724449818748e-07,
+              "pixel_power_relative_error": 4.884305605628667e-07,
+              "passed": true
+            }
+          ]
+        },
+        "complex128": {
+          "candidate": "candidate_3x3_B",
+          "mode": "lp01",
+          "route": "explicit_4f",
+          "decoder_state": "fixed_low_frequency",
+          "precision": "complex128",
+          "all_complex64_windows_pass": null,
+          "all_patterns_pixel_integral_pass": true,
+          "matrix_prediction_relative_error_by_grid": {
+            "4096": 6.272989256069599e-07,
+            "6144": 7.217365913166263e-07,
+            "8192": 6.919325836275848e-07
+          },
+          "valid_for_sensor_analysis": false,
+          "camera_pixel_archive": null,
+          "scalar_result_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_complex128.json",
+          "jacobian_central_difference": {
+            "relative_error": 2.5918100214577857e-12,
+            "absolute_error": 2.901132517453106e-22,
+            "reference_norm": 1.1193461300922586e-10,
+            "absolute_tolerance": 2.493e-14,
+            "passed": true,
+            "epsilon": 0.0001
+          },
+          "raw_jacobian_dimension_by_threshold": {
+            "0.1": 10,
+            "0.01": 17,
+            "0.001": 17,
+            "0.0001": 17
+          },
+          "primary_exposure_snr_direction_counts": {
+            "1": 17,
+            "3": 17,
+            "5": 17
+          },
+          "cross_window_jacobian_uncertainty": {
+            "pairs": {
+              "4096_vs_6144": {
+                "operator_norm_difference_w_per_command": 4.712348429270019e-16,
+                "relative_to_left_window_max_singular": 4.209922266710274e-06,
+                "difference_singular_values": [
+                  4.712348429270019e-16,
+                  4.000100168759222e-16,
+                  3.3057321546343303e-16,
+                  2.9253061929358406e-16,
+                  1.12920261621481e-16,
+                  1.0209001743070417e-16,
+                  9.585453911661564e-17,
+                  8.222360404827293e-17,
+                  7.879670743989257e-17,
+                  7.576057312642418e-17,
+                  7.287893874517055e-17,
+                  6.595886959707852e-17,
+                  2.6934863336499914e-17,
+                  2.640248628658061e-17,
+                  2.554118412926343e-17,
+                  2.4319800963933338e-17,
+                  2.1093629685415886e-17,
+                  1.8794834549233275e-17,
+                  1.809315899618069e-17,
+                  1.316496874645416e-17,
+                  9.802311798724614e-18,
+                  8.944823973401855e-18,
+                  8.399353304911264e-18,
+                  7.099576968782649e-18,
+                  4.6789704782854296e-18,
+                  4.152856710477874e-18,
+                  3.755077721022107e-18,
+                  2.494814753337681e-19,
+                  1.4803573054880042e-19,
+                  1.2971802957907816e-19,
+                  1.0232427391030494e-19,
+                  5.86795053495431e-20,
+                  2.762875590168516e-20,
+                  1.4585960205986104e-20,
+                  1.8350127100899436e-27,
+                  9.45240396556147e-34
+                ]
+              },
+              "4096_vs_8192": {
+                "operator_norm_difference_w_per_command": 6.36414477428766e-16,
+                "relative_to_left_window_max_singular": 5.685605637185838e-06,
+                "difference_singular_values": [
+                  6.36414477428766e-16,
+                  5.400725965911926e-16,
+                  4.463202327563916e-16,
+                  3.951773992773185e-16,
+                  1.5233452051252535e-16,
+                  1.3697072911329384e-16,
+                  1.2045659570792914e-16,
+                  1.0695719524267997e-16,
+                  9.916556670179824e-17,
+                  9.067756639528358e-17,
+                  8.235690771798866e-17,
+                  7.187546060304447e-17,
+                  3.238659972724144e-17,
+                  3.03753672550978e-17,
+                  2.979783745423423e-17,
+                  2.6941266452888957e-17,
+                  2.134253332072419e-17,
+                  1.9024669401341162e-17,
+                  1.7957415767912695e-17,
+                  1.3209618750196863e-17,
+                  1.1582229650118107e-17,
+                  1.0357508851826653e-17,
+                  9.244664066357784e-18,
+                  7.509599379745532e-18,
+                  5.450977689158327e-18,
+                  4.8677845842268016e-18,
+                  4.056299056144103e-18,
+                  3.217486676417268e-19,
+                  1.761983330297412e-19,
+                  1.5609124047527604e-19,
+                  1.196818159711506e-19,
+                  6.909004573404287e-20,
+                  3.409080611437948e-20,
+                  1.756101433035322e-20,
+                  1.8515976507734602e-27,
+                  1.0584599051548469e-34
+                ]
+              },
+              "6144_vs_8192": {
+                "operator_norm_difference_w_per_command": 1.6652693805051617e-16,
+                "relative_to_left_window_max_singular": 1.4877203812559832e-06,
+                "difference_singular_values": [
+                  1.6652693805051617e-16,
+                  1.4063952353470028e-16,
+                  1.1707651379189777e-16,
+                  1.0575273482215266e-16,
+                  9.750989209312777e-17,
+                  7.809128799436561e-17,
+                  3.976884304996572e-17,
+                  3.5503207098334755e-17,
+                  3.092643105125954e-17,
+                  2.859158792105958e-17,
+                  2.6572293050890215e-17,
+                  2.545789103564657e-17,
+                  2.3021524636037367e-17,
+                  1.9823296899563448e-17,
+                  1.9133186783521284e-17,
+                  1.826374303605365e-17,
+                  1.8128788520061428e-17,
+                  1.759780158927707e-17,
+                  1.7047681783815197e-17,
+                  1.3394141158583565e-17,
+                  7.154359268274169e-18,
+                  6.561751755977019e-18,
+                  6.308897014953473e-18,
+                  5.940545914310057e-18,
+                  3.082085032681165e-18,
+                  3.0013961354280766e-18,
+                  2.816896512146805e-18,
+                  3.8001104144240406e-20,
+                  2.3097632358067537e-20,
+                  2.0893321028872427e-20,
+                  1.558297966090232e-20,
+                  8.959618782217698e-21,
+                  4.215839258812085e-21,
+                  2.2880291805933196e-21,
+                  1.5084361119216992e-27,
+                  7.30639331279378e-35
+                ]
+              }
+            },
+            "interpretation": "spectral uncertainty measured from cross-window factor differences; not a detector calibration"
+          },
+          "direct_forward_checks": [
+            {
+              "label": "strongest_retained",
+              "command_min": 0.47340590372138436,
+              "command_max": 0.532498408830138,
+              "common_roi_complex_relative_error": 2.21544408370296e-07,
+              "camera_field_complex_relative_error": 6.417508697634496e-07,
+              "pixel_power_relative_error": 4.870504374598624e-07,
+              "passed": true,
+              "direction_index": 0,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000005
+            },
+            {
+              "label": "weakest_retained_1e_3",
+              "command_min": 0.46293414417923207,
+              "command_max": 0.535376351106121,
+              "common_roi_complex_relative_error": 2.229503957918271e-07,
+              "camera_field_complex_relative_error": 6.35290043803183e-07,
+              "pixel_power_relative_error": 4.879690538981267e-07,
+              "passed": true,
+              "direction_index": 16,
+              "box_feasible_scale": 1.0,
+              "applied_rms": 0.010000000000000005
+            }
+          ]
+        },
+        "complex64_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_complex64.json",
+        "complex128_archive": "/root/autodl-tmp/codex-original/outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02/context_results/candidate_3x3_B__lp01__explicit_4f__fixed_low_frequency_complex128.json"
+      }
+    }
+  },
+  "final_gate": {
+    "status": "SUPPORTED_WITHIN_QUALIFIED_CONTEXTS",
+    "qualified_context_count": 16,
+    "full_measurement_context_count": 16,
+    "pilot_context_count": 16,
+    "total_context_count": 16,
+    "qualification_scope": "frozen v8 phases, the two specified output routes, fixed decoder screens, stated Gaussian/LP01 mode assumptions, and proxy-camera parameters only"
+  },
+  "forbidden_activity": {
+    "formal_training_updates": 0,
+    "phase_optimization_updates": 0,
+    "dataset_reads": 0,
+    "task_evaluator_calls": 0,
+    "fid_calls": 0,
+    "loss_changes": 0,
+    "material_forward_calls": 0
+  },
+  "execution": {
+    "python_version": "3.12.3",
+    "torch_version": "2.5.1+cu124",
+    "cuda_available": true,
+    "cuda_device": "NVIDIA GeForce RTX 4080",
+    "runtime_module_sources": {
+      "v9_cli": "/root/autodl-tmp/codex-original/scripts/research/lightgen/diagnose_ols_decoder_camera_interface_v9.py",
+      "fiber_mode_reference": "/root/autodl-tmp/codex-original/src/ldm_project/v2/optics/fiber_operator.py"
+    },
+    "elapsed_seconds": 2079.9781079292297
+  },
+  "claim_limits": [
+    "sensor maps are deterministic physical power integrals and proxy-camera expectations, not semantic generation outputs",
+    "noise parameters, relay optics, fiber geometry, and all device values remain unmeasured simulation assumptions",
+    "qualified local responses do not establish a final OLS dimension, hardware performance, or semantic image quality"
+  ]
+}

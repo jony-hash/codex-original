@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C38_JOINT_PHASE_SCREEN",
+  "status": "DIAGNOSTIC_ONLY",
+  "physics_source": "configs/research/lightgen/hw207_mnist4_c37_v1.json",
+  "source_candidates": {
+    "C35_P1": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p1_energy_constrained/target_0.400000_seed_11/phase_energy_constrained.npy",
+    "C37_E2_seed11": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E2_seed11/phase_rad.npy",
+    "C37_E3_seed11": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E3_seed11/phase_rad.npy",
+    "C37_E3_seed23": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E3_seed23/phase_rad.npy",
+    "C37_E7_seed23": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E7_seed23/phase_rad.npy"
+  },
+  "historical_reference_records": {
+    "C35_P1": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/p0/c37_p0_row_records.npz",
+    "C37_E2_seed11": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E2_seed11/validation_records.npz",
+    "C37_E3_seed11": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E3_seed11/validation_records.npz",
+    "C37_E3_seed23": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E3_seed23/validation_records.npz",
+    "C37_E7_seed23": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01/train/E7_seed23/validation_records.npz"
+  },
+  "data": {
+    "c0_indices_path": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/indices.json",
+    "mnist_train_images_path": "data/MNIST/raw/train-images-idx3-ubyte",
+    "mnist_train_labels_path": "data/MNIST/raw/train-labels-idx1-ubyte",
+    "train_source": "C37 stratified split derived from the 22,279 C0 train indices",
+    "train_rows_per_class_pilot": 500,
+    "pilot_validation_rows_per_class": 250,
+    "train_rows_per_class_formal": 4000,
+    "formal_validation_role": "development validation reused by C3.4-C3.7; not an independent evaluation population",
+    "official_test_status": "HISTORICALLY_USED; DO_NOT_REOPEN_AS_INDEPENDENT_TEST",
+    "independent_evaluation_status": "INDEPENDENT_EVAL_BLOCKED"
+  },
+  "core": {
+    "source": "C3.7 frozen 2x2 ROI specification",
+    "fraction_of_roi_side": 0.4,
+    "core_side_px": 41,
+    "cmos_pixel_pitch_um": 6.5,
+    "core_side_um": 266.5,
+    "class_to_roi": {
+      "0": "top_left",
+      "1": "top_right",
+      "2": "bottom_left",
+      "3": "bottom_right"
+    },
+    "selection_rule": "geometric centre of each fixed ROI; no class-dependent displacement"
+  },
+  "numerics": {
+    "sampling_sensitivity_lens_plane_pitch_um": [4.0, 2.0, 1.0],
+    "sampling_probe_rows_per_class": 16,
+    "sampling_reference_pitch_um": 1.0,
+    "sampling_agreement_rule": "report paired prediction agreement, ROI-score relative error, core-energy relative error, and peak displacement for each spacing; do not silently alter Model B geometry",
+    "lens_to_cmos_fresnel_chirp_compute_dtype": "complex128",
+    "fresnel_reference_relative_l2_tolerance": 1e-8,
+    "fp32_vs_fp64_relative_l2_tolerance": 1e-5,
+    "fp32_vs_fp64_relative_energy_tolerance": 1e-5,
+    "gradient_finite_difference_step_rad": 0.001,
+    "gradient_relative_error_tolerance": 0.05,
+    "gradient_absolute_error_tolerance": 1e-5
+  },
+  "training": {
+    "optimizer": "Adam",
+    "learning_rate": 0.02,
+    "logical_batch_size": 64,
+    "microbatch_size": 8,
+    "pilot_epochs_max": 3,
+    "formal_epochs_max": 5,
+    "formal_early_stop_patience": 2,
+    "formal_min_epochs": 3,
+    "seeds": [11, 23, 37],
+    "pilot_seed": 11,
+    "phase_parameter": "one shared 100x100 real phase map; transmission is exp(i*phase)",
+    "loss_order": ["classification", "core", "peak", "energy", "spread"],
+    "loss_weights": {
+      "classification": 1.0,
+      "core": 1.0,
+      "peak": 1.0,
+      "energy": 1.0,
+      "spread": 0.1
+    },
+    "classification": {
+      "temperature": 20.0,
+      "margin_weight": 0.5,
+      "roi_leakage_weight": 0.05
+    },
+    "peak_power": 8,
+    "energy_reference": "per-row phase-to-CMOS efficiency of C3.5 P1 recomputed with the selected Model B numerical sampling",
+    "energy_reference_retention_target": 0.8,
+    "spread_normalisation_um": 669.5,
+    "pilot_design": {
+      "initialisation_sources": ["C35_P1", "C37_E3_seed23", "RANDOM_UNIFORM_PHASE"],
+      "ablation_arms": {
+        "T0": ["classification"],
+        "T1": ["classification", "core"],
+        "T2": ["classification", "core", "peak"],
+        "T3": ["classification", "core", "peak", "energy"],
+        "T4": ["classification", "core", "peak", "energy", "spread"]
+      },
+      "formal_shortlist_size": 2,
+      "shortlist_rule": "Pareto screen over accuracy, Macro-F1, peak routing, correct-core/input energy, mean efficiency, and P10 efficiency; tie-break with equally weighted clipped ratios to the frozen C3.8 targets"
+    },
+    "formal_update_budget": {
+      "runs": 6,
+      "maximum_updates_per_run": 1250,
+      "maximum_total_updates": 7500
+    },
+    "epoch_checkpoint": "save phase, optimizer state, completed epoch, RNG state, and history after each epoch; explicit resume only"
+  },
+  "evaluation": {
+    "classification_accuracy_target": 0.9,
+    "macro_f1_target": 0.9,
+    "peak_in_correct_roi_target": 0.9,
+    "peak_in_correct_core_target": 0.9,
+    "efficiency_reference_retention_target": 0.8,
+    "core_energy_comparison": "paired correct-core/input energy against C3.5 P1 on the same rows; report bootstrap interval descriptively",
+    "frozen_inference": "binary DMD proxy -> frozen shared phase -> C3.7 Model B scalar Fresnel propagation -> CMOS intensity -> four fixed ROI integrals -> electronic argmax",
+    "test_population": "C3.7 development validation only; no independent test claim"
+  },
+  "visualization": {
+    "main_panel": "4 rows x 4 columns: binarized MNIST DMD command, repeated shared phase, CMOS linear intensity, four-ROI scores",
+    "sample_selection": "per class choose correct-case margin quantiles for typical examples, lowest-margin correct examples for difficult cases, and earliest samples from the most frequent error destinations; record all selected original indices",
+    "absolute_linear_scale": true,
+    "shared_cmos_color_scale": true,
+    "formats": ["png", "pdf", "svg"],
+    "png_dpi": 300,
+    "raw_intensity_units": "C3.7 model intensity (arbitrary field normalization), not calibrated camera counts"
+  },
+  "acceptance": {
+    "accuracy_min": 0.9,
+    "macro_f1_min": 0.9,
+    "peak_localisation_min": 0.9,
+    "core_peak_localisation_target": 0.9,
+    "mean_and_p10_efficiency_reference_retention": 0.8,
+    "correct_core_energy_must_exceed_C35_P1": true,
+    "historical_geometry_and_ROI_frozen": true,
+    "status": "NUMERICAL_RESEARCH_TARGETS_NOT_HARDWARE_STANDARDS"
+  },
+  "run": {
+    "session_source_id": "01a18b9f-206d-7c61-96a3-0da3a49efb8c",
+    "remote_host": "autodl-monthly",
+    "version_directory": "outputs/20261105_hw207_mnist4_c38_v1",
+    "attempt": "attempt_01",
+    "system_cache_path": "/root/c38_cache/attempt_01/input_field_cache.pt"
+  }
+}

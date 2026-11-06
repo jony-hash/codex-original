@@ -1,0 +1,72 @@
+schema: lightgen_g1_fixed_phase_teacher_distillation.v1
+task_id: LIGHTGEN_G1_FIXED_PHASE_TEACHER_DISTILLATION_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_FIXED_PHASE_TEACHER_DISTILLATION_20261030
+evidence_tier: diagnostic_only
+source:
+  fixed_frame_config: configs/research/lightgen/g1_fixed_frame_semantic_v1.yaml
+  fixed_frame_terminal_origin: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01
+  fixed_frame_terminal_backup: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/source_inputs_01/fixed_frame_terminal_backup
+  physical_phase_prior_origin: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01/prior_evidence/physical_phase_gaussian_prior.pt
+  physical_phase_prior: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/source_inputs_01/fixed_frame_terminal_backup/prior_evidence/physical_phase_gaussian_prior.pt
+  v2_terminal_checkpoint: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  response_projector: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+population:
+  train_per_class: 200
+  development_per_class: 20
+  holdout_per_class: 200
+  train_seed_base: 202610300010
+  development_seed_base: 202610300030
+  holdout_seed_base: 202610300050
+  max_proposals_per_class: 1000000
+  proposal_batch_size: 256
+  rejection: original_total_modal_power_only
+teacher:
+  phase_rad: 0.0
+  initializer: 0.5
+  iterations_per_target: 5000
+  checkpoint_interval: 500
+  relative_residual_stop: 1.0e-6
+  dual_gap_stop: 1.0e-8
+  command_dtype: float32
+training:
+  new_updates: 15000
+  batch_size: 10
+  epochs: 75
+  exposures_per_target: 75
+  optimizer: Adam
+  learning_rate: 0.0001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  box_lambda: 5.0
+  teacher_lambda: 1.0
+  rng_seed: 202610300070
+  schedule_seed: 202610300071
+  mapper_precision: float32
+  correction_precision: float64
+  optical_precision: float64_complex128
+  amp: false
+  tf32: false
+  checkpoint_interval: 500
+  progress_interval: 100
+  observation_steps: [0, 5000, 10000, 15000]
+measurement:
+  grids: [2048, 4096]
+  relative_error_max: 0.0001
+  prescribed_phase_error_max: 0.0001
+  native_cmos_unit: raw_w_per_m2
+  camera_pixel_area_m2: 6.25e-12
+  cmos_normalization: false
+  cmos_power_matching: false
+  cmos_gain_adjustment: false
+  semantic_accuracy_drop_max_absolute: 0.02
+  class_diversity_retention_min: 0.8
+output:
+  runs_root: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs
+  source_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/source_inputs_01
+  population_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/population_01
+  teacher_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/teacher_01
+  preflight_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/preflight_01
+  attempt_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/attempt_01
+  verification_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/windows_verify_01
+  windows_backup_dir: outputs/20261030_lightgen_g1_fixed_phase_teacher_distillation_v1/runs/autodl_backup_attempt_01

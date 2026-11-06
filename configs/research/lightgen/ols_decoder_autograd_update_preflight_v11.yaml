@@ -1,0 +1,90 @@
+schema: ols_decoder_autograd_update_preflight.v11
+source:
+  v9_run_dir: outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02
+  response_archive: frozen_v8_response_inputs_v9.npz
+  decoder_phase_archive: decoder_phase_screens_v9.pt
+  camera_directory: camera_measurements
+optics:
+  wavelength_m: 5.32e-7
+  dx_m: 2.0e-6
+  source_power_w: 2.493e-4
+  encoder_aperture_m: 2.0e-4
+  encoder_shape: [100, 100]
+  encoder_layer_spacing_m: 1.5e-3
+  encoder_to_fiber_distance_m: 1.5e-3
+  encoder_layer_transmission_power: 0.889
+  decoder_layer_transmission_power: 0.889
+  fiber_pitch_m: 1.25e-4
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  decoder_layers: 2
+  decoder_shape: [100, 100]
+  decoder_pixel_pitch_m: 2.0e-6
+  decoder_spacing_m: 1.5e-3
+  grids: [4096, 6144, 8192]
+  common_roi_pixels: 2048
+  decoder_input_route: explicit_4f
+  diagnostic_control_route: direct
+routes:
+  explicit_4f:
+    focal_lengths_m: [1.0e-2, 5.0e-3]
+    segments_m: [1.0e-2, 1.5e-2, 5.0e-3]
+    magnification: -0.5
+    clear_aperture_diameter_m: 2.0e-3
+    lens_power_transmission: 0.98
+  direct:
+    propagation_distance_m: 1.5e-3
+backend_relay:
+  magnification: -2.5
+  segments_m: [0.1, 0.25]
+  focal_length_m: 7.14285714285714e-2
+  clear_aperture_m: 2.66e-2
+  additional_power_transmission: 1.0
+camera:
+  shape: [200, 200]
+  pixel_pitch_m: 2.5e-6
+  quantum_efficiency: 0.5
+  full_well_e: 30000.0
+  primary_exposure_s: 1.0e-3
+  sensitivity_exposures_s: [1.0e-5, 1.0e-4, 1.0e-2]
+  read_noise_e_rms: 1.0
+  dark_current_e_per_pixel_s: 0.0
+  noise_seed: 2026101610
+measurement:
+  candidates: [candidate_2x2_C, candidate_3x3_B]
+  modes: [gaussian_s12, lp01]
+  route: explicit_4f
+  decoder_initial_state: fixed_low_frequency
+  target_state: zero_phase
+  input_patterns: [uniform_t_0.5, binary_probe_00]
+  binary_probe_selection: worst_saved_v9_complex64_window_error_per_candidate
+  update_steps: 3
+  resume_from_step: 1
+  learning_rate: 1.0e-3
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  pixel_integral_primary_order: 4
+  pixel_integral_reference_order: 8
+  finite_difference_steps_rad: [1.0e-6, 5.0e-7]
+  finite_difference_seed: 2026101711
+gates:
+  forward_relative_error: 1.0e-4
+  aligned_common_roi_complex64_error: 1.0e-4
+  gradient_relative_error: 1.0e-4
+  gradient_loss_scale_absolute: 1.0e-8
+  restore_phase_atol: 1.0e-7
+  restore_phase_rtol: 1.0e-6
+  restore_adam_atol: 1.0e-7
+  restore_adam_rtol: 1.0e-6
+  restore_camera_output_relative_error: 1.0e-6
+scope:
+  engineering_adam_calls_expected: 10
+  scientific_training_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  fid_calls: 0
+  material_forward_calls: 0
+  loss_changes: 0
+  production_cli_migration: forbidden
+  checkpoint_migration: forbidden

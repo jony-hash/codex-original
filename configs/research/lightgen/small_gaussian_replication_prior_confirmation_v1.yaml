@@ -1,0 +1,105 @@
+schema: lightgen_small_gaussian_replication_prior_confirmation.v1
+task_id: LIGHTGEN_SMALL_GAUSSIAN_REPLICATION_PRIOR_CONFIRMATION_V1
+semantic_authority_id: USER_APPROVED_SMALL_GAUSSIAN_REPLICATION_PRIOR_CONFIRMATION_20261021
+evidence_tier: diagnostic_only
+execution_source_semantics_id: small_gaussian_replication_prior_confirmation_v1
+runtime_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+reference:
+  source_task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+  source_branch: C
+  source_cumulative_step: 45000
+  checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+  baseline_evidence_dir: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01
+  prior_evidence_dir: outputs/20261021_lightgen_small_conditional_mixture_prior_ab_v1/runs/autodl_backup_attempt_01
+  source_30000_35000_checkpoint: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/autodl_backup_attempt_01/treatment/checkpoint_step_005000.pt
+training:
+  seeds: [2026102151, 2026102152]
+  updates: 45000
+  logical_batch_size: 10
+  samples_per_class_per_batch: 1
+  initialization: zero_phase
+  optimizer: Adam
+  learning_rate: 0.001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  bogt_updates: 30000
+  structural_updates: 15000
+  ssim_lambda_calibration: weighted_rec_gradient_norm_over_unweighted_ssim_gradient_norm_once_at_step_30000
+  checkpoint_interval: 500
+  progress_interval: 100
+  evaluation_steps: [30000, 35000, 45000]
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  train_label_counts: [5423, 6242, 5458, 5631, 5342, 4921, 5418, 5765, 5351, 5449]
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+optics:
+  encoder_layers: 2
+  decoder_layers: 2
+  phase_shape: [100, 100]
+  trainable_phase_parameters: 40000
+  slm_shape: [200, 200]
+  wavelength_m: 5.32e-7
+  input_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  phase_pixel_pitch_m: 2.0e-6
+  layer_spacing_m: 1.5e-3
+  basis: gaussian_s12_v1
+  ols_ports: 100
+  port_pitch_m: 2.0e-5
+  field_1e_radius_m: 3.5e-6
+  transport: identity
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+  relay: existing_4f_input_and_b0_output
+  production_grid: 2048
+  reference_grid: 4096
+  common_complex_roi_m: 1.6e-4
+loss:
+  family: truncated_gaussian_bogt
+  reconstruction: fixed_camera_gain_unclipped_native_physical_w_per_pixel_mse
+  distribution: truncated_positive_gaussian_kl_mean_1_variance_0_25
+  plane_power: relative_log_power_squared_mean_over_model_planes
+  initial_camera_gain: global_least_squares_scalar_from_full_train
+  initial_modal_scale: full_train_mean_modal_power
+  initial_plane_power_reference: full_train_mean_each_recorded_plane
+  initial_weight_calibration: inverse_component_gradient_norm_once_first_balanced_train_batch
+  weights_frozen_after_calibration: true
+  camera_gain_frozen_after_calibration: true
+  ssim:
+    definition: gaussian_7x7_sigma_1_5_data_range_1_zero_pad_3
+    lambda_calibration: weighted_rec_gradient_norm_over_unweighted_ssim_gradient_norm
+    calibrate_once_at_global_step: 30000
+    freeze_after_calibration: true
+    multiplier: 1.0
+    evaluator_in_loss: false
+evaluation:
+  ed_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  ec_checkpoint: outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt
+  common_view: fixed_gain_then_clamp_0_1_then_adaptive_average_pool_28
+  common_target: original_mnist_28x28
+  generated_samples_per_class_per_stream: 1000
+  sampling_streams: 3
+  g1_normal_seed_base: 2026102200
+  g4_normal_seed_base: 2026102210
+  g4_component_seed_base: 2026102220
+  maximum_proposals_per_class: 1000000
+  bootstrap_resamples: 2000
+  bootstrap_seed_base: 2026102261
+  shape_pair_count: 10000
+  shape_pair_seed_base: 2026102501
+  minimum_generation_to_dev_tv_ratio: 0.25
+  replay_rtol: 2.0e-6
+  replay_atol: 5.0e-8
+  window_error_max: 1.0e-4
+  classifier_based_sample_selection: false
+  per_image_normalization: false
+  official_test_reads: 0
+output:
+  experiment_root: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/attempt_01
+  formal_result_budget_bytes: 1073741824
+  primary_stream: 0
+  native_display_per_class_per_method: 10

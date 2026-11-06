@@ -1,0 +1,45 @@
+schema: lightgen_g1_fullpop_feasibility_diagnosis.v1
+task_id: LIGHTGEN_G1_FULLPOP_FEASIBILITY_DIAGNOSIS_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_FULLPOP_FEASIBILITY_DIAGNOSIS_20261027
+evidence_tier: diagnostic_only
+source:
+  fullpop_config: configs/research/lightgen/g1_projected_box_fullpop_v1.yaml
+  fullpop_cloud_evidence: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/attempt_01
+  fullpop_cloud_repair: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/review_repair_01
+  fullpop_windows_evidence: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01
+  fullpop_windows_repair: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_review_repair_01
+population:
+  role: development_feasibility20
+  source_role: original_validation_excluding_fit20_rows_1980
+  source_validation_indices: [2, 3, 202, 203, 402, 403, 602, 603, 802, 803, 1002, 1003, 1202, 1203, 1402, 1403, 1602, 1603, 1802, 1803]
+  positive_controls: first_saved_known_reachable_target_per_class
+  no_resampling: true
+solver:
+  fixed_phase:
+    starts: 1
+    initial_amplitude: 0.5
+    max_steps: 5000
+    stop_error: 1.0e-6
+    phase_source: box_b_unclipped_mapping
+  free_phase:
+    starts: 8
+    initial_amplitude: 0.5
+    initial_phases: equally_spaced_2pi_over_8
+    max_steps_per_start: 5000
+    stop_error: 1.0e-6
+  precision: float64_complex128
+  max_total_start_iterations: 900000
+measurement:
+  grids: [2048, 4096]
+  conditions: [frozen_v2, box_b5000, fixed_phase_solver, free_phase_solver]
+  max_relative_error: 1.0e-4
+  fixed_phase_target_max_relative_error: 1.0e-4
+  coefficient_alignment: one_global_phase_per_sample
+  native_cmos_normalization: none
+  power_matching: false
+  gain_adjustment: false
+output:
+  experiment_root: outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs
+  preflight_root: outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/preflight_01
+  attempt_root: outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/attempt_01
+  windows_backup_root: outputs/20261027_lightgen_g1_fullpop_feasibility_diagnosis_v1/runs/autodl_backup_attempt_01

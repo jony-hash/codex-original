@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C21_C3_ALIGNED_GEOMETRY_V2",
+  "non_runtime": true,
+  "purpose": "Close the physical coordinate chain from the existing DMD-to-target geometry to ideal output relay and finite CMOS pixel integration; this is not a LightGen optical forward model.",
+  "base_config_file": "hw207_mnist4_c21_c3_spatial_v1.json",
+  "source_files": {
+    "physical_geometry": "configs/research/lightgen/hw207_optical_geometry_v1.json",
+    "parameter_baseline": "research_assets/lightgen/HW207_实物与距离基线_20261103/实物信息与闭环状态.md",
+    "original_bom": "research_assets/lightgen/HW207_实物与距离基线_20261103/05_器件参考/LightGen光路-1014-v5.xlsx",
+    "prior_c21_validation_summary": "outputs/20261104_hw207_mnist4_c3_v1/runs/autodl_backup_attempt_04/validation_summary.json",
+    "prior_c21_independent_audit": "outputs/20261104_hw207_mnist4_c3_v1/runs/attempt_04/independent_local_audit.json"
+  },
+  "output_coordinate_assumption": {
+    "rotation_deg": 0.0,
+    "offset_um": [
+      0.0,
+      0.0
+    ],
+    "status": "CENTERED_AXIS_ALIGNED_DIAGNOSTIC_ONLY; installed rotation and translation are UNKNOWN",
+    "signed_4f_magnification": "Preserve negative sign; the candidate ideal 4f relay inverts both image axes"
+  },
+  "cmos_area_integration": {
+    "sensor_rows": 2048,
+    "sensor_columns": 2048,
+    "pixel_um": 6.5,
+    "model": "exact overlap area between affine-projected source cells and sensor pixels",
+    "response": "ideal integrated energy only; no QE, exposure, noise, gain, ADC, or saturation",
+    "sensor_fov_um": [
+      13312.0,
+      13312.0
+    ],
+    "roi_layout": "four equal non-overlapping quadrants over the full virtual sensor",
+    "roi_order": [
+      "top_left",
+      "top_right",
+      "bottom_left",
+      "bottom_right"
+    ],
+    "roi_to_label": {
+      "top_left": 0,
+      "top_right": 1,
+      "bottom_left": 2,
+      "bottom_right": 3
+    },
+    "status": "VIRTUAL_CANDIDATE_NOT_CALIBRATED"
+  },
+  "prior_c21_evidence": {
+    "population": "C0 validation in original order",
+    "sample_count": 2475,
+    "condition_count": 12,
+    "official_test_evaluated": false,
+    "condition_matrix": "C3-A/B/C x DMD installation angle 0/45 deg x nearest/area input mapping",
+    "result_scope": "DMD binary scalar geometry to LightGen target input plane; frozen C1 digital readout is not CMOS or optical classification",
+    "required_local_independent_audit_status": "PASS",
+    "c2_original_status": "C2_PARTIAL_PASS",
+    "c21_status": "C2.1_GEOMETRY_DIAGNOSTIC_COMPLETE"
+  },
+  "lightgen_output": {
+    "field_path": null,
+    "fixed_layer_transmission": null,
+    "status": "BLOCKED_UNKNOWN_PHYSICAL_OR_PRINTED_STACK",
+    "planned_device_note": "one two-photon-printed metasurface is a target concept only; no bound geometry or complex transmission is available"
+  },
+  "execution_scope": {
+    "phase": "geometry-only",
+    "reads_mnist": false,
+    "runs_training": false,
+    "evaluates_official_test": false,
+    "controls_hardware": false,
+    "claims_physical_classification": false
+  }
+}

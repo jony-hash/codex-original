@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C34_NUMERICAL_DIAGNOSTIC",
+  "runtime": "diagnostic_only",
+  "wavelength_nm": 532.0,
+  "input": {
+    "source": "C0 binary MNIST mapping",
+    "threshold_uint8": 128,
+    "target_grid": [100, 100],
+    "target_pitch_um": 2.0,
+    "relay": "reuse C3.3/C2.1 binary scalar proxy",
+    "relay_parameters_status": "PAPER_REFERENCE_AND_NUMERICAL_PROXY_ONLY"
+  },
+  "phase_screen": {
+    "grid": [100, 100],
+    "sample_pitch_um": 2.0,
+    "physical_cell_area_um": [200.0, 200.0],
+    "phase_units": "radians",
+    "trainable_in_frozen_phase_inference": false
+  },
+  "model_a_c33_historical": {
+    "identity": "C3.3 ideal 4f plus 52 mm camera defocus",
+    "magnification": -6.666666666666667,
+    "camera_defocus_mm": 52.0,
+    "status": "HISTORICAL_NUMERICAL_REFERENCE_NOT_HW207_GEOMETRY"
+  },
+  "model_b_hw207_estimated_geometry": {
+    "sequence": "P(100 mm) L(f=30 mm) P(80 mm)",
+    "phase_screen_to_lens_mm": 80.0,
+    "thin_lens_focal_length_mm": 30.0,
+    "lens_to_cmos_mm": 100.0,
+    "abcd": {
+      "A": -2.3333333333333335,
+      "B_mm": -86.66666666666667,
+      "C_per_mm": -0.03333333333333333,
+      "D": -1.6666666666666667,
+      "determinant": 1.0,
+      "conjugate_image_distance_after_lens_mm": 48.0,
+      "magnification_at_conjugate": -0.6,
+      "cmos_defocus_after_conjugate_mm": 52.0
+    },
+    "distance_status": "TAPE_ESTIMATE_CENTIMETER_ROUNDED_NOT_CALIBRATED",
+    "lens_clear_aperture_mm": "UNKNOWN",
+    "aperture_diagnostic_scenarios_mm": [0.5, 1.0, 2.0],
+    "lens_plane_sampling_test_um": [4.0, 2.0, 1.0],
+    "sampling_relative_l1_tolerance_over_input_energy": 0.001,
+    "distance_sensitivity_scenarios_mm": {
+      "screen_to_lens": [70.0, 80.0, 90.0],
+      "lens_to_cmos": [90.0, 100.0, 110.0]
+    },
+    "fresnel_vs_scalar_rayleigh_sommerfeld_reference_tolerance_relative_l2": 0.02,
+    "propagation": "scalar Fresnel P80, finite thin-lens phase and optional circular pupil, scalar Fresnel P100",
+    "aperture_scenarios_status": "ASSUMPTION_ONLY_NOT_HARDWARE_SPECIFICATION"
+  },
+  "cmos": {
+    "full_shape": [2048, 2048],
+    "pixel_pitch_um": 6.5,
+    "coordinate_origin": "full-frame center between the two middle pixels",
+    "reported_crop": {
+      "full_frame_row_start": 640,
+      "full_frame_col_start": 640,
+      "shape": [768, 768],
+      "purpose": "same central crop used by the fixed C3.3 ROI interface"
+    },
+    "pixel_model": "ideal scalar intensity sampled at pixel centers; no QE, noise, gain, saturation or readout modeling",
+    "hardware_identity_status": "Gpixel GSENSE2020 candidate; actual installed camera and readout UNKNOWN"
+  },
+  "roi": {
+    "class_to_roi": [0, 1, 2, 3],
+    "layout": "C3.3 fixed 2x2 ROI translated to full CMOS indices by +640 rows and columns",
+    "selection": "frozen before C3.4 inference; no position or size tuning",
+    "calibration_status": "NUMERICAL_COORDINATE_MAPPING_ONLY_NOT_HARDWARE_CALIBRATED"
+  },
+  "training_if_required": {
+    "optimizer": "Adam",
+    "learning_rate": 0.05,
+    "epochs": 15,
+    "batch_size": 64,
+    "patience": 5,
+    "minimum_throughput_fraction_of_train_zero_phase_reference": 0.1,
+    "shuffled_label_validation_accuracy_max_exclusive": 0.4,
+    "quick_run_epochs": 3,
+    "quick_run_gate": "training loss decreases; all gradients finite and positive; final mean full-sensor efficiency >= 10 percent of no-phase efficiency on the same balanced validation rows",
+    "seeds": [1, 2, 3],
+    "trainable_parameter": "one 100x100 phase array only",
+    "data_split_seed": 20261105,
+    "population_counts": {
+      "train": 18279,
+      "validation": 2000,
+      "holdout": 2000
+    },
+    "training_geometry": "D=2 mm aperture diagnostic assumption; actual aperture UNKNOWN"
+  },
+  "frozen_phase_adaptation_trigger": {
+    "population": "C3.3 phase_holdout paired Model-A versus Model-B fixed ROI decisions",
+    "test": "one-sided exact McNemar directional binomial test",
+    "alpha": 0.05,
+    "trigger_geometry": "D=2 mm assumption",
+    "use": "decide whether to run the preauthorized C3.4 geometry-adapted phase training; never select the final phase"
+  },
+  "fabrication_diagnostic": {
+    "delta_n_scenarios": [0.5, 0.6],
+    "maximum_height_um": 1.2,
+    "height_levels": 64,
+    "historical_psf_sigma_px": 0.8,
+    "psf_sensitivity_sigma_px": [0.0, 0.4, 0.8, 1.2],
+    "minimum_feature_opening_radius_px": 1,
+    "height_noise_sigma_nm": 20.0,
+    "height_noise_seeds": [11, 23, 37, 41, 53],
+    "edge_height_error_scenarios_nm": [-20.0, 20.0],
+    "all_process_values_status": "ASSUMPTION_ONLY_NOT_PRINTER_MEASUREMENTS"
+  },
+  "unknown_hardware_parameters": [
+    "actual lens clear aperture, NA and aberrations",
+    "actual DMD collection geometry and coherent transfer",
+    "actual installed CMOS identity, readout mode and noise",
+    "printed material and refractive indices at 532 nm",
+    "printer lateral/axial PSF, minimum feature, shrinkage and edge error",
+    "actual LightGen placement and complex transmission"
+  ]
+}

@@ -1,0 +1,57 @@
+schema: lightgen_frozen_slm_8bit_replay.v1
+task_id: LIGHTGEN_FROZEN_SLM_8BIT_REPLAY_V1
+semantic_authority_id: USER_APPROVED_FROZEN_SLM_8BIT_REPLAY_20261025
+evidence_tier: diagnostic_only
+source:
+  reachability_config: configs/research/lightgen/frozen_slm_ols_input_reachability_v1.yaml
+  reachability_attempt_dir: outputs/20261025_lightgen_frozen_slm_ols_reachability_v1/runs/attempt_01
+  expected_source_task_id: LIGHTGEN_FROZEN_SLM_OLS_INPUT_REACHABILITY_V1
+  expected_source_run_id: 04390141af8c48278cfd3578f3688e0c
+  expected_methods: [G1, G4]
+  expected_samples_per_method: 100
+  expected_samples_per_class_per_method: 10
+slm:
+  paper_model: HES6001
+  resolution: [1920, 1080]
+  pixel_pitch_um: 8.0
+  wavelength_nm: 532
+  input_frame_rate_hz: 60
+  code_levels: 256
+  encoding_rounding: floor_255x_plus_0_5
+  amplitude_calibration_hypothesis: gray_equals_quantized_amplitude
+  intensity_calibration_hypothesis: gray_equals_quantized_intensity
+  measured_gray_response_curve_available: false
+optics:
+  runtime_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+  ols_basis: gaussian_s12_v1
+  propagation_grids: [2048, 4096]
+  encoder_layers: 2
+  decoder_layers: 2
+  phase_quantization: none_frozen_checkpoint_values
+  input_shape: [200, 200]
+  source_power_w: 2.493e-4
+  global_gain: frozen_C_checkpoint
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+device_sources:
+  paper_supplement: research_assets/lightgen/science_adv7434/paper/sciencesm.pdf
+  manufacturer_product_page: https://holoeye.com/products/spatial-light-modulators/amplitude-slms/
+conditions:
+  - continuous
+  - A8_amplitude_linear
+  - I8_intensity_linear
+measurement:
+  precision_limit: 1.0e-4
+  source_output_replay_limit: 1.0e-6
+  reference_replay_rtol: 2.0e-6
+  reference_replay_atol: 5.0e-8
+  preflight_rows: first_per_method_per_class
+  expected_preflight_rows: 20
+  model_updates: 0
+  adam_calls: 0
+  prior_fit: 0
+  new_sampling: 0
+  new_human_review: 0
+  input_resolve: 0
+output:
+  experiment_root: outputs/20261025_lightgen_frozen_slm_8bit_replay_v1/runs/attempt_01
+  final_decision_consumer: windows_recompute_from_saved_gray_and_production_outputs

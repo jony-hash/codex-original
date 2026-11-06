@@ -827,6 +827,7 @@ def _read_selected_raw(evidence_dir: Path, selected: Sequence[Mapping[str, Any]]
                 "raw": raw,
                 "view": production,
                 "target": target,
+                "saved_e_d_logits": logits["E_D"][offset].detach().cpu().clone(),
                 "source_row_index": source_row_index,
                 "recomputed_e_d_identity_margin": ed_margin,
                 "raw_path": path.as_posix(),

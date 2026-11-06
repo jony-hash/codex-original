@@ -1,0 +1,234 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C37_FOCUS_OPTIMISATION",
+  "status": "DIAGNOSTIC_ONLY",
+  "wavelength_nm": 532.0,
+  "geometry": {
+    "model": "C3.4 Model B",
+    "status": "TAPE_ESTIMATE_AND_NUMERICAL_ASSUMPTION_ONLY",
+    "screen_to_lens_mm": 80.0,
+    "lens_focal_length_mm": 30.0,
+    "lens_to_cmos_mm": 100.0,
+    "aperture_diameter_mm": 2.0,
+    "lens_plane_pitch_um": 4.0,
+    "camera_shape": [
+      2048,
+      2048
+    ],
+    "camera_pixel_pitch_um": 6.5,
+    "phase_grid": [
+      100,
+      100
+    ],
+    "phase_pitch_um": 2.0,
+    "roi_source": "C3.3 fixed four-quadrant ROI, translated into the C3.4 full CMOS frame",
+    "class_mapping": "ROI_0 -> digit 0, ROI_1 -> digit 1, ROI_2 -> digit 2, ROI_3 -> digit 3 (frozen C3.3 order)"
+  },
+  "data": {
+    "mnist_train_image_path": "data/MNIST/raw/train-images-idx3-ubyte",
+    "mnist_train_label_path": "data/MNIST/raw/train-labels-idx1-ubyte",
+    "c0_indices_path": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/indices.json",
+    "c34_split_source": "stratified split of the 22,279 C0 training rows",
+    "train_count": 18279,
+    "validation_count": 2000,
+    "previously_used_holdout_count": 2000,
+    "role_note": "train = fit, validation = development validation reused from C3.4/C3.5 selection, holdout = previously consumed development rows. No row of this configuration is a project level independent test set.",
+    "independent_eval_status": "INDEPENDENT_EVAL_BLOCKED"
+  },
+  "init": {
+    "p1_phase": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p1_energy_constrained/target_0.400000_seed_11/phase_energy_constrained.npy",
+    "p1_phase_identity": "C3.5 P1 high-throughput energy constrained phase, energy target 0.40, seed 11",
+    "p2_height_reference": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p2_process_aware_height/delta_n_0.5/height_map.npy",
+    "p2_phase_reference": "outputs/20261105_hw207_mnist4_c35_v1/runs/autodl_backup_attempt_03/p2_process_aware_height/delta_n_0.5/phase_rad.npy",
+    "p2_identity": "C3.5 P2 fabrication aware height, nominal operator, delta_n 0.5",
+    "mixing_rule": "P2 is an independent frozen control; it is never blended into a P1 initialised fine-tune."
+  },
+  "core": {
+    "diagnostic_candidates_fraction": [
+      0.3,
+      0.4,
+      0.5
+    ],
+    "frozen_fraction": 0.4,
+    "frozen_fraction_rule": "pre-registered mid candidate: 0.4 of the ROI side is at least three times the diffraction limited spot FWHM of this geometry (about 27 um) and is the middle of the three declared candidates; 0.3 and 0.5 are reported as diagnostics only and never replace the frozen value after seeing evaluation metrics",
+    "centre_rule": "the geometric centre of each frozen ROI, identical physical definition for all four cores",
+    "spread_normalisation_um": 669.5,
+    "no_class_dependent_displacement": true
+  },
+  "training": {
+    "optimizer": "Adam",
+    "learning_rate": 0.02,
+    "epochs": 15,
+    "logical_batch_size": 64,
+    "microbatch_size": 16,
+    "rows_per_class_train": 4000,
+    "rows_per_class_ablation": 1000,
+    "rows_per_class_eval_subset": 250,
+    "seeds": [
+      11,
+      23
+    ],
+    "trainable_parameter": "one 100x100 phase map only; exp(i*phase) enforces periodic optical transmission",
+    "classification_margin_weight": 0.5,
+    "roi_leakage_weight": 0.05,
+    "focus_weight": 1.0,
+    "sidelobe_weight": 1.0,
+    "sidelobe_wrong_roi_weight": 1.0,
+    "sidelobe_outside_roi_weight": 1.0,
+    "sidelobe_own_roi_outside_core_weight": 0.5,
+    "spread_weight": 0.1,
+    "phase_smoothness_weight": 0.001,
+    "groups": {
+      "E0": [],
+      "E1": [
+        "focus"
+      ],
+      "E2": [
+        "focus",
+        "sidelobe"
+      ],
+      "E3": [
+        "focus",
+        "sidelobe",
+        "throughput"
+      ],
+      "E4": [
+        "focus",
+        "sidelobe",
+        "throughput"
+      ],
+      "E6": [
+        "focus",
+        "sidelobe",
+        "throughput"
+      ],
+      "E7": [
+        "focus",
+        "sidelobe",
+        "throughput"
+      ]
+    },
+    "E4_mode": "height domain: the trainable variable is a physical height map, the nominal print operator is applied inside the forward pass, and quantisation uses the straight-through estimator during training",
+    "note": "the classification family always keeps the historical C3.5 form (cross entropy + margin + ROI leakage); E2..E4 therefore penalise the outside-ROI fraction twice, which is documented and applies identically to every compared arm. E6 has the same term set as E3 and differs only in the focus reduction and weight, which are passed on the command line and recorded in the training summary: focus_mode=worst_class with focus_weight=3.0. E6 was added after the C3.7 class conditional focus oracle showed 0.233 median core fraction, so that the single layer headroom could be probed without changing any acceptance threshold or core definition.",
+    "formal_runs": [
+      {
+        "arm": "E3",
+        "seed": 11,
+        "epochs": 3,
+        "stopped_early": true
+      },
+      {
+        "arm": "E3",
+        "seed": 23,
+        "epochs": 3,
+        "stopped_early": true
+      },
+      {
+        "arm": "E2",
+        "seed": 11,
+        "epochs": 3,
+        "stopped_early": true
+      },
+      {
+        "arm": "E4",
+        "seed": 11,
+        "epochs": 3,
+        "stopped_early": true
+      },
+      {
+        "arm": "E7",
+        "seed": 23,
+        "epochs": 4,
+        "focus_weight": 2.0,
+        "focus_mode": "mean"
+      },
+      {
+        "arm": "E6",
+        "seed": 23,
+        "epochs": 3,
+        "focus_weight": 3.0,
+        "focus_mode": "worst_class",
+        "invalidated": "focus reduction sign defect: the loss drove the strongest class instead of the weakest; artifacts moved to invalidated/E6_seed23_sign_defect"
+      }
+    ]
+  },
+  "energy": {
+    "metric": "eta_phase_to_cmos",
+    "numerator": "sum(I_CMOS) * pixel_pitch_um^2 over the complete 2048x2048 active frame",
+    "denominator": "sum(abs(E_phase_input)^2) * phase_pitch_um^2",
+    "eta_retention_fraction": 0.8,
+    "eta_target_override": null,
+    "historical_reference_floor": 0.07707634567450197,
+    "historical_reference_floor_status": "EFFICIENCY_THRESHOLD_UNVERIFIED_NOT_A_HARDWARE_LIMIT",
+    "adaptive_lagrange_rho": 200.0,
+    "fail_rule": "a candidate whose mean efficiency falls below 0.5 of the frozen E0 mean is reported as throughput collapse regardless of its focus metrics"
+  },
+  "fabrication_assumptions": {
+    "nominal": {
+      "delta_n": 0.5,
+      "psf_sigma_px": 0.8,
+      "minimum_feature_radius_px": 1,
+      "height_levels": 64,
+      "height_noise_nm": 0.0,
+      "edge_height_bias_nm": 0.0
+    },
+    "delta_n_scenarios": [
+      0.5,
+      0.6
+    ],
+    "psf_sigma_px_scenarios": [
+      0.0,
+      0.4,
+      0.8,
+      1.2
+    ],
+    "minimum_feature_radius_px_scenarios": [
+      1,
+      2
+    ],
+    "height_levels": 64,
+    "height_noise_nm": 20.0,
+    "height_noise_seeds": [
+      11,
+      23
+    ],
+    "maximum_height_um": 1.2,
+    "substrate_thickness_um": 1.2,
+    "status": "ASSUMPTION_ONLY_NOT_PRINTER_OR_MATERIAL_MEASUREMENTS",
+    "amplitude_transmission": "UNKNOWN; unit amplitude retained as a numerical assumption",
+    "domain_rule": "wrapped phase is converted to physical height before any blur, minimum feature, quantisation or noise operator"
+  },
+  "p0": {
+    "spot_population": "the complete 2000 row development validation split",
+    "subset_rows_per_class": 250,
+    "defocus_planes_mm": [
+      98.0,
+      100.0,
+      102.0
+    ],
+    "aperture_scenarios_mm": [
+      1.0,
+      2.0
+    ],
+    "sampling_convergence_lens_pitch_um": [
+      2.0,
+      4.0
+    ],
+    "coordinate_audit": "asymmetric ramp probes in row and column, ROI centre placement against the optical axis, and argmax replay from saved ROI integrals"
+  },
+  "acceptance": {
+    "accuracy_min": 0.9,
+    "peak_localisation_min": 0.9,
+    "centroid_localisation_min": 0.9,
+    "target_roi_share_of_four_roi_median_min": 0.6,
+    "target_roi_share_of_cmos_median_min": 0.4,
+    "core_fraction_median_min": 0.25,
+    "process_accuracy_retention_min": 0.9,
+    "status": "RESEARCH_TARGETS_NOT_PHYSICAL_STANDARDS"
+  },
+  "run": {
+    "session_source_id": "dsh-c37-20261105",
+    "cloud_work_root": "/root/c37_runs",
+    "windows_run_dir": "outputs/20261105_hw207_mnist4_c37_v1/runs/attempt_01"
+  }
+}

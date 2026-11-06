@@ -1,0 +1,64 @@
+schema: lightgen_g1_projected_box_fullpop.v1
+task_id: LIGHTGEN_G1_PROJECTED_BOX_FULLPOP_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_PROJECTED_BOX_FULLPOP_20261027
+evidence_tier: diagnostic_only
+source:
+  projected_mapping_config: configs/research/lightgen/g1_slm_projected_mapping_v2.yaml
+  v2_terminal_checkpoint: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  v2_fixed_response_projector_evidence: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+  prior_fit20_b_convergence_config: configs/research/lightgen/g1_fit20_box_b_convergence_v1.yaml
+  prior_fit20_b_cloud_attempt: outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/attempt_01
+  prior_fit20_b_cloud_review: outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/review_repair_01
+  prior_fit20_b_windows_backup: outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/autodl_backup_attempt_01
+  fit20_b_repair_windows_receipt: outputs/20261027_lightgen_g1_fit20_box_b_convergence_v1/runs/autodl_backup_review_repair_01/windows_review_receipt.json
+  fit20_cloud_witness_measurements: outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/attempt_01/preflight_evidence/witness_qualification_measurements.pt
+  fit20_witness_measurements: outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/autodl_backup_attempt_01/preflight_evidence/witness_qualification_measurements.pt
+population:
+  train_role: fixed_original_g1_train_10000
+  validation_role: original_validation_excluding_fit20_rows_1980
+  training_probe_per_class: 20
+  known_reachable_control_count: 20
+  final_holdout_per_class: 200
+  final_holdout_seed_base: 2026102850
+  max_proposals_per_class: 1000000
+  proposal_batch_size: 256
+  rejection: original_total_modal_power_only
+  schedule_seed: 2026102871
+training:
+  new_updates: 5000
+  epochs: 5
+  logical_batch_size: 10
+  samples_per_class_per_batch: 1
+  optimizer: Adam
+  learning_rate: 0.0001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  box_lambda: 5.0
+  mapper_precision: float32
+  fixed_projection_precision: float64
+  optical_precision: float64_complex128
+  amp: false
+  tf32: false
+  rng_seed: 2026102870
+  progress_interval_steps: 100
+  checkpoint_interval_steps: 500
+  observation_steps: [0, 1000, 2500, 5000]
+  select_best_validation_checkpoint: false
+measurement:
+  grids: [2048, 4096]
+  per_shard: 10
+  relative_error_max: 0.0001
+  coefficient_alignment: one_global_phase_per_sample
+  native_cmos_unit: raw_w_per_m2
+  cmos_normalization: none
+  cmos_power_matching: false
+  cmos_gain_adjustment: false
+  candidate: b_terminal_only
+  frozen_v2_baseline: paired_description_only
+output:
+  experiment_root: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs
+  preflight_root: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/preflight_01
+  attempt_root: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/attempt_01
+  windows_backup_root: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01
+  final_consumer: recompute_exact_mapper_commands_full_optics_native_cmos_and_all_six_errors

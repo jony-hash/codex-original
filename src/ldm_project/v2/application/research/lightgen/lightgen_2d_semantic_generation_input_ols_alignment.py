@@ -779,7 +779,29 @@ class LightGen2DSemanticGenerationInputOLSAlignment(nn.Module):
 
     def forward_from_image(self, image: torch.Tensor) -> LightGen2DForwardResult:
         """Execute ``image -> optical encoder -> z_real -> W_OLS -> generator``."""
-        image_input = self.input_adapter(image)
+        return self._forward_from_slm_input(self.input_adapter(image))
+
+    def forward_from_amplitude(self, amplitude: torch.Tensor) -> LightGen2DForwardResult:
+        """Execute a continuous amplitude-SLM command through the full optical path."""
+        self.input_adapter._validate_image(amplitude)
+        if tuple(amplitude.shape[1:]) != (1, *self.slm_plane.shape):
+            raise ValueError("direct amplitude input must match the configured SLM plane")
+        slm_intensity = amplitude.square()
+        command = AmplitudeCommand(
+            amplitude,
+            self.slm_plane,
+            IdealAmplitudeSLM.calibration_id,
+        )
+        slm_field = self.input_adapter.slm(command)
+        image_input = LightGenImageOpticalInput(
+            image=slm_intensity,
+            slm_intensity=slm_intensity,
+            slm_amplitude=amplitude,
+            slm_field=slm_field,
+        )
+        return self._forward_from_slm_input(image_input)
+
+    def _forward_from_slm_input(self, image_input: LightGenImageOpticalInput) -> LightGen2DForwardResult:
         physical_power_trace: dict[str, torch.Tensor] | None = None
         if self.physical_optics is not None:
             pixel_area = self.slm_plane.pixel_pitch_m[0] * self.slm_plane.pixel_pitch_m[1]

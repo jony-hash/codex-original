@@ -1,0 +1,138 @@
+schema: gaussian_recent_plane_density_audit.v1
+task_id: GAUSSIAN_RECENT_PLANE_DENSITY_AUDIT_V1
+semantic_authority_id: USER_APPROVED_GAUSSIAN_RECENT_PLANE_DENSITY_AUDIT_20261022
+run_dir: outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/attempt_01
+training_updates: 0
+optimizer_creation: 0
+prior_sampling: 0
+official_test_reads: 0
+hardware_operations: 0
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+model:
+  baseline_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+  production_grid: 2048
+  reference_grid: 4096
+  ols_basis: gaussian_s12_v1
+  source_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  shared_camera_gain_w_inverse: 1505046959.946815
+endpoints:
+  - key: C45000
+    checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+    identity_config: configs/research/lightgen/small_gaussian_foreground_balance_ab_v1.yaml
+    task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+    global_step: 45000
+    completed_updates: 10000
+    seed: 2026101501
+    branch: C
+    trajectory: foreground_balance
+    encoder_shared_with: null
+  - key: V45000
+    checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/V/checkpoint_step_010000.pt
+    identity_config: configs/research/lightgen/small_gaussian_foreground_balance_ab_v1.yaml
+    task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+    global_step: 45000
+    completed_updates: 10000
+    seed: 2026101501
+    branch: V
+    trajectory: foreground_balance
+    encoder_shared_with: null
+  - key: R51245000
+    checkpoint: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01/seed_2026102151/checkpoint_step_045000.pt
+    identity_config: configs/research/lightgen/small_gaussian_replication_prior_confirmation_v1.yaml
+    task_id: LIGHTGEN_SMALL_GAUSSIAN_REPLICATION_PRIOR_CONFIRMATION_V1
+    global_step: 45000
+    completed_updates: 45000
+    seed: 2026102151
+    branch: null
+    trajectory: replication_seed_2026102151
+    encoder_shared_with: null
+  - key: R52245000
+    checkpoint: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01/seed_2026102152/checkpoint_step_045000.pt
+    identity_config: configs/research/lightgen/small_gaussian_replication_prior_confirmation_v1.yaml
+    task_id: LIGHTGEN_SMALL_GAUSSIAN_REPLICATION_PRIOR_CONFIRMATION_V1
+    global_step: 45000
+    completed_updates: 45000
+    seed: 2026102152
+    branch: null
+    trajectory: replication_seed_2026102152
+    encoder_shared_with: null
+  - key: D050000
+    checkpoint: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01/D0/checkpoint_step_005000.pt
+    identity_config: configs/research/lightgen/small_decoder_native_gradient_ab_v1.yaml
+    task_id: LIGHTGEN_SMALL_DECODER_NATIVE_GRADIENT_AB_V1
+    global_step: 50000
+    completed_updates: 5000
+    seed: 2026101501
+    branch: D0
+    trajectory: decoder_native_gradient
+    encoder_shared_with: C45000
+  - key: Dgrad50000
+    checkpoint: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01/Dgrad/checkpoint_step_005000.pt
+    identity_config: configs/research/lightgen/small_decoder_native_gradient_ab_v1.yaml
+    task_id: LIGHTGEN_SMALL_DECODER_NATIVE_GRADIENT_AB_V1
+    global_step: 50000
+    completed_updates: 5000
+    seed: 2026101501
+    branch: Dgrad
+    trajectory: decoder_native_gradient
+    encoder_shared_with: C45000
+generation:
+  source_root: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01/generation
+  source_task_id: LIGHTGEN_SMALL_GAUSSIAN_REPLICATION_PRIOR_CONFIRMATION_V1
+  methods: [G1, G4]
+  stream: 0
+  samples: 10000
+  model_keys: [C_seed_2026101501, seed_2026102151, seed_2026102152]
+  decoder_gradient_source_root: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01
+  shared_decoder_cohort: G4_stream_0_from_C_seed_2026101501
+statistics:
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102101
+  probe_rows_per_class: 2
+  intensity_distribution_plane: fiber_output_and_decoder_entry
+  intensity_quantiles: [0.5, 0.9, 0.99]
+  finite_difference_endpoints:
+    - small_step_030000
+    - small_control_step_035000
+    - small_treatment_step_035000
+    - large_step_030000
+  finite_difference_rows_per_class: 2
+  finite_difference_relative_radii: [0.001, 0.01, 0.1]
+  finite_difference_primary_radius: 0.01
+  camera_proxy_config: configs/research/lightgen/ols_camera_training_interface_closure_v10.yaml
+validation:
+  same_grid_complex_relative_tolerance: 1.0e-4
+  direct_vs_synthesized_mse_absolute_tolerance: 1.0e-6
+  per_image_independent_numpy_integral: true
+  require_coherent_cross_terms: true
+  equal_camera_power_counterfactual: true
+execution:
+  required_host: autodl-monthly
+  batch_rows: 1
+  generated_synthesis_batch_rows: 8
+  result_chunk_rows: 200
+  no_training_updates: true
+  no_optimizer_creation: true
+  no_prior_sampling: true
+  official_test_reads: 0
+  hardware_operations: 0
+material_interface:
+  material_name: null
+  physical_input_plane: null
+  nonlinear_response_curve: null
+  wavelength_nm: 532.0
+  polarization: null
+  time_conditions: null
+  activation_threshold: null
+outputs:
+  preserve_historical_records: true
+  retain_population_complex_fields: false
+  retain_representative_intensity_maps: true
+  dev_rows_per_class: 500
+  generation_rows_per_class: 1000

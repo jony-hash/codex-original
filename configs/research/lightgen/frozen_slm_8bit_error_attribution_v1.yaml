@@ -1,0 +1,40 @@
+schema: lightgen_frozen_slm_8bit_error_attribution.v1
+task_id: LIGHTGEN_FROZEN_SLM_8BIT_ERROR_ATTRIBUTION_V1
+evidence_tier: diagnostic_only
+source:
+  replay_attempt_dir: outputs/20261025_lightgen_frozen_slm_8bit_replay_v1/runs/attempt_01
+  expected_replay_run_id: 01a34fe66f3743b2a8eb7701c7a9e9fd
+  reachability_attempt_dir: outputs/20261025_lightgen_frozen_slm_ols_reachability_v1/runs/attempt_01
+  expected_reachability_run_id: 04390141af8c48278cfd3578f3688e0c
+population:
+  methods: [G1, G4]
+  samples_per_method: 100
+  samples_per_class_per_method: 10
+  attribution_rows: 400
+  preflight_samples: 20
+optics:
+  checkpoint_step: 45000
+  source_power_w: 2.493e-4
+  response_matrix_grid: 2048
+  response_matrix_shape: [100, 40000]
+  propagation_grids: [2048, 4096]
+  encoder_layers: 2
+  decoder_layers: 2
+  phase_masks: frozen
+  global_gain: frozen_C_checkpoint
+measurement:
+  precision_limit: 1.0e-4
+  matrix_prediction_relative_error_max: 1.0e-6
+  matrix_delta_closure_relative_error_max: 1.0e-6
+  cross_grid_relative_error_max: 1.0e-4
+  power_relative_error_max: 1.0e-10
+  power_absolute_error_w: 1.0e-15
+  model_updates: 0
+  adam_calls: 0
+  prior_fit: 0
+  input_resolve: 0
+  new_sampling: 0
+  new_human_review: 0
+output:
+  experiment_root: outputs/20261025_lightgen_frozen_slm_8bit_error_attribution_v1/runs/attempt_01
+  final_consumer: recompute_from_saved_gray_response_matrix_and_sample_outputs

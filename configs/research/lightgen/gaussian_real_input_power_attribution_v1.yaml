@@ -1,0 +1,87 @@
+schema: gaussian_real_input_power_attribution.v1
+task_id: GAUSSIAN_REAL_INPUT_POWER_ATTRIBUTION_V1
+semantic_authority_id: USER_APPROVED_GAUSSIAN_OLS_POWER_ATTRIBUTION_20261021
+execution_source_semantics_id: gaussian_real_input_power_attribution_v1
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+model:
+  baseline_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+  continuation_config: configs/research/lightgen/small_gaussian_structural_continuation_ab_v1.yaml
+  propagation_grid_size: 2048
+  reference_grid_size: 4096
+  ols_basis: gaussian_s12_v1
+  ols_port_count: 100
+  ols_rows: 10
+  ols_columns: 10
+  source_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  port_pitch_m: 2.0e-5
+  gaussian_field_1e_radius_m: 3.5e-6
+  ols_plane_fov_m: 2.0e-4
+  shared_camera_gain_w_inverse: 1.505046959946815e+9
+  window_relative_tolerance: 1.0e-4
+checkpoints:
+  - key: step_000000
+    trajectory: baseline
+    global_step: 0
+    checkpoint: outputs/20261020_lightgen_small_gaussian_system_baseline_v1/runs/attempt_01/checkpoint_step_000000.pt
+  - key: step_005000
+    trajectory: baseline
+    global_step: 5000
+    checkpoint: outputs/20261020_lightgen_small_gaussian_system_baseline_v1/runs/attempt_01/checkpoint_step_005000.pt
+  - key: step_010000
+    trajectory: baseline
+    global_step: 10000
+    checkpoint: outputs/20261020_lightgen_small_gaussian_system_baseline_v1/runs/attempt_01/checkpoint_step_010000.pt
+  - key: step_020000
+    trajectory: baseline
+    global_step: 20000
+    checkpoint: outputs/20261020_lightgen_small_gaussian_system_baseline_v1/runs/attempt_01/checkpoint_step_020000.pt
+  - key: step_030000
+    trajectory: baseline
+    global_step: 30000
+    checkpoint: outputs/20261020_lightgen_small_gaussian_system_baseline_v1/runs/attempt_01/checkpoint_step_030000.pt
+  - key: control_step_032500
+    trajectory: control
+    global_step: 32500
+    checkpoint: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/autodl_backup_attempt_01/control/checkpoint_step_002500.pt
+  - key: control_step_035000
+    trajectory: control
+    global_step: 35000
+    checkpoint: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/autodl_backup_attempt_01/control/checkpoint_step_005000.pt
+  - key: treatment_step_032500
+    trajectory: treatment
+    global_step: 32500
+    checkpoint: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/autodl_backup_attempt_01/treatment/checkpoint_step_002500.pt
+  - key: treatment_step_035000
+    trajectory: treatment
+    global_step: 35000
+    checkpoint: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/autodl_backup_attempt_01/treatment/checkpoint_step_005000.pt
+statistics:
+  batch_size: 10
+  shard_size: 100
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102101
+  numerical_resolution_margin: 2.0
+  relative_power_thresholds_db: [-10, -20, -30, -40]
+  preflight_rows_per_class: 2
+  no_training_updates: true
+  no_optimizer_creation: true
+  no_prior_sampling: true
+output:
+  experiment_root: outputs/20261021_gaussian_ols_real_input_power_attribution_v1/runs/attempt_01
+  evidence_tier: diagnostic-only
+  write_set:
+    - preflight.json
+    - input_manifest.json
+    - checkpoint_manifest.json
+    - states/
+    - cross_decoder/
+    - large_architecture_recap/
+    - figures/
+    - machine_report.json
+    - 中文诊断报告.md

@@ -1,0 +1,80 @@
+schema: gaussian_ols_effective_channel_noise_ablation.v1
+task_id: GAUSSIAN_OLS_EFFECTIVE_CHANNEL_NOISE_ABLATION_V1
+semantic_authority_id: USER_APPROVED_GAUSSIAN_OLS_EFFECTIVE_CHANNEL_NOISE_ABLATION_20261021
+evidence_tier: diagnostic-only
+data:
+  source_file: data/MNIST/processed/training.pt
+  small_population: outputs/20261021_gaussian_ols_real_input_power_attribution_v1/runs/attempt_01
+  small_role: DEV
+  small_rows: 5000
+  small_per_class: 500
+  large_population: outputs/20261015_chen_lightgen_400_quickcheck_4096_v2/runs/autodl_backup_attempt_01/fixed_population.pt
+  large_role: TRAIN
+  large_rows: 300
+  large_per_class: 30
+  large_full_train_moments: outputs/20261014_chen_lightgen_400_mnist_baseline_v1/runs/autodl_backup_attempt09_final_20261015_01/generated_ols_samples.pt
+  official_test_reads: 0
+small:
+  baseline_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+  continuation_config: configs/research/lightgen/small_gaussian_structural_continuation_ab_v1.yaml
+  covariance_states:
+    - step_000000
+    - step_005000
+    - step_010000
+    - step_020000
+    - step_030000
+    - control_step_032500
+    - control_step_035000
+    - treatment_step_032500
+    - treatment_step_035000
+  decoder_endpoints:
+    - key: small_step_030000
+      source_state: step_030000
+      global_step: 30000
+    - key: small_control_step_035000
+      source_state: control_step_035000
+      global_step: 35000
+    - key: small_treatment_step_035000
+      source_state: treatment_step_035000
+      global_step: 35000
+  production_grid: 2048
+  reference_grid: 4096
+large:
+  checkpoint: outputs/20261014_chen_lightgen_400_mnist_baseline_v1/runs/autodl_backup_attempt09_final_20261015_01/checkpoint_step_030000.pt
+  source_report: outputs/20261015_chen_lightgen_400_quickcheck_4096_v2/runs/autodl_backup_attempt_01/report.json
+  source_config: configs/research/lightgen/chen_lightgen_400_mnist_baseline_v1.yaml
+  fixed_population: outputs/20261015_chen_lightgen_400_quickcheck_4096_v2/runs/autodl_backup_attempt_01/fixed_population.pt
+  full_train_moments: outputs/20261014_chen_lightgen_400_mnist_baseline_v1/runs/autodl_backup_attempt09_final_20261015_01/generated_ols_samples.pt
+  source_encoder_grid: 2048
+  decoder_production_grid: 4096
+  decoder_reference_grid: 6144
+statistics:
+  port_count: 100
+  rows: 10
+  columns: 10
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102101
+  fdr_q: 0.05
+  reference_relative_tolerance: 1.0e-4
+  direct_replay_mse_absolute_tolerance: 1.0e-6
+  preflight_rows_per_class: 2
+  local_direction_rows_per_class: 20
+  no_training_updates: true
+  no_optimizer_creation: true
+  no_prior_sampling: true
+  no_hardware_operations: true
+noise_proxy_config: configs/research/lightgen/ols_camera_training_interface_closure_v10.yaml
+recovery:
+  prior_attempt_dir: outputs/20261021_gaussian_ols_effective_channel_noise_ablation_v1/runs/attempt_01
+output:
+  run_dir: outputs/20261021_gaussian_ols_effective_channel_noise_ablation_v1/runs/attempt_02
+  recovery_chunk_rows: 10
+  write_set:
+    - preflight.json
+    - covariance/
+    - bases/
+    - ablation/
+    - noise/
+    - figures/
+    - machine_report.json
+    - 中文诊断报告.md

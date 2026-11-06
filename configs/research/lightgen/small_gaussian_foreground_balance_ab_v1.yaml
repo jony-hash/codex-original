@@ -1,0 +1,121 @@
+schema: lightgen_small_gaussian_foreground_balance_ab.v1
+task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+semantic_authority_id: USER_APPROVED_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_20261021
+execution_source_semantics_id: lightgen_small_gaussian_foreground_balance_ab_v1
+source:
+  task_id: LIGHTGEN_SMALL_GAUSSIAN_STRUCTURAL_CONTINUATION_AB_V1
+  evidence_dir: outputs/20261020_lightgen_small_gaussian_structural_continuation_ab_v1/runs/autodl_backup_attempt_01
+  checkpoint_step: 35000
+  branch: treatment
+  model_identity:
+    encoder: [2, 100, 100]
+    ols: gaussian_s12_v1
+    ols_geometry:
+      port_pitch_m: 2.0e-5
+      field_1e_radius_m: 3.5e-6
+      transport: identity
+    decoder: [2, 100, 100]
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+training:
+  seed: 2026101501
+  source_completed_updates: 35000
+  continuation_updates: 10000
+  batch_size: 10
+  samples_per_class_per_batch: 1
+  optimizer: Adam
+  learning_rate: 0.001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  branch_order: [C, V]
+  checkpoint_interval: 500
+  progress_interval: 100
+  checkpoints_at: [0, 5000, 10000]
+  schedule_source_verification: [30000, 35000]
+loss:
+  control: source_B_objective_unchanged
+  treatment: replace_native_pixel_mse_with_stroke_background_balanced_error
+  structural_definition: mean_1_minus_ssim_after_global_gain_clamp_0_1_then_adaptive_pool_28
+  structural_weight_fixed: 0.3148024967699311
+  ssim_window: 7
+  ssim_sigma: 1.5
+  data_range: 1.0
+  padding: 3
+  balanced_definition: half_sum_of_target_weighted_and_background_weighted_native_200x200_squared_error_means
+  balanced_target: bilinear_resize_original_train_to_200x200_align_corners_false
+  balanced_error_input: fixed_global_gain_times_unclipped_physical_w_per_pixel
+  balanced_weighting: target_gray_and_one_minus_target_soft_weights
+  kappa_calibration: match_weighted_native_rec_gradient_norm_to_weighted_balanced_gradient_norm_once
+  freeze_kappa_after_calibration: true
+  source_structural_weight_and_bogt_weights_frozen: true
+  adam_state_preserved: true
+optics:
+  wavelength_m: 5.32e-7
+  input_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  small:
+    encoder_layers: 2
+    encoder_shape: [100, 100]
+    generator_layers: 2
+    generator_shape: [100, 100]
+    phase_parameters: 40000
+    slm_shape: [200, 200]
+    phase_pixel_pitch_m: 2.0e-6
+    layer_spacing_m: 1.5e-3
+    ols_basis: gaussian_s12_v1
+    ols_ports: 100
+    ols_transport: identity
+    port_pitch_m: 2.0e-5
+    field_1e_radius_m: 3.5e-6
+    geometry_status: PROJECT_GEOMETRY_UNMEASURED
+    relay: existing_4f_input_and_b0_output
+    propagation_grid_candidates: [2048, 4096]
+    production_propagation_grid: 2048
+    common_complex_roi_m: 1.6e-4
+  window_complex_relative_error_max: 1.0e-4
+evaluation:
+  evaluator_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  evaluator_role: frozen_confirmation_only
+  ec_checkpoint: outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt
+  common_view: fixed_gain_then_clamp_0_1_then_adaptive_average_pool_28
+  common_target: original_mnist_28x28
+  generated_samples_per_class: 1000
+  classifier_sample_selection: false
+  max_proposals_per_class: 1000000
+  power_relative_covariance_ridge: 1.0e-6
+  shape_pairs_per_class: 10000
+  paired_bootstrap_resamples: 2000
+  paired_bootstrap_seed: 2026102111
+quality_gate:
+  reconstruction_psnr_db_min: 20.0
+  reconstruction_ssim_min: 0.80
+  generation_macro_recall_min: 0.80
+  generation_recall_per_class_min: 0.60
+  proxy_clipping_fraction_max: 0.01
+  generated_to_dev_tv_ratio_min: 0.25
+human_review:
+  unique_generated_cards_per_branch: 100
+  generated_cards_per_class: 10
+  control_selection_seed: 2026102112
+  treatment_selection_seed: 2026102113
+  hidden_duplicates: 20
+  duplicates_per_branch_per_class: 1
+  real_anchors: 20
+  anchors_per_class: 2
+  display_native_pixels: 200
+  display_css_pixels: 400
+  shuffle_seed: 2026102114
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102115
+  duplicate_consistency_min: 18
+  anchor_label_match_min: 18
+output:
+  experiment_root: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/attempt_01
+  evidence_tier: diagnostic_only
+  formal_result_budget_bytes: 536870912

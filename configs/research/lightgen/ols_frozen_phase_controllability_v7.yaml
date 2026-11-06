@@ -1,0 +1,68 @@
+schema: ols_frozen_phase_controllability.v7
+source_evidence:
+  v6_run_dir: outputs/20261014_ols_phase_dimension_power_v6/runs/attempt_01
+  v6_report: outputs/20261014_ols_phase_dimension_power_v6/runs/attempt_01/report.json
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  encoder_shape: [100, 100]
+  encoder_aperture_m: 2.0e-4
+  propagation_grid_sizes: [3072, 4096, 6144]
+  common_fiber_readout_roi_mm: 4.096
+  common_fiber_readout_roi_pixels: 2048
+  inter_encoder_spacing_m: 1.5e-3
+  last_encoder_to_fiber_m: 1.5e-3
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+  illumination: uniform_coherent_top_hat
+fiber:
+  reference_pitch_m: 1.25e-4
+  mode_field_diameter_m: 1.4222e-5
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  transport: ideal_identity
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+candidates:
+  optimized:
+    - {name: candidate_2x2_A, size: 2, objective: A_max_throughput, endpoint_key: '2:A_max_throughput'}
+    - {name: candidate_2x2_C, size: 2, objective: C_absolute_uniform_delivery, endpoint_key: '2:C_absolute_uniform_delivery'}
+    - {name: candidate_3x3_B, size: 3, objective: B_max_neff_fraction, endpoint_key: '3:B_max_neff_fraction'}
+    - {name: candidate_5x5_B, size: 5, objective: B_max_neff_fraction, endpoint_key: '5:B_max_neff_fraction'}
+    - {name: candidate_10x10_A, size: 10, objective: A_max_throughput, endpoint_key: '10:A_max_throughput'}
+    - {name: candidate_10x10_C, size: 10, objective: C_absolute_uniform_delivery, endpoint_key: '10:C_absolute_uniform_delivery'}
+  zero_phase_controls: [2, 3, 5, 10]
+measurement:
+  amplitude_probe_seed: 2026101407
+  amplitude_probe_count: 32
+  amplitude_probe_values: [0.25, 0.75]
+  fixed_amplitude_controls: [0.5, 1.0]
+  target_base_command: 0.5
+  command_bounds: [0.25, 0.75]
+  target_magnitudes_sqrt_input_power: [1.0e-4, 1.0e-3, 1.0e-2]
+  main_relative_svd_threshold: 1.0e-3
+  relative_svd_thresholds: [1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4]
+  phase_jacobian_dtype: complex128
+  phase_pixel_probe_coordinates_yx: [[49, 49], [0, 49], [0, 0]]
+  phase_pixel_central_difference_epsilon_rad: 1.0e-4
+  phase_direction_seed: 2026101408
+  phase_direction_count: 4
+  phase_direction_rms_rad: [1.0e-3, 1.0e-2]
+  direct_phase_control_max: 5
+  probe_forward_batch_size: 4
+gates:
+  coefficient_relative_error_max: 1.0e-4
+  window_aligned_complex_roi_error_max: 1.0e-4
+  passivity_relative_tolerance: 1.0e-5
+  phase_pixel_jacobian_relative_tolerance: 1.0e-4
+  phase_pixel_jacobian_absolute_tolerance_sqrt_w: 1.0e-8
+scope:
+  formal_training_updates: 0
+  phase_optimization_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  fid_calls: 0
+  loss_changes: 0
+  material_forward_calls: 0
+  decoder_or_camera_changes: 0
+  production_default_migration: forbidden
+  fiber_geometry_changes: forbidden

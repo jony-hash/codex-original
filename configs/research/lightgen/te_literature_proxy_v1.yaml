@@ -1,0 +1,65 @@
+schema: lightgen_te_literature_proxy.v1
+task_id: LIGHTGEN_TE_PAPER_FIGURE_PROXY_532_V1
+evidence_tier: diagnostic_only
+model:
+  wavelength_nm: 532.0
+  time_factor: exp(-i omega t)
+  incidence: normal_plane_wave
+  polarization: scalar_isotropic
+  propagation_direction: glass -> Te -> air
+  output_reference_plane_nm: 50.0
+material:
+  sample_identity: LIT-TE-ADMA2025-THERMOCHROMIC-FIGURE-PROXY
+  material: elemental_Te
+  morphology_or_phase_states:
+    - solid_25C
+    - quasi_liquid_80C
+  nominal_thickness_nm: 10.0
+  thickness_sweep_nm: [1.0, 50.0, 1.0]
+  digitization_csv: research_assets/lightgen/hardware_g1_te_literature_proxy_20261029_v1/digitization/digitized_nk_532.csv
+  states:
+    - id: solid_25C
+      temperature_c: 25
+      phase: solid
+      source_n_figure: Fig. 1c
+      source_k_figure: Fig. S2
+    - id: quasi_liquid_80C
+      temperature_c: 80
+      phase: quasi-liquid
+      source_n_figure: Fig. 1c
+      source_k_figure: Fig. S2
+media:
+  glass_model:
+    name: fused_silica_Malitson_1965
+    source_id: SRC-14
+    temperature_c: 20.0
+    k_assumption: 0.0
+    malitson_sellmeier:
+      b1: 0.6961663
+      c1_um: 0.0684043
+      b2: 0.4079426
+      c2_um: 0.1162414
+      b3: 0.8974794
+      c3_um: 9.896161
+  air_refractive_index: 1.0
+  glass_extinction_coefficient_assumption: 0.0
+sources:
+  paper_title: Thermochromic Gires-Tournois Resonators with Tellurium for Battery Thermal Runaway Warning
+  paper_doi: 10.1002/adma.202511261
+  paper_url: https://advanced.onlinelibrary.wiley.com/doi/10.1002/adma.202511261
+  supporting_information_url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC12510277/supplementaryFiles
+  n_figure: Fig. 1c
+  k_figure: Fig. S2
+  glass_dispersion_url: https://doi.org/10.1364/JOSA.55.001205
+  thin_film_method_url: https://arxiv.org/abs/1603.02720
+  paper_layer_thickness_design_range_nm: [1.0, 50.0]
+  paper_nominal_te_thickness_nm: 10.0
+  figure_1c_local_path: research_assets/lightgen/hardware_g1_te_literature_proxy_20261029_v1/sources/ADMA-37-2511261-g006.jpg
+  figure_s2_local_path: research_assets/lightgen/hardware_g1_te_literature_proxy_20261029_v1/sources/ADMA-37-2511261-SI-S2-image2.jpg
+checks:
+  complex_field_absolute_tolerance: 1.0e-10
+  power_and_dissipation_absolute_tolerance: 1.0e-9
+  absorption_quadrature_orders: [64, 128]
+  curve_extraction_agreement_tolerance: 0.10
+output:
+  profile_samples: 101

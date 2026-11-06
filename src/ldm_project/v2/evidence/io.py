@@ -1,8 +1,11 @@
 """Content hashes and atomic artifact writes shared by v2 subsystems."""
 from __future__ import annotations
 
+import csv
+import copy
 import hashlib
 import json
+import math
 import os
 import pickle
 from dataclasses import asdict, dataclass, fields, is_dataclass
@@ -10,6 +13,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Mapping
 
+import numpy as np
 import torch
 
 
@@ -173,6 +177,18 @@ def atomic_torch_save(path: str | Path, payload: Any) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def cpu_copy(value: Any) -> Any:
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().clone()
+    if isinstance(value, dict):
+        return {key: cpu_copy(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [cpu_copy(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(cpu_copy(item) for item in value)
+    return copy.deepcopy(value)
+
+
 def atomic_torch_save_new(
     path: str | Path,
     payload: Any,
@@ -191,3 +207,50 @@ def atomic_torch_save_new(
             raise FileExistsError(f"refusing to overwrite {artifact_kind}: {target}") from exc
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def diagnostic_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): diagnostic_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [diagnostic_json_value(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return diagnostic_json_value(value.tolist())
+    if isinstance(value, np.generic):
+        return diagnostic_json_value(value.item())
+    if isinstance(value, torch.Tensor):
+        return diagnostic_json_value(value.detach().cpu().tolist())
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def write_diagnostic_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(diagnostic_json_value(payload), ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
+def write_diagnostic_npz(path: Path, **arrays: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("wb") as stream:
+        np.savez_compressed(stream, **arrays)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def write_diagnostic_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    with path.open("w", newline="", encoding="utf-8-sig") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)

@@ -1,0 +1,56 @@
+schema: lightgen_fullpath_evidence_closure_repair.v1
+task_id: LIGHTGEN_FULLPATH_EVIDENCE_CLOSURE_REPAIR_V1
+authorization_id: USER_APPROVED_LIGHTGEN_FULLPATH_EVIDENCE_CLOSURE_REPAIR_20261102
+evidence_tier: engineering_repair_only
+
+sources:
+  base_config: configs/research/lightgen/fullpath_evidence_closure_v1.yaml
+  terminal_checkpoint: outputs/20261030_lightgen_recent_optical_fullpath_semantic_v1/runs/autodl_backup_attempt_01/scientific_attempt/terminal_checkpoint.pt
+  training_schedule: outputs/20261030_lightgen_recent_optical_fullpath_semantic_v1/runs/autodl_backup_attempt_01/scientific_attempt/training_schedule.pt
+  old_closure_backup: outputs/20261102_lightgen_fullpath_evidence_closure_v1/runs/autodl_backup_attempt_01
+  terminal_projection_backup: outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/autodl_backup_attempt_01
+  terminal_projection_review: outputs/20261102_lightgen_terminal_projection_alignment_v1/runs/windows_review_01/independent_review.json
+  expected_training_run_id: d88d5bfc2b29488884a88512152815d6
+  expected_endpoint_global_step: 52000
+  expected_encoder_adam_step: 47000
+  expected_generator_adam_step: 52000
+  expected_mapper_run_id: 3521afc652f2427eac984485971340c4
+  generation_population_role: consumed_generation_diagnostic
+  source_population_role_recorded_as: consumed_train_diagnostic
+
+engineering:
+  optimizer_groups: [encoder_phase, generator_phase]
+  single_group_freeze_supported: false
+  schedule_rows: [0, 1, 2, 3]
+  required_update_calls: 5
+  sequence: [three_continuous, fourth_direct, fourth_independent_restore]
+  checkpoint_after_continuous_updates: 3
+  recovery_rtol: 2.0e-6
+  recovery_atol: 5.0e-8
+  deterministic_seed: 202611021171
+  negative_controls: [detach_rec, detach_ssim, detach_rec_and_ssim]
+  rollback_isolated_candidate: true
+  scientific_updates: 0
+  prior_refits: 0
+  prior_samples: 0
+  official_test_reads: 0
+
+evidence_consumer:
+  direct_cross_grid_tolerance: 1.0e-4
+  p1_reinjection_max_abs: 1.0e-12
+  fixed_population_rows: 2000
+  bootstrap_resamples: 2000
+  bootstrap_seed: 202611021170
+  macro_recall_noninferiority_margin: 0.02
+  diversity_retention_min: 0.8
+  fixed_examples_per_class: 2
+  response_finite_difference_epsilon: 2.0e-4
+  response_finite_difference_seed: 202611021050
+  response_finite_difference_tolerance: 1.0e-5
+  response_finite_difference_endpoint_global_step: 52000
+
+output:
+  run_dir: outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/attempt_02
+  backup_dir: outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/autodl_backup_attempt_02
+  review_dir: outputs/20261102_lightgen_fullpath_evidence_closure_repair_v1/runs/windows_review_02
+  preserve_source_artifacts: true

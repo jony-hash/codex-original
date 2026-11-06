@@ -1,0 +1,37 @@
+task_id: M2_spatial_material_interface_validation_v1
+baseline_id: C45k_gaussian_s12_G4_stream0_first4_per_class
+checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+cohort: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01/generation/C_seed_2026101501/G4_stream_0.pt
+ed_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+ec_checkpoint: outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt
+population: {per_class: 4, classes: 10, selection: first_saved_positions, classifier_selection: false}
+propagation_grid: 2048
+reference_grid: 4096
+reference_population: first_selected_position_per_class
+batch_size: 10
+reference_intensity: sum_integral_I_squared_over_sum_integral_I_on_bare_frozen_cohort
+proxy_saturation_scale: 1.0
+s4_response: {family: saturation, proxy_strength: 0.4}
+sweep:
+  - {family: linear, proxy_linear_transmission: 0.8}
+  - {family: saturation, proxy_strength: 0.1}
+  - {family: saturation, proxy_strength: 0.4}
+  - {family: saturation, proxy_strength: 0.8}
+  - {family: suppression, proxy_strength: 0.1}
+  - {family: suppression, proxy_strength: 0.4}
+tolerances:
+  replay_rtol: 0.000002
+  replay_atol: 0.00000005
+  subspace_eta_max: 0.0000000001
+  power_closure_max: 0.00000001
+  passive_relative: 0.000001
+  qr_relative: 0.0000000001
+  output_difference: 0.001
+  reference_output_relative: 0.001
+  quadrature_power_relative: 0.01
+  quadrature_eta_absolute: 0.001
+phase_proxy: NOT_IMPLEMENTED_NOT_ASSUMED
+gamma: NOT_YET_IMPLEMENTED
+optimizer_updates: 0
+parameter_selection_by_metrics: false
+data_role: SAVED_GENERATED_COHORT_DIAGNOSTIC_ONLY_NO_TEST_DATA

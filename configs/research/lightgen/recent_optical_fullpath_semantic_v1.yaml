@@ -1,0 +1,101 @@
+schema: lightgen_recent_optical_fullpath_semantic.v1
+task_id: LIGHTGEN_RECENT_OPTICAL_FULLPATH_SEMANTIC_V1
+semantic_authority_id: USER_APPROVED_LIGHTGEN_RECENT_OPTICAL_FULLPATH_SEMANTIC_20261030
+execution_source_semantics_id: frozen_mapper_full_slm_path_joint_optical_update_v1
+evidence_tier: diagnostic_only
+
+sources:
+  endpoints:
+    C45k:
+      checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+      task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+      branch: C
+      checkpoint_branch: C
+      checkpoint_run_id: 0a0ea0e11b334e0ebfb05674abe4149b
+      source_run_id: 43fc2f901c9b46eb85ab67992aeb479f
+      global_step: 45000
+      encoder_adam_step: 45000
+      generator_adam_step: 45000
+    D0:
+      checkpoint: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01/D0/checkpoint_step_005000.pt
+      task_id: LIGHTGEN_SMALL_DECODER_NATIVE_GRADIENT_AB_V1
+      branch: D0
+      checkpoint_branch: D0
+      checkpoint_run_id: bc776323446f4d5387400d36787777f2
+      source_run_id: 0a0ea0e11b334e0ebfb05674abe4149b
+      global_step: 50000
+      encoder_adam_step: 45000
+      generator_adam_step: 50000
+    Dgrad:
+      checkpoint: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01/Dgrad/checkpoint_step_005000.pt
+      task_id: LIGHTGEN_SMALL_DECODER_NATIVE_GRADIENT_AB_V1
+      branch: Dgrad
+      checkpoint_branch: Dgrad
+      checkpoint_run_id: bc776323446f4d5387400d36787777f2
+      source_run_id: 0a0ea0e11b334e0ebfb05674abe4149b
+      global_step: 50000
+      encoder_adam_step: 45000
+      generator_adam_step: 50000
+    J:
+      checkpoint: outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/autodl_backup_attempt_01/optical/checkpoint_step_005000.pt
+      task_id: LIGHTGEN_SMALL_JOINT_UPDATE_READABILITY_PILOT_V1
+      branch: J
+      checkpoint_branch: null
+      checkpoint_run_id: 85224b8a2ff844c78b652f49503b0008
+      source_run_id: 0a0ea0e11b334e0ebfb05674abe4149b
+      global_step: 50000
+      encoder_adam_step: 50000
+      generator_adam_step: 50000
+  mapper_checkpoint: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01/checkpoints/terminal_checkpoint.pt
+  mapper_checkpoint_run_id: 3521afc652f2427eac984485971340c4
+  physical_phase_prior: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01/prior_evidence/physical_phase_gaussian_prior.pt
+  fixed_response_projector: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+  mapper_replay_shard: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01/measurements/holdout/shard_0000.pt
+  solver_rows: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/autodl_backup_attempt_02/solver_rows
+  frame_config: configs/research/lightgen/g1_fixed_frame_semantic_v1.yaml
+  optical_source_config: configs/research/lightgen/small_decoder_native_gradient_ab_v1.yaml
+  mnist_training_file: data/MNIST/processed/training.pt
+
+population:
+  classes: 10
+  development_per_class: 20
+  final_per_class: 200
+  development_seed_base: 202610300910
+  final_seed_base: 202610300930
+  rejection: original_total_modal_power_only
+  classifier_based_selection: false
+  prior_alpha: 1.0
+
+training:
+  maximum_new_updates: 2000
+  batch_size: 10
+  samples_per_class_per_batch: 1
+  schedule_seed: 202610300950
+  optimizer: Adam
+  learning_rate: inherit_from_selected_endpoint
+  loss: inherited_BOGT_plus_fixed_SSIM
+  trainable_groups: [encoder_phase, generator_phase]
+  frozen_groups: [mapper, fixed_projection, prior, camera_gain, evaluators]
+  checkpoint_interval: 500
+  checkpoints_at: [0, 500, 1000, 1500, 2000]
+  official_test_reads: 0
+
+measurement:
+  production_grid: 2048
+  independent_reference_grid: 4096
+  existing_solver_positive_controls_per_class: 2
+  fixed_camera_conversion: raw_cmos_to_w_per_pixel_then_fixed_gain_then_clamp_then_adaptive_average_pool_28
+  per_image_normalization: false
+  power_matching: false
+  gain_adjustment: false
+  endpoint_skip_average_macro_recall_gain: 0.02
+  endpoint_skip_each_evaluator_minimum_delta: 0.0
+  final_ed_paired_macro_recall_lower_bound_min: 0.0
+  final_ec_macro_recall_drop_max: 0.02
+  final_class_diversity_retention_min: 0.8
+  bootstrap_resamples: 2000
+  bootstrap_seed: 202610300970
+
+output:
+  experiment_root: outputs/20261030_lightgen_recent_optical_fullpath_semantic_v1/runs/attempt_01
+  preserve_source_artifacts: true

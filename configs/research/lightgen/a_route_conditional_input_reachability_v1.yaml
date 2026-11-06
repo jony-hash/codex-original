@@ -1,0 +1,22 @@
+task_id: A_route_conditional_input_reachability_v1
+previous_result: outputs/20261026_m2_spatial_material_interface_validation_v1/runs/attempt_04/m2_spatial_material_diagnostics.json
+previous_result_windows_mirror: outputs/20261026_m2_spatial_material_interface_validation_v1/runs/autodl_backup_attempt_04/m2_spatial_material_diagnostics.json
+mapper_checkpoint: outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+mapper_population: outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_attempt_01/fixed_population_and_schedule.pt
+mapper_config: configs/research/lightgen/g1_slm_input_mapping_pilot_v1.yaml
+matched_responses:
+  - {family: saturation, proxy_strength: 0.4}
+  - {family: suppression, proxy_strength: 0.4}
+linear_negative_control: {family: linear, proxy_linear_transmission: 0.8}
+reference_intensity: READ_EXACT_FROZEN_PREVIOUS_VALUE_NO_REFIT
+material_for_A: {family: saturation, proxy_strength: 0.4}
+A_population: {source_role: validation, per_class: 32, selection: first_saved_positions}
+A_seed_protocol: REUSE_SAVED_VALIDATION_SEEDS_2026102630_PLUS_CLASS_AND_PROPOSAL_IDS
+A_mapping: FROZEN_COMPLETED_G1_PILOT_V1_STEP_5000_NOT_ACTIVE_V2
+A_numerics: {optical_precision: float64_complex128, mapper_precision: float32, propagation_grid: 2048}
+A_acceptance: DESCRIPTIVE_NO_NEW_CONDITIONAL_CONTROL_THRESHOLD
+batch_size: 10
+optimizer_updates: 0
+prior_refits: 0
+test_reads: 0
+documentation_write_set: NEW_ACADEMIC_PACKAGE_ONLY_CONCURRENT_STATUS_FILES_NOT_TOUCHED

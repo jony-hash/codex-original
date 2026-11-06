@@ -1,0 +1,111 @@
+schema: lightgen_small_joint_update_readability_pilot.v1
+task_id: LIGHTGEN_SMALL_JOINT_UPDATE_READABILITY_PILOT_V1
+semantic_authority_id: USER_APPROVED_SMALL_JOINT_UPDATE_READABILITY_PILOT_20261023
+execution_source_semantics_id: small_joint_update_from_c45k_v1
+source:
+  checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+  task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+  branch: C
+  global_step: 45000
+control:
+  evidence_dir: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01
+  branch: D0
+  checkpoint: D0/checkpoint_step_005000.pt
+  global_step: 50000
+  previous_config: configs/research/lightgen/small_decoder_native_gradient_ab_v1.yaml
+generation:
+  cohort: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01/g4_fixed_inputs.pt
+  task_id: LIGHTGEN_SMALL_DECODER_NATIVE_GRADIENT_AB_V1
+  source_method: G4
+  stream: 0
+  source_global_step: 45000
+  population: 10000
+  samples_per_class: 1000
+  classifier_based_selection: false
+  per_image_normalization: false
+readability_reference:
+  directory: outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01
+  task_id: LIGHTGEN_SMALL_G1_G4_NATIVE_READABILITY_V1
+  review_id: 99d8041812f54d44b98031876fa21519
+  quality_checks:
+    duplicate_consistency_min: 18
+    anchor_label_match_min: 18
+  generated_population: 200
+auto_review_prototype:
+  packages: [G1_G4_NATIVE_READABILITY_R, DECODER_NATIVE_GRADIENT_D]
+  records: 400
+  features: 23
+  feature_groups: [E_D_logits_10, E_C_logits_10, view_mean_intensity, raw_peak_w_per_pixel, proxy_clipping_area_fraction]
+  held_out_grouping: whole_review_package
+  optimizer: Adam
+  optimizer_steps_per_fit: 500
+  learning_rate: 0.01
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  l2_weight_coefficient: 0.01
+  readability_threshold: 0.5
+training:
+  seed: 2026101501
+  source_global_step: 45000
+  continuation_updates: 5000
+  endpoint_global_step: 50000
+  batch_size: 10
+  samples_per_class_per_batch: 1
+  optimizer: Adam
+  learning_rate: 1.0e-3
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  trainable_groups: [encoder_phase, decoder_phase]
+  encoder_updates: 5000
+  decoder_updates: 5000
+  checkpoint_interval: 500
+  progress_interval: 100
+  checkpoints_at: [0, 2500, 5000]
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+optics:
+  wavelength_m: 5.32e-7
+  input_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  encoder_layers: 2
+  encoder_shape: [100, 100]
+  generator_layers: 2
+  generator_shape: [100, 100]
+  phase_planes: 4
+  phase_parameters: 40000
+  propagation_grid: 2048
+  reference_grid: 4096
+  common_complex_roi_m: 1.6e-4
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+  ols_basis: gaussian_s12_v1
+  ols_ports: 100
+  ols_transport: identity
+  port_pitch_m: 2.0e-5
+  field_1e_radius_m: 3.5e-6
+evaluation:
+  evaluator_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  ec_checkpoint: outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt
+  evaluator_role: frozen_confirmation_only
+  reconstruction_bootstrap_resamples: 2000
+  reconstruction_bootstrap_seed: 2026102301
+  generation_bootstrap_resamples: 2000
+  generation_bootstrap_seed: 2026102302
+  view: fixed_gain_then_clamp_0_1_then_adaptive_average_pool_28
+quality_gate:
+  reconstruction_psnr_db_min: 20.0
+  reconstruction_ssim_min: 0.80
+  generation_macro_recall_min: 0.80
+  generation_recall_per_class_min: 0.60
+  proxy_clipping_fraction_max: 0.01
+  generated_to_dev_tv_ratio_min: 0.25
+output:
+  experiment_root: outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/attempt_01
+  evidence_tier: diagnostic_only
+  formal_result_budget_bytes: 536870912

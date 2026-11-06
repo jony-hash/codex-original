@@ -1,0 +1,112 @@
+schema: ols_decoder_mnist_reconstruction.v12
+source:
+  v9_run_dir: outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02
+  report: report.json
+  response_archive: frozen_v8_response_inputs_v9.npz
+  encoder_phase_screens: frozen_encoder_phase_screens_v9.pt
+  decoder_phase_screens: decoder_phase_screens_v9.pt
+  camera_directory: camera_measurements
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  dev_per_label: 500
+  sample_seed: 2026101801
+  fit_per_label: 10
+  confirmation_per_label: 20
+  input_shape: [100, 100]
+  sensor_shape: [200, 200]
+  interpolation: bilinear_align_corners_false
+  official_dev_reads: 0
+  official_test_reads: 0
+optics:
+  wavelength_m: 5.32e-7
+  dx_m: 2.0e-6
+  source_power_w: 2.493e-4
+  encoder_aperture_m: 2.0e-4
+  encoder_shape: [100, 100]
+  encoder_layer_spacing_m: 1.5e-3
+  encoder_to_fiber_distance_m: 1.5e-3
+  encoder_layer_transmission_power: 0.889
+  decoder_layer_transmission_power: 0.889
+  fiber_pitch_m: 1.25e-4
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  decoder_layers: 2
+  decoder_shape: [100, 100]
+  decoder_pixel_pitch_m: 2.0e-6
+  decoder_spacing_m: 1.5e-3
+  grids: [4096, 6144, 8192]
+  common_roi_pixels: 2048
+  decoder_input_route: explicit_4f
+  source_command_min: 0.25
+  source_command_max: 0.75
+routes:
+  explicit_4f:
+    focal_lengths_m: [1.0e-2, 5.0e-3]
+    segments_m: [1.0e-2, 1.5e-2, 5.0e-3]
+    magnification: -0.5
+    clear_aperture_diameter_m: 2.0e-3
+    lens_power_transmission: 0.98
+backend_relay:
+  magnification: -2.5
+  segments_m: [0.1, 0.25]
+  focal_length_m: 7.14285714285714e-2
+  clear_aperture_m: 2.66e-2
+  additional_power_transmission: 1.0
+camera:
+  shape: [200, 200]
+  pixel_pitch_m: 2.5e-6
+  quantum_efficiency: 0.5
+  full_well_e: 30000.0
+  primary_exposure_s: 1.0e-3
+  sensitivity_exposures_s: [1.0e-5, 1.0e-4, 1.0e-2]
+  read_noise_e_rms: 1.0
+  dark_current_e_per_pixel_s: 0.0
+training:
+  candidates: [candidate_2x2_C, candidate_3x3_B]
+  primary_mode: gaussian_s12
+  sensitivity_mode: lp01
+  route: explicit_4f
+  decoder_initial_state: fixed_low_frequency
+  updates_per_candidate: 500
+  batch_size: 10
+  schedule_seed: 2026101802
+  adam_learning_rate: 1.0e-3
+  adam_betas: [0.9, 0.999]
+  adam_epsilon: 1.0e-8
+  adam_weight_decay: 0.0
+  checkpoint_interval: 10
+  progress_interval: 1
+  preflight_continuous_steps: 3
+  preflight_resume_from_step: 1
+  interruption_microbatches_before_sigterm: 1
+  reconstruction_loss: clipped_expected_camera_task_mse
+measurement:
+  camera_quadrature_primary_order: 4
+  camera_quadrature_reference_order: 8
+  native_complex128_rows_per_label: 1
+  bootstrap_replicates: 2000
+  bootstrap_seed: 2026101803
+  numerical_epsilon_floor: 1.0e-8
+  numerical_epsilon_multiplier: 10.0
+  foreground_threshold: 0.1
+  gallery_fit_per_label: 1
+  gallery_confirmation_per_label: 2
+gates:
+  forward_relative_error: 1.0e-4
+  aligned_common_roi_complex64_error: 1.0e-4
+  recovery_phase_atol: 1.0e-7
+  recovery_phase_rtol: 1.0e-6
+  recovery_adam_atol: 1.0e-7
+  recovery_adam_rtol: 1.0e-6
+  recovery_camera_output_relative_error: 1.0e-6
+  bootstrap_lower_bound_above_numeric_tau: true
+scope:
+  formal_generator_training_updates: 0
+  scientific_reconstruction_updates_per_candidate: 500
+  evaluator_calls: 0
+  fid_calls: 0
+  material_forward_calls: 0
+  loss_changes: 0
+  formal_training_cli_migration: forbidden
+  checkpoint_migration: forbidden

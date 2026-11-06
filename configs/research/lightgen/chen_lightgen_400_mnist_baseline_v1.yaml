@@ -1,0 +1,99 @@
+schema: chen_lightgen_400_mnist_baseline.v1
+task_id: CHEN_LIGHTGEN_400_MNIST_BASELINE_V1
+semantic_authority_id: CHEN_LIGHTGEN_400_PAPER_REFERENCED_DIAGNOSTIC_V1
+data:
+  training_file: data/MNIST/processed/training.pt
+  train_count: 55000
+  dev_count: 5000
+  split_seed: 1234
+  examples_per_label_in_dev: 500
+  official_test_reads: 0
+optics:
+  encoder_layers: 2
+  decoder_layers: 4
+  active_shape: [400, 400]
+  pixel_pitch_m: 3.0e-6
+  wavelength_m: 5.32e-7
+  adjacent_layer_spacing_m: 3.0e-3
+  encoder_to_ols_distance_m: 3.0e-3
+  ols_to_decoder_distance_m: 3.0e-3
+  decoder_to_camera_distance_m: 3.0e-3
+  propagation_grid_candidates: [2048, 3072, 4096, 6144]
+  common_complex_comparison_roi_m: 1.5e-3
+  window_complex_relative_error_max: 1.0e-4
+  pixel_sampling_reference_factor: 2
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+  ols:
+    basis_id: gaussian_s12_v1
+    ports: 100
+    rows: 10
+    columns: 10
+    port_pitch_m: 1.25e-4
+    cladding_diameter_m: 1.25e-4
+    mode_field_diameter_m: 1.4222e-5
+    fiber_length_m: 8.5e-3
+    transport: ideal_identity
+    geometry_status: PROJECT_GEOMETRY_UNMEASURED
+    phase_screen_to_ols_distances_are_project_approximations: true
+loss:
+  family: truncated_gaussian_bogt
+  trainable_groups: [encoder_phase, decoder_phase]
+  reconstruction: fixed_camera_gain_unclipped_physical_w_per_pixel_mse
+  optical_power_planes: 7
+  optical_power_loss: relative_log_power_squared_mean
+  initial_weight_calibration: inverse_gradient_norm_once_on_first_balanced_train_batch
+  weights_frozen_after_calibration: true
+  camera_gain: global_least_squares_scalar_fit_from_initial_full_train
+  camera_gain_frozen: true
+  eps_s: 1.0e-12
+  eps_op: 1.0e-12
+  prior_mean: 1.0
+  prior_variance: 0.25
+training:
+  updates: 30000
+  logical_batch_size: 10
+  samples_per_label_per_batch: 1
+  schedule_seed: 2026101401
+  initialization: zero_phase_six_layers
+  optimizer: Adam
+  learning_rate: 1.0e-3
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  early_stopping: false
+  checkpoint_every_updates: 500
+  progress_every_updates: 100
+  retained_recovery_checkpoints: 2
+  checkpoint_activation_recomputation: true
+  display_quantization_levels: 8
+generation:
+  sampler: class_conditional_empirical_complex_gaussian
+  fit_role: TRAIN
+  fit_count: 55000
+  global_phase_gauge: maximum_magnitude_port
+  feature_scale: frozen_initial_train_mean_modal_power
+  covariance: joint_real_imag_full_covariance
+  covariance_relative_ridge: 1.0e-6
+  samples_per_label: 1000
+  sampling_seed: 2026101402
+  maximum_modal_power_w: 1.970270253e-4
+  rejection: reject_draws_above_fixed_maximum_modal_power
+  classifier_based_sample_selection: false
+evaluation:
+  evaluator_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  evaluator_role: frozen_independent_confirmation_only
+  reconstruction_psnr_db_min: 20.0
+  reconstruction_ssim_min: 0.80
+  generated_macro_recall_min: 0.80
+  generated_per_class_recall_min: 0.60
+  saturation_fraction_max: 0.01
+  shape_distance: unit_sum_intensity_total_variation
+  minimum_generated_to_dev_within_class_shape_distance_ratio: 0.25
+  shape_pairs_per_class: 10000
+  nearest_train_reference_per_class: 50
+output:
+  run_dir: outputs/20261014_chen_lightgen_400_mnist_baseline_v1/runs/attempt_09
+  evidence_tier: diagnostic-only
+  formal_default_migration: forbidden
+  output_test_reads: 0

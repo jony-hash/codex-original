@@ -1,0 +1,50 @@
+schema: lightgen_direct_facet_linear.v1
+task_id: LIGHTGEN_DIRECT_FACET_TE_LINEAR_V1
+evidence_tier: diagnostic_only
+model:
+  wavelength_nm: 532.0
+  time_factor: exp(-i omega t)
+  incidence: normal_plane_wave
+  polarization: scalar_isotropic
+  propagation_direction: glass -> Te -> air
+reference_planes:
+  input_plane: z=0 at glass/Te boundary
+  output_plane: z=d at Te/air boundary
+material:
+  sample_identity: LIT-TE-A30-SiO2
+  te_source_id: SRC-01
+  te_thickness_nm: 30.0
+  te_nk_lower:
+    wavelength_um: 0.52991
+    n: 3.241
+    k: 2.878
+  te_nk_upper:
+    wavelength_um: 0.53448
+    n: 3.291
+    k: 2.879
+media:
+  glass_model:
+    name: fused_silica_Malitson_1965
+    source_id: SRC-14
+    temperature_c: 20.0
+    k_assumption: 0.0
+    malitson_sellmeier:
+      b1: 0.6961663
+      c1_um: 0.0684043
+      b2: 0.4079426
+      c2_um: 0.1162414
+      b3: 0.8974794
+      c3_um: 9.896161
+  air_refractive_index: 1.0
+  glass_extinction_coefficient_assumption: 0.0
+sources:
+  parameter_register_csv: research_assets/lightgen/hardware_g1_material_evidence_20261028_v1/material_parameter_register.csv
+  te_nk_dataset: https://github.com/polyanskiy/refractiveindex.info-database/blob/main/database/data/main/Te/nk/Ciesielski.yml
+  silica_dispersion: https://doi.org/10.1364/JOSA.55.001205
+  thin_film_method: https://arxiv.org/abs/1603.02720
+checks:
+  complex_field_absolute_tolerance: 1.0e-10
+  power_and_dissipation_absolute_tolerance: 1.0e-9
+  absorption_quadrature_orders: [64, 128]
+output:
+  profile_samples: 65

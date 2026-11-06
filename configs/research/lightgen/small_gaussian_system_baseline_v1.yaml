@@ -1,0 +1,103 @@
+schema: lightgen_matched_small_vs_chen400.v1
+task_id: LIGHTGEN_SMALL_GAUSSIAN_SYSTEM_BASELINE_V1
+semantic_authority_id: USER_APPROVED_SMALL_GAUSSIAN_SYSTEM_BASELINE_20261020
+execution_source_semantics_id: small_gaussian_system_baseline_v1
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+training:
+  paired_schedule_seeds: [2026101501]
+  updates: 30000
+  logical_batch_size: 10
+  samples_per_class_per_batch: 1
+  initialization: zero_phase
+  optimizer: Adam
+  learning_rate: 0.001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  early_stopping: false
+  evaluation_steps: [0, 5000, 10000, 20000, 30000]
+  checkpoint_interval: 500
+  progress_interval: 100
+optics:
+  wavelength_m: 5.32e-7
+  input_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  small:
+    encoder_layers: 2
+    encoder_shape: [100, 100]
+    generator_layers: 2
+    generator_shape: [100, 100]
+    phase_parameters: 40000
+    slm_shape: [200, 200]
+    phase_pixel_pitch_m: 2.0e-6
+    layer_spacing_m: 1.5e-3
+    ols_basis: gaussian_s12_v1
+    ols_ports: 100
+    ols_transport: identity
+    port_pitch_m: 2.0e-5
+    field_1e_radius_m: 3.5e-6
+    geometry_status: PROJECT_GEOMETRY_UNMEASURED
+    relay: existing_4f_input_and_b0_output
+    propagation_grid_candidates: [2048, 4096]
+    production_propagation_grid: 2048
+    common_complex_roi_m: 1.6e-4
+  chen400:
+    encoder_layers: 2
+    encoder_shape: [400, 400]
+    generator_layers: 4
+    generator_shape: [400, 400]
+    phase_parameters: 960000
+    pixel_pitch_m: 3.0e-6
+    layer_spacing_m: 3.0e-3
+    ols_basis: gaussian_s12_v1
+    ols_ports: 100
+    ols_transport: identity
+    propagation_grid_candidates: [2048, 3072, 4096, 6144]
+    common_complex_roi_m: 1.5e-3
+  window_complex_relative_error_max: 1.0e-4
+loss:
+  family: truncated_gaussian_bogt
+  components: [dist, rec, op]
+  reconstruction: fixed_camera_gain_unclipped_native_physical_w_per_pixel_mse
+  distribution: truncated_positive_gaussian_kl_mean_1_variance_0_25
+  plane_power: relative_log_power_squared_mean_over_model_planes
+  initial_camera_gain: global_least_squares_scalar_from_full_train
+  initial_modal_scale: full_train_mean_modal_power
+  initial_plane_power_reference: full_train_mean_each_recorded_plane
+  initial_weight_calibration: inverse_component_gradient_norm_once_first_balanced_train_batch
+  weights_frozen_after_calibration: true
+  camera_gain_frozen_after_calibration: true
+  evaluator_in_loss: false
+evaluation:
+  evaluator_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  evaluator_role: frozen_confirmation_only
+  common_view: fixed_gain_then_clamp_0_1_then_adaptive_average_pool_28
+  common_target: original_mnist_28x28
+  psnr: per_image_mean_db
+  ssim: gaussian_7x7_sigma_1_5_data_range_1
+  generated_samples_per_class: 1000
+  generated_shape_metric: unit_sum_intensity_total_variation
+  generated_and_dev_pair_count_per_class: 10000
+  classifier_sample_selection: false
+  matched_sampling_streams: per_class_shared_standard_normal_proposal_ids
+  max_proposals_per_class: 1000000
+  paired_bootstrap_resamples: 2000
+  paired_bootstrap_seed: 2026102003
+quality_gate:
+  reconstruction_psnr_db_min: 20.0
+  reconstruction_ssim_min: 0.80
+  generation_macro_recall_min: 0.80
+  generation_recall_per_class_min: 0.60
+  proxy_clipping_fraction_max: 0.01
+  generated_to_dev_tv_ratio_min: 0.25
+output:
+  experiment_root: outputs/20261020_lightgen_small_gaussian_system_baseline_v1/runs/attempt_01
+  evidence_tier: diagnostic_only
+  save_evaluation_checkpoints: true
+  formal_result_budget_bytes: 536870912

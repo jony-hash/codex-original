@@ -1,0 +1,2687 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Descriptive HW207 optical layout provenance and theory input",
+  "non_runtime": true,
+  "snapshot_date": "2026-11-03",
+  "configuration_identity": "HW207_CURRENT_SOURCE_RECORD_WITH_THEORY_CANDIDATES",
+  "evidence_states": [
+    "SOURCE_RAW_BOM",
+    "USER_SPEC_IMAGE",
+    "PHOTO_ESTIMATE_NOT_CALIBRATED",
+    "THEORY_4F",
+    "UNKNOWN"
+  ],
+  "sources": [
+    {
+      "id": "distance_excel",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/02_距离数据/LightGen_adjacent_optics_distance_table_v1.xlsx",
+      "sheet": "光路距离表",
+      "rows": "5-17 (13 data rows); 20-22 scope notes; 24-28 photo key",
+      "role": "13-segment initial photo estimates and remarks"
+    },
+    {
+      "id": "distance_tsv",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/02_距离数据/distance_table_copy_to_excel.tsv",
+      "role": "13-row values, branches, and photo labels align with distance Excel; endpoint wording and all remark text are retained separately"
+    },
+    {
+      "id": "main_bom",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/05_器件参考/LightGen光路-1014-v5.xlsx",
+      "sheets": [
+        {
+          "name": "Sheet1",
+          "rows": "3-27"
+        },
+        {
+          "name": "Sheet2",
+          "rows": "3-27"
+        }
+      ],
+      "role": "Original procurement records, preserve quantity differences"
+    },
+    {
+      "id": "bom_reference",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/05_器件参考/LightGen_optical_setup_BOM_reference.xlsx",
+      "sheets": [
+        "Sheet1",
+        "Sheet2"
+      ],
+      "role": "Byte-identical copy of main BOM workbook; identical source rows represented once in bom_source_rows."
+    },
+    {
+      "id": "readme",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/README_先读.md"
+    },
+    {
+      "id": "baseline",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/实物信息与闭环状态.md"
+    },
+    {
+      "id": "original_photo",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/03_原始光路照片/optical_setup_original.jpg"
+    },
+    {
+      "id": "tape_M1",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/04_卷尺测量照片/M1_laser_beam_expander_mirror.jpg"
+    },
+    {
+      "id": "tape_M2",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/04_卷尺测量照片/M2_PF_PBS_BS_SLM.jpg"
+    },
+    {
+      "id": "tape_M3",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/04_卷尺测量照片/M3_BS_fold_mirror.jpg"
+    },
+    {
+      "id": "tape_M4",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/04_卷尺测量照片/M4_relay_output_train.jpg"
+    },
+    {
+      "id": "dmd_user_image",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/05_器件参考/DMD_F9000_用户规格.jpg"
+    },
+    {
+      "id": "cmos_user_image",
+      "path": "research_assets/lightgen/HW207_实物与距离基线_20261103/05_器件参考/CMOS_GSENSE2020_用户规格.png"
+    },
+    {
+      "id": "fld_f9000",
+      "url": "https://www.fldiscovery.com/product/f9000/",
+      "accessed": "2026-11-03",
+      "status": "HTTP_403_NOT_INDEPENDENTLY_RETRIEVED"
+    },
+    {
+      "id": "ti_dlp9000_datasheet",
+      "url": "https://www.ti.com/lit/ds/symlink/dlp9000.pdf",
+      "document": "DLPS036B Rev. B, revised October 2016",
+      "accessed": "2026-11-03"
+    },
+    {
+      "id": "ti_dlp9000_product",
+      "url": "https://www.ti.com/product/DLP9000",
+      "accessed": "2026-11-03"
+    }
+  ],
+  "installed_status": "UNKNOWN",
+  "topology": {
+    "input_chain": [
+      "Laser",
+      "Beam expander",
+      "Mirror-1",
+      "PF-1",
+      "PBS",
+      "BS"
+    ],
+    "slm_branch": {
+      "nodes": [
+        "BS",
+        "SLM_position_temporary_mirror"
+      ],
+      "return_to": "BS",
+      "round_trip_segments": [
+        "06_outbound",
+        "06_return"
+      ],
+      "device_status": "temporary mirror currently substitutes for reflective SLM; F9000 installation and cabling UNKNOWN"
+    },
+    "imaging_branch": [
+      "BS",
+      "Mirror-2_fold",
+      "Relay L2",
+      "Relay L1",
+      "PF-2",
+      "LightGen_chip_reserved_position",
+      "Relay lens",
+      "CMOS_reserved_position"
+    ],
+    "direction_status": "Topology follows user source. Actual propagation axes, reflection angles, splitter ports, PBS ports and DMD ON/OFF collection remain UNKNOWN."
+  },
+  "distance_semantics": {
+    "source_unit": "cm rounded from tape-measure photographs",
+    "stored_unit": "mm",
+    "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+    "endpoint_basis": "approximate optical component center or reflection point as described by source; not principal planes, housing surfaces, or sensor plane calibration",
+    "uncertainty_mm": null,
+    "uncertainty_reason": "Source provides no quantified uncertainty. Do not invent an error bound.",
+    "mechanical_gap_mm": null,
+    "principal_plane_gap_mm": null,
+    "geometric_path_mm": null,
+    "optical_path_length_mm": null,
+    "optical_path_unknown_reason": "Actual optical axis, folded path, refractive indices, and in-element lengths are not closed. Air geometric estimate is not measured OPL.",
+    "unknown_reasons": {
+      "mechanical_gap_mm": "No housing-face measurements or reproducible mechanical datum; source endpoints refer to approximate optical centers/reflection points.",
+      "principal_plane_gap_mm": "Lens model/installed orientation and principal-plane locations are not established by the photo estimates.",
+      "geometric_path_mm": "Folded beam axes and reflection angles are not calibrated; straight-line endpoint projections are not a verified ray path.",
+      "optical_path_length_mm": "In-element propagation lengths and refractive indices along the actual path are unknown."
+    }
+  },
+  "distance_segments": [
+    {
+      "id": "01",
+      "branch": "input",
+      "from": "Laser_output_aperture",
+      "to": "Beam_expander_input",
+      "distance_mm": 30,
+      "source_cm": 3,
+      "photo": "M1",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 5",
+        "tsv": "distance_table_copy_to_excel.tsv / line 2"
+      },
+      "source_branch_exact_tsv": "输入链",
+      "source_start_exact_tsv": "Laser",
+      "source_end_exact_tsv": "Beam expander",
+      "source_value_cm_exact_tsv": "3",
+      "source_value_mm_exact_tsv": "30",
+      "source_remark_excel_exact": "出光口—入光口中心投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读；出光口至入光口中心投影",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "出光口至入光口中心投影估读",
+      "source_segment_number_exact_excel": "1",
+      "source_branch_exact_excel": "输入链",
+      "source_endpoint_exact_excel": "Laser → Beam expander",
+      "source_value_cm_exact_excel": "3",
+      "source_image_mark_exact_excel": "01 ≈3 cm",
+      "source_photo_exact_excel": "M1"
+    },
+    {
+      "id": "02",
+      "branch": "input",
+      "from": "Beam_expander",
+      "to": "Mirror-1",
+      "distance_mm": 100,
+      "source_cm": 10,
+      "photo": "M1",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 6",
+        "tsv": "distance_table_copy_to_excel.tsv / line 3"
+      },
+      "source_branch_exact_tsv": "输入链",
+      "source_start_exact_tsv": "Beam expander",
+      "source_end_exact_tsv": "Mirror-1",
+      "source_value_cm_exact_tsv": "10",
+      "source_value_mm_exact_tsv": "100",
+      "source_remark_excel_exact": "卷尺刻度投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "卷尺刻度投影估读",
+      "source_segment_number_exact_excel": "2",
+      "source_branch_exact_excel": "输入链",
+      "source_endpoint_exact_excel": "Beam expander → Mirror-1",
+      "source_value_cm_exact_excel": "10",
+      "source_image_mark_exact_excel": "02 ≈10 cm",
+      "source_photo_exact_excel": "M1"
+    },
+    {
+      "id": "03",
+      "branch": "input",
+      "from": "Mirror-1_reflection_point",
+      "to": "PF-1",
+      "distance_mm": 130,
+      "source_cm": 13,
+      "photo": "M2",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 7",
+        "tsv": "distance_table_copy_to_excel.tsv / line 4"
+      },
+      "source_branch_exact_tsv": "输入链",
+      "source_start_exact_tsv": "Mirror-1",
+      "source_end_exact_tsv": "PF-1",
+      "source_value_cm_exact_tsv": "13",
+      "source_value_mm_exact_tsv": "130",
+      "source_remark_excel_exact": "卷尺端点中心投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "卷尺端点中心投影估读",
+      "source_segment_number_exact_excel": "3",
+      "source_branch_exact_excel": "输入链",
+      "source_endpoint_exact_excel": "Mirror-1 → PF-1",
+      "source_value_cm_exact_excel": "13",
+      "source_image_mark_exact_excel": "03 ≈13 cm",
+      "source_photo_exact_excel": "M2"
+    },
+    {
+      "id": "04",
+      "branch": "input",
+      "from": "PF-1",
+      "to": "PBS",
+      "distance_mm": 70,
+      "source_cm": 7,
+      "photo": "M2",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 8",
+        "tsv": "distance_table_copy_to_excel.tsv / line 5"
+      },
+      "source_branch_exact_tsv": "输入链",
+      "source_start_exact_tsv": "PF-1",
+      "source_end_exact_tsv": "PBS",
+      "source_value_cm_exact_tsv": "7",
+      "source_value_mm_exact_tsv": "70",
+      "source_remark_excel_exact": "卷尺端点中心投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "卷尺端点中心投影估读",
+      "source_segment_number_exact_excel": "4",
+      "source_branch_exact_excel": "输入链",
+      "source_endpoint_exact_excel": "PF-1 → PBS",
+      "source_value_cm_exact_excel": "7",
+      "source_image_mark_exact_excel": "04 ≈7 cm",
+      "source_photo_exact_excel": "M2"
+    },
+    {
+      "id": "05",
+      "branch": "input",
+      "from": "PBS",
+      "to": "BS",
+      "distance_mm": 90,
+      "source_cm": 9,
+      "photo": "M2",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 9",
+        "tsv": "distance_table_copy_to_excel.tsv / line 6"
+      },
+      "source_branch_exact_tsv": "输入链",
+      "source_start_exact_tsv": "PBS",
+      "source_end_exact_tsv": "BS",
+      "source_value_cm_exact_tsv": "9",
+      "source_value_mm_exact_tsv": "90",
+      "source_remark_excel_exact": "卷尺端点中心投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "卷尺端点中心投影估读",
+      "source_segment_number_exact_excel": "5",
+      "source_branch_exact_excel": "输入链",
+      "source_endpoint_exact_excel": "PBS → BS",
+      "source_value_cm_exact_excel": "9",
+      "source_image_mark_exact_excel": "05 ≈9 cm",
+      "source_photo_exact_excel": "M2"
+    },
+    {
+      "id": "06_outbound",
+      "source_segment": "06",
+      "branch": "slm",
+      "from": "BS",
+      "to": "SLM_position_temporary_mirror",
+      "distance_mm": 70,
+      "source_cm": 7,
+      "photo": "M2",
+      "distance_type": "single_pass_estimate",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 10",
+        "tsv": "distance_table_copy_to_excel.tsv / line 7"
+      },
+      "source_branch_exact_tsv": "SLM支路",
+      "source_start_exact_tsv": "BS",
+      "source_end_exact_tsv": "SLM位置（临时反射镜）",
+      "source_value_cm_exact_tsv": "7",
+      "source_value_mm_exact_tsv": "70",
+      "source_remark_excel_exact": "临时反射镜代位；实际SLM安装后复测",
+      "source_remark_tsv_exact": "单程距离；SLM反射后沿同一路径返回",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "临时反射镜代位；单程，反射后沿同路径返回",
+      "source_segment_number_exact_excel": "6",
+      "source_branch_exact_excel": "SLM支路",
+      "source_endpoint_exact_excel": "BS → SLM位（临时反射镜）",
+      "source_value_cm_exact_excel": "7",
+      "source_image_mark_exact_excel": "06 ≈7 cm",
+      "source_photo_exact_excel": "M2"
+    },
+    {
+      "id": "06_return",
+      "source_segment": "06",
+      "branch": "slm_return",
+      "from": "SLM_position_temporary_mirror",
+      "to": "BS",
+      "distance_mm": 70,
+      "source_cm": 7,
+      "photo": "M2",
+      "distance_type": "separate_return_path_assumption",
+      "remark": "展开反射往返时单独表示回程；沿同路径是来源描述，不是DMD真实ON/OFF路径证据",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 10",
+        "tsv": "distance_table_copy_to_excel.tsv / line 7"
+      },
+      "source_branch_exact_tsv": "SLM支路",
+      "source_start_exact_tsv": "BS",
+      "source_end_exact_tsv": "SLM位置（临时反射镜）",
+      "source_value_cm_exact_tsv": "7",
+      "source_value_mm_exact_tsv": "70",
+      "source_remark_excel_exact": "临时反射镜代位；实际SLM安装后复测",
+      "source_remark_tsv_exact": "单程距离；SLM反射后沿同一路径返回",
+      "remark_kind": "interpretation_note_not_source_text",
+      "value_role": "derived_return_copy_not_independent_measurement",
+      "interpretation_note": "Explicit return segment from TSV same-path return description; source has one 70 mm single-pass row.",
+      "source_segment_number_exact_excel": "6",
+      "source_branch_exact_excel": "SLM支路",
+      "source_endpoint_exact_excel": "BS → SLM位（临时反射镜）",
+      "source_value_cm_exact_excel": "7",
+      "source_image_mark_exact_excel": "06 ≈7 cm",
+      "source_photo_exact_excel": "M2"
+    },
+    {
+      "id": "07",
+      "branch": "imaging",
+      "from": "BS",
+      "to": "Mirror-2_fold",
+      "distance_mm": 100,
+      "source_cm": 10,
+      "photo": "M3",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 11",
+        "tsv": "distance_table_copy_to_excel.tsv / line 8"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "BS",
+      "source_end_exact_tsv": "Mirror-2（折转镜）",
+      "source_value_cm_exact_tsv": "10",
+      "source_value_mm_exact_tsv": "100",
+      "source_remark_excel_exact": "垂直尺读数按光轴中心投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "垂直尺读数按光轴中心投影估读",
+      "source_segment_number_exact_excel": "7",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "BS → 折转镜（Mirror-2）",
+      "source_value_cm_exact_excel": "10",
+      "source_image_mark_exact_excel": "07 ≈10 cm",
+      "source_photo_exact_excel": "M3"
+    },
+    {
+      "id": "08",
+      "branch": "imaging",
+      "from": "Mirror-2_fold",
+      "to": "Relay_L2",
+      "distance_mm": 60,
+      "source_cm": 6,
+      "photo": "M4",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 12",
+        "tsv": "distance_table_copy_to_excel.tsv / line 9"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "Mirror-2（折转镜）",
+      "source_end_exact_tsv": "Relay L2",
+      "source_value_cm_exact_tsv": "6",
+      "source_value_mm_exact_tsv": "60",
+      "source_remark_excel_exact": "全景尺带投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "全景尺带投影估读",
+      "source_segment_number_exact_excel": "8",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "折转镜（Mirror-2） → Relay L2",
+      "source_value_cm_exact_excel": "6",
+      "source_image_mark_exact_excel": "08 ≈6 cm",
+      "source_photo_exact_excel": "M4"
+    },
+    {
+      "id": "09",
+      "branch": "imaging",
+      "from": "Relay_L2",
+      "to": "Relay_L1",
+      "distance_mm": 350,
+      "source_cm": 35,
+      "photo": "M4",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 13",
+        "tsv": "distance_table_copy_to_excel.tsv / line 10"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "Relay L2",
+      "source_end_exact_tsv": "Relay L1",
+      "source_value_cm_exact_tsv": "35",
+      "source_value_mm_exact_tsv": "350",
+      "source_remark_excel_exact": "全景尺带刻度估读",
+      "source_remark_tsv_exact": "卷尺照片估读；两片中继透镜间距",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "全景尺带刻度估读；端点不是已测主平面",
+      "source_segment_number_exact_excel": "9",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "Relay L2 → Relay L1",
+      "source_value_cm_exact_excel": "35",
+      "source_image_mark_exact_excel": "09 ≈35 cm",
+      "source_photo_exact_excel": "M4"
+    },
+    {
+      "id": "10",
+      "branch": "imaging",
+      "from": "Relay_L1",
+      "to": "PF-2",
+      "distance_mm": 90,
+      "source_cm": 9,
+      "photo": "M4",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 14",
+        "tsv": "distance_table_copy_to_excel.tsv / line 11"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "Relay L1",
+      "source_end_exact_tsv": "PF-2",
+      "source_value_cm_exact_tsv": "9",
+      "source_value_mm_exact_tsv": "90",
+      "source_remark_excel_exact": "全景尺带投影估读",
+      "source_remark_tsv_exact": "卷尺照片估读",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "全景尺带投影估读",
+      "source_segment_number_exact_excel": "10",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "Relay L1 → PF-2",
+      "source_value_cm_exact_excel": "9",
+      "source_image_mark_exact_excel": "10 ≈9 cm",
+      "source_photo_exact_excel": "M4"
+    },
+    {
+      "id": "11",
+      "branch": "imaging",
+      "from": "PF-2",
+      "to": "LightGen_chip_reserved_position",
+      "distance_mm": 60,
+      "source_cm": 6,
+      "photo": "M4",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 15",
+        "tsv": "distance_table_copy_to_excel.tsv / line 12"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "PF-2",
+      "source_end_exact_tsv": "LightGen芯片预留位置",
+      "source_value_cm_exact_tsv": "6",
+      "source_value_mm_exact_tsv": "60",
+      "source_remark_excel_exact": "LightGen预留位；芯片安装后复测",
+      "source_remark_tsv_exact": "位置估读；芯片安装后复测",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "LightGen预留位；芯片安装后需重新标定，当前不补测",
+      "source_segment_number_exact_excel": "11",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "PF-2 → LightGen芯片位",
+      "source_value_cm_exact_excel": "6",
+      "source_image_mark_exact_excel": "11 ≈6 cm",
+      "source_photo_exact_excel": "M4"
+    },
+    {
+      "id": "12",
+      "branch": "imaging",
+      "from": "LightGen_chip_reserved_position",
+      "to": "Relay_lens",
+      "distance_mm": 80,
+      "source_cm": 8,
+      "photo": "M4",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 16",
+        "tsv": "distance_table_copy_to_excel.tsv / line 13"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "LightGen芯片预留位置",
+      "source_end_exact_tsv": "Relay lens",
+      "source_value_cm_exact_tsv": "8",
+      "source_value_mm_exact_tsv": "80",
+      "source_remark_excel_exact": "LightGen预留位；芯片安装后复测",
+      "source_remark_tsv_exact": "位置估读；芯片安装后复测",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "LightGen预留位；芯片安装后需重新标定",
+      "source_segment_number_exact_excel": "12",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "LightGen芯片位 → Relay lens",
+      "source_value_cm_exact_excel": "8",
+      "source_image_mark_exact_excel": "12 ≈8 cm",
+      "source_photo_exact_excel": "M4"
+    },
+    {
+      "id": "13",
+      "branch": "imaging",
+      "from": "Relay_lens",
+      "to": "CMOS_reserved_position",
+      "distance_mm": 100,
+      "source_cm": 10,
+      "photo": "M4",
+      "status": "PHOTO_ESTIMATE_NOT_CALIBRATED",
+      "source_location": {
+        "excel": "LightGen_adjacent_optics_distance_table_v1.xlsx / 光路距离表 / row 17",
+        "tsv": "distance_table_copy_to_excel.tsv / line 14"
+      },
+      "source_branch_exact_tsv": "成像支路",
+      "source_start_exact_tsv": "Relay lens",
+      "source_end_exact_tsv": "CMOS预留位置",
+      "source_value_cm_exact_tsv": "10",
+      "source_value_mm_exact_tsv": "100",
+      "source_remark_excel_exact": "CMOS预留位；相机安装后复测",
+      "source_remark_tsv_exact": "位置估读；相机安装后复测",
+      "remark_kind": "interpretation_note_not_source_text",
+      "interpretation_note": "CMOS预留位；相机安装后需重新标定",
+      "source_segment_number_exact_excel": "13",
+      "source_branch_exact_excel": "成像支路",
+      "source_endpoint_exact_excel": "Relay lens → CMOS位",
+      "source_value_cm_exact_excel": "10",
+      "source_image_mark_exact_excel": "13 ≈10 cm",
+      "source_photo_exact_excel": "M4"
+    }
+  ],
+  "distance_arithmetic_only_mm": {
+    "segments_01_05_sum": 420,
+    "segments_07_13_sum": 840,
+    "all_13_rows_once_sum": 1330,
+    "conditional_return_route": "420 + 2×70 + 840 = 1400; assumed route only; not continuous verified ray or OPL",
+    "temporary_mirror_to_L2_estimate": "70+100+60=230",
+    "L2_to_L1_source_estimate": 350,
+    "L1_to_chip_reserved_position_estimate": "90+60=150",
+    "temporary_mirror_to_chip_reserved_position_estimate": "70+100+60+350+90+60=730"
+  },
+  "bom_source_rows": [
+    {
+      "sheet": "Sheet1",
+      "row": 3,
+      "name": "relay lens",
+      "brand": "大恒",
+      "type": "消色差透镜",
+      "model": "GCL-010650A",
+      "parameter": "f30 φ25",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "relay lens",
+        "B": "大恒",
+        "C": "消色差透镜",
+        "D": "GCL-010650A",
+        "E": "f30 φ25",
+        "F": "2",
+        "G": "370",
+        "H": "740"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "370",
+      "line_total_source_raw": "740"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 4,
+      "name": "",
+      "brand": "大恒",
+      "type": "三维镜架",
+      "model": "GCM-082814M",
+      "parameter": "φ25.4",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "三维镜架",
+        "D": "GCM-082814M",
+        "E": "φ25.4",
+        "F": "2",
+        "G": "450",
+        "H": "900"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "450",
+      "line_total_source_raw": "900"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 5,
+      "name": "PF",
+      "brand": "大恒",
+      "type": "偏振片",
+      "model": "GCL-050003",
+      "parameter": "φ25.4 消光比500:1",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "PF",
+        "B": "大恒",
+        "C": "偏振片",
+        "D": "GCL-050003",
+        "E": "φ25.4    消光比500∶1",
+        "F": "2",
+        "G": "280",
+        "H": "560"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "280",
+      "line_total_source_raw": "560"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 6,
+      "name": "",
+      "brand": "大恒",
+      "type": "偏振镜架",
+      "model": "GCM-0902M",
+      "parameter": "φ25.4",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "偏振镜架",
+        "D": "GCM-0902M",
+        "E": "φ25.4",
+        "F": "2",
+        "G": "350",
+        "H": "700"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "350",
+      "line_total_source_raw": "700"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 7,
+      "name": "",
+      "brand": "大恒",
+      "type": "干板夹",
+      "model": "GCM-132101M",
+      "parameter": "夹持厚度≤10mm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "干板夹",
+        "D": "GCM-132101M",
+        "E": "夹持厚度≤10mm",
+        "F": "1",
+        "G": "140",
+        "H": "140"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "140",
+      "line_total_source_raw": "140"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 8,
+      "name": "relay system",
+      "brand": "大恒",
+      "type": "消色差透镜",
+      "model": "GCL-010605A",
+      "parameter": "f150 φ25.4",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "relay system",
+        "B": "大恒",
+        "C": " 消色差透镜",
+        "D": "GCL-010605A",
+        "E": "f150   φ25.4",
+        "F": "2",
+        "G": "325",
+        "H": "650"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "325",
+      "line_total_source_raw": "650"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 9,
+      "name": "",
+      "brand": "大恒",
+      "type": "简易镜架",
+      "model": "GCT-080104",
+      "parameter": "φ25.4",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "简易镜架",
+        "D": "GCT-080104",
+        "E": "φ25.4",
+        "F": "2",
+        "G": "140",
+        "H": "280"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "140",
+      "line_total_source_raw": "280"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 10,
+      "name": "",
+      "brand": "大恒",
+      "type": "支杆",
+      "model": "GCT-010107-P4",
+      "parameter": "400mm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "支杆",
+        "D": "GCT-010107-P4",
+        "E": "400mm",
+        "F": "1",
+        "G": "595",
+        "H": "595"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "595",
+      "line_total_source_raw": "595"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 11,
+      "name": "Mirror",
+      "brand": "大恒",
+      "type": "二维镜架",
+      "model": "GCM-080817M",
+      "parameter": "φ40",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Mirror",
+        "B": "大恒",
+        "C": "二维镜架",
+        "D": "GCM-080817M",
+        "E": "φ40",
+        "F": "1",
+        "G": "310",
+        "H": "310"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "310",
+      "line_total_source_raw": "310"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 12,
+      "name": "",
+      "brand": "大恒",
+      "type": "单波长高反射镜",
+      "model": "GCC-101044",
+      "parameter": "φ40 532nm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "单波长高反射镜",
+        "D": "GCC-101044",
+        "E": "φ40     532nm",
+        "F": "1",
+        "G": "190",
+        "H": "190"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "190",
+      "line_total_source_raw": "190"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 13,
+      "name": "BS",
+      "brand": "麓邦",
+      "type": "非偏振分光棱镜",
+      "model": "MBS1455-A",
+      "parameter": "400-700mm (raw BOM unit retained)",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "BS",
+        "B": "麓邦",
+        "C": "非偏振分光棱镜",
+        "D": "MBS1455-A",
+        "E": "400-700mm",
+        "F": "1",
+        "G": "850",
+        "H": "850"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "850",
+      "line_total_source_raw": "850"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 14,
+      "name": "PBS",
+      "brand": "大恒",
+      "type": "偏振分光棱镜",
+      "model": "GCC-M402103",
+      "parameter": "420-680nm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "PBS",
+        "B": "大恒",
+        "C": "偏振分光棱镜",
+        "D": "GCC-M402103",
+        "E": "420-680nm",
+        "F": "1",
+        "G": "960",
+        "H": "960"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "960",
+      "line_total_source_raw": "960"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 15,
+      "name": "PF",
+      "brand": "大恒",
+      "type": "偏振片",
+      "model": "GCL-050003",
+      "parameter": "φ25.4 消光比500:1",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "PF",
+        "B": "大恒",
+        "C": "偏振片",
+        "D": "GCL-050003",
+        "E": "φ25.4    消光比500∶1",
+        "F": "1",
+        "G": "280",
+        "H": "280"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "280",
+      "line_total_source_raw": "280"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 16,
+      "name": "",
+      "brand": "大恒",
+      "type": "偏振镜架",
+      "model": "GCM-0902M",
+      "parameter": "φ25.4",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "偏振镜架",
+        "D": "GCM-0902M",
+        "E": "φ25.4",
+        "F": "1",
+        "G": "350",
+        "H": "350"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "350",
+      "line_total_source_raw": "350"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 17,
+      "name": "Mirror",
+      "brand": "大恒",
+      "type": "二维镜架",
+      "model": "GCM-080817M",
+      "parameter": "φ40",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Mirror",
+        "B": "大恒",
+        "C": "二维镜架",
+        "D": "GCM-080817M",
+        "E": "φ40",
+        "F": "1",
+        "G": "310",
+        "H": "310"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "310",
+      "line_total_source_raw": "310"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 18,
+      "name": "",
+      "brand": "大恒",
+      "type": "单波长高反射镜",
+      "model": "GCC-101044",
+      "parameter": "φ40 532nm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "单波长高反射镜",
+        "D": "GCC-101044",
+        "E": "φ40     532nm",
+        "F": "1",
+        "G": "190",
+        "H": "190"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "190",
+      "line_total_source_raw": "190"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 19,
+      "name": "Beam expander",
+      "brand": "大恒",
+      "type": "扩束镜",
+      "model": "GCO-140113",
+      "parameter": "8× 532nm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Beam expander",
+        "B": "大恒",
+        "C": "扩束镜",
+        "D": "GCO-140113",
+        "E": "8×    532nm",
+        "F": "1",
+        "G": "956",
+        "H": "956"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "956",
+      "line_total_source_raw": "956"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 20,
+      "name": "",
+      "brand": "大恒",
+      "type": "V型夹持",
+      "model": "GCM-060202M",
+      "parameter": "",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "V型夹持",
+        "D": "GCM-060202M",
+        "E": "",
+        "F": "1",
+        "G": "170",
+        "H": "170"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "170",
+      "line_total_source_raw": "170"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 21,
+      "name": "支撑",
+      "brand": "大恒",
+      "type": "支杆",
+      "model": "GCM-030113M",
+      "parameter": "102mm",
+      "quantity": 10,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "支撑",
+        "B": "大恒",
+        "C": "支杆",
+        "D": "GCM-030113M",
+        "E": "102mm",
+        "F": "10",
+        "G": "40",
+        "H": "400"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "40",
+      "line_total_source_raw": "400"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 22,
+      "name": "",
+      "brand": "大恒",
+      "type": "调节支座",
+      "model": "GCM-030345M",
+      "parameter": "102mm",
+      "quantity": 10,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "调节支座",
+        "D": "GCM-030345M",
+        "E": "102mm",
+        "F": "10",
+        "G": "200",
+        "H": "2000"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "200",
+      "line_total_source_raw": "2000"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 23,
+      "name": "",
+      "brand": "大恒",
+      "type": "支杆",
+      "model": "GCM-030112M",
+      "parameter": "76mm",
+      "quantity": 6,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "支杆",
+        "D": "GCM-030112M",
+        "E": "76mm",
+        "F": "6",
+        "G": "40",
+        "H": "240"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "40",
+      "line_total_source_raw": "240"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 24,
+      "name": "",
+      "brand": "大恒",
+      "type": "调节支座",
+      "model": "GCM-030344M",
+      "parameter": "76mm",
+      "quantity": 6,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "调节支座",
+        "D": "GCM-030344M",
+        "E": "76mm",
+        "F": "6",
+        "G": "200",
+        "H": "1200"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "200",
+      "line_total_source_raw": "1200"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 25,
+      "name": "",
+      "brand": "大恒",
+      "type": "叉式压板",
+      "model": "GCM-5328M",
+      "parameter": "/",
+      "quantity": 16,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "叉式压板",
+        "D": "GCM-5328M",
+        "E": "/",
+        "F": "16",
+        "G": "60",
+        "H": "960"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "60",
+      "line_total_source_raw": "960"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 26,
+      "name": "Laser",
+      "brand": "长春光机所",
+      "type": "激光器",
+      "model": "PGL-FS-532-50mW",
+      "parameter": "532nm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Laser",
+        "B": "长春光机所",
+        "C": "激光器",
+        "D": "PGL-FS-532-50mW",
+        "E": "532nm",
+        "F": "1",
+        "G": "869",
+        "H": "869"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "869",
+      "line_total_source_raw": "869"
+    },
+    {
+      "sheet": "Sheet1",
+      "row": 27,
+      "name": "",
+      "brand": "定制",
+      "type": "激光器转接板",
+      "model": "",
+      "parameter": "",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "定制",
+        "C": "激光器转接板",
+        "D": "",
+        "E": "",
+        "F": "1",
+        "G": "500",
+        "H": "500"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "500",
+      "line_total_source_raw": "500"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 3,
+      "name": "relay lens",
+      "brand": "大恒",
+      "type": "消色差透镜",
+      "model": "GCL-010650A",
+      "parameter": "f30 φ25",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "relay lens",
+        "B": "大恒",
+        "C": "消色差透镜",
+        "D": "GCL-010650A",
+        "E": "f30 φ25",
+        "F": "3",
+        "G": "680",
+        "H": "2040"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "680",
+      "line_total_source_raw": "2040"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 4,
+      "name": "",
+      "brand": "大恒",
+      "type": "三维镜架",
+      "model": "GCM-082814M",
+      "parameter": "φ25.4",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "三维镜架",
+        "D": "GCM-082814M",
+        "E": "φ25.4",
+        "F": "3",
+        "G": "725",
+        "H": "2175"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "725",
+      "line_total_source_raw": "2175"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 5,
+      "name": "PF",
+      "brand": "大恒",
+      "type": "偏振片",
+      "model": "GCL-050003",
+      "parameter": "φ25.4 消光比500:1",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "PF",
+        "B": "大恒",
+        "C": "偏振片",
+        "D": "GCL-050003",
+        "E": "φ25.4    消光比500∶1",
+        "F": "3",
+        "G": "423",
+        "H": "1269"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "423",
+      "line_total_source_raw": "1269"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 6,
+      "name": "",
+      "brand": "大恒",
+      "type": "偏振镜架",
+      "model": "GCM-0902M",
+      "parameter": "φ25.4",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "偏振镜架",
+        "D": "GCM-0902M",
+        "E": "φ25.4",
+        "F": "3",
+        "G": "700",
+        "H": "2100"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "700",
+      "line_total_source_raw": "2100"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 7,
+      "name": "",
+      "brand": "大恒",
+      "type": "干板夹",
+      "model": "GCM-132101M",
+      "parameter": "夹持厚度≤10mm",
+      "quantity": 4,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "干板夹",
+        "D": "GCM-132101M",
+        "E": "夹持厚度≤10mm",
+        "F": "4",
+        "G": "360",
+        "H": "1440"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "360",
+      "line_total_source_raw": "1440"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 8,
+      "name": "relay system",
+      "brand": "大恒",
+      "type": "消色差透镜",
+      "model": "GCL-010605A",
+      "parameter": "f150 φ25.4",
+      "quantity": 2,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "relay system",
+        "B": "大恒",
+        "C": " 消色差透镜",
+        "D": "GCL-010605A",
+        "E": "f150   φ25.4",
+        "F": "2",
+        "G": "680",
+        "H": "1360"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "680",
+      "line_total_source_raw": "1360"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 9,
+      "name": "",
+      "brand": "大恒",
+      "type": "简易镜架",
+      "model": "GCT-080104",
+      "parameter": "φ25.4",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "简易镜架",
+        "D": "GCT-080104",
+        "E": "φ25.4",
+        "F": "3",
+        "G": "280",
+        "H": "840"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "280",
+      "line_total_source_raw": "840"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 10,
+      "name": "",
+      "brand": "大恒",
+      "type": "支杆",
+      "model": "GCT-010107-P4",
+      "parameter": "400mm",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "支杆",
+        "D": "GCT-010107-P4",
+        "E": "400mm",
+        "F": "3",
+        "G": "730",
+        "H": "2190"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "730",
+      "line_total_source_raw": "2190"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 11,
+      "name": "Mirror",
+      "brand": "大恒",
+      "type": "二维镜架",
+      "model": "GCM-080817M",
+      "parameter": "φ40",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Mirror",
+        "B": "大恒",
+        "C": "二维镜架",
+        "D": "GCM-080817M",
+        "E": "φ40",
+        "F": "3",
+        "G": "600",
+        "H": "1800"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "600",
+      "line_total_source_raw": "1800"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 12,
+      "name": "",
+      "brand": "大恒",
+      "type": "单波长高反射镜",
+      "model": "GCC-101044",
+      "parameter": "φ40 532nm",
+      "quantity": 4,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "单波长高反射镜",
+        "D": "GCC-101044",
+        "E": "φ40     532nm",
+        "F": "4",
+        "G": "640",
+        "H": "2560"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "640",
+      "line_total_source_raw": "2560"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 13,
+      "name": "BS",
+      "brand": "麓邦",
+      "type": "非偏振分光棱镜",
+      "model": "MBS1455-A",
+      "parameter": "400-700mm (raw BOM unit retained)",
+      "quantity": 4,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "BS",
+        "B": "麓邦",
+        "C": "非偏振分光棱镜",
+        "D": "MBS1455-A",
+        "E": "400-700mm",
+        "F": "4",
+        "G": "850",
+        "H": "3400"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "850",
+      "line_total_source_raw": "3400"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 14,
+      "name": "PBS",
+      "brand": "大恒",
+      "type": "偏振分光棱镜",
+      "model": "GCC-M402103",
+      "parameter": "420-680nm",
+      "quantity": 4,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "PBS",
+        "B": "大恒",
+        "C": "偏振分光棱镜",
+        "D": "GCC-M402103",
+        "E": "420-680nm",
+        "F": "4",
+        "G": "955",
+        "H": "3820"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "955",
+      "line_total_source_raw": "3820"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 15,
+      "name": "PF",
+      "brand": "大恒",
+      "type": "偏振片",
+      "model": "GCL-050003",
+      "parameter": "φ25.4 消光比500:1",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "PF",
+        "B": "大恒",
+        "C": "偏振片",
+        "D": "GCL-050003",
+        "E": "φ25.4    消光比500∶1",
+        "F": "3",
+        "G": "423",
+        "H": "1269"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "423",
+      "line_total_source_raw": "1269"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 16,
+      "name": "",
+      "brand": "大恒",
+      "type": "偏振镜架",
+      "model": "GCM-0902M",
+      "parameter": "φ25.4",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "偏振镜架",
+        "D": "GCM-0902M",
+        "E": "φ25.4",
+        "F": "3",
+        "G": "700",
+        "H": "2100"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "700",
+      "line_total_source_raw": "2100"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 17,
+      "name": "Mirror",
+      "brand": "大恒",
+      "type": "二维镜架",
+      "model": "GCM-080817M",
+      "parameter": "φ40",
+      "quantity": 4,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Mirror",
+        "B": "大恒",
+        "C": "二维镜架",
+        "D": "GCM-080817M",
+        "E": "φ40",
+        "F": "4",
+        "G": "600",
+        "H": "2400"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "600",
+      "line_total_source_raw": "2400"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 18,
+      "name": "",
+      "brand": "大恒",
+      "type": "单波长高反射镜",
+      "model": "GCC-101044",
+      "parameter": "φ40 532nm",
+      "quantity": 4,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "单波长高反射镜",
+        "D": "GCC-101044",
+        "E": "φ40     532nm",
+        "F": "4",
+        "G": "640",
+        "H": "2560"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "640",
+      "line_total_source_raw": "2560"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 19,
+      "name": "Beam expander",
+      "brand": "大恒",
+      "type": "扩束镜",
+      "model": "GCO-140113",
+      "parameter": "8× 532nm",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Beam expander",
+        "B": "大恒",
+        "C": "扩束镜",
+        "D": "GCO-140113",
+        "E": "8×    532nm",
+        "F": "3",
+        "G": "964",
+        "H": "2892"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "964",
+      "line_total_source_raw": "2892"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 20,
+      "name": "",
+      "brand": "大恒",
+      "type": "V型夹持",
+      "model": "GCM-060202M",
+      "parameter": "",
+      "quantity": 3,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "V型夹持",
+        "D": "GCM-060202M",
+        "E": "",
+        "F": "3",
+        "G": "370",
+        "H": "1110"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "370",
+      "line_total_source_raw": "1110"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 21,
+      "name": "支撑",
+      "brand": "大恒",
+      "type": "支杆",
+      "model": "GCM-030113M",
+      "parameter": "102mm",
+      "quantity": 10,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "支撑",
+        "B": "大恒",
+        "C": "支杆",
+        "D": "GCM-030113M",
+        "E": "102mm",
+        "F": "10",
+        "G": "50",
+        "H": "500"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "50",
+      "line_total_source_raw": "500"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 22,
+      "name": "",
+      "brand": "大恒",
+      "type": "调节支座",
+      "model": "GCM-030345M",
+      "parameter": "102mm",
+      "quantity": 10,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "调节支座",
+        "D": "GCM-030345M",
+        "E": "102mm",
+        "F": "10",
+        "G": "200",
+        "H": "2000"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "200",
+      "line_total_source_raw": "2000"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 23,
+      "name": "",
+      "brand": "大恒",
+      "type": "支杆",
+      "model": "GCM-030112M",
+      "parameter": "76mm",
+      "quantity": 12,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "支杆",
+        "D": "GCM-030112M",
+        "E": "76mm",
+        "F": "12",
+        "G": "40",
+        "H": "480"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "40",
+      "line_total_source_raw": "480"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 24,
+      "name": "",
+      "brand": "大恒",
+      "type": "调节支座",
+      "model": "GCM-030344M",
+      "parameter": "76mm",
+      "quantity": 12,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "调节支座",
+        "D": "GCM-030344M",
+        "E": "76mm",
+        "F": "12",
+        "G": "190",
+        "H": "2280"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "190",
+      "line_total_source_raw": "2280"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 25,
+      "name": "",
+      "brand": "大恒",
+      "type": "叉式压板",
+      "model": "GCM-5328M",
+      "parameter": "/",
+      "quantity": 16,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "大恒",
+        "C": "叉式压板",
+        "D": "GCM-5328M",
+        "E": "/",
+        "F": "16",
+        "G": "80",
+        "H": "1280"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "80",
+      "line_total_source_raw": "1280"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 26,
+      "name": "Laser",
+      "brand": "长春光机所",
+      "type": "激光器",
+      "model": "PGL-FS-532-50mW",
+      "parameter": "532nm",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "Laser",
+        "B": "长春光机所",
+        "C": "激光器",
+        "D": "PGL-FS-532-50mW",
+        "E": "532nm",
+        "F": "1",
+        "G": "935",
+        "H": "935"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "935",
+      "line_total_source_raw": "935"
+    },
+    {
+      "sheet": "Sheet2",
+      "row": 27,
+      "name": "",
+      "brand": "定制",
+      "type": "激光器转接板",
+      "model": "",
+      "parameter": "",
+      "quantity": 1,
+      "status": "SOURCE_RAW_BOM",
+      "source_cells_exact": {
+        "A": "",
+        "B": "定制",
+        "C": "激光器转接板",
+        "D": "",
+        "E": "",
+        "F": "1",
+        "G": "500",
+        "H": "500"
+      },
+      "quantity_unit": null,
+      "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "remarks": null,
+      "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+      "price_unit": null,
+      "price_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+      "unit_price_source_raw": "500",
+      "line_total_source_raw": "500"
+    }
+  ],
+  "devices": [
+    {
+      "id": "laser",
+      "model": "PGL-FS-532-50mW",
+      "nominal_wavelength_nm": 532,
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM",
+      "source_row": "Sheet1/Sheet2 row 26"
+    },
+    {
+      "id": "beam_expander",
+      "model": "GCO-140113",
+      "nominal_magnification": 8,
+      "nominal_wavelength_nm": 532,
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM",
+      "source_row": "Sheet1 row 19; Sheet2 row 19"
+    },
+    {
+      "id": "mirror",
+      "model": "GCC-101044",
+      "nominal_diameter_mm": 40,
+      "nominal_wavelength_nm": 532,
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM"
+    },
+    {
+      "id": "polarizer_PF1_PF2",
+      "model": "GCL-050003",
+      "nominal_diameter_mm": 25.4,
+      "extinction_ratio": "500:1",
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM",
+      "quantity_is_split_across_rows": true
+    },
+    {
+      "id": "PBS",
+      "model": "GCC-M402103",
+      "source_band_nm": "420-680",
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM"
+    },
+    {
+      "id": "BS",
+      "model": "MBS1455-A",
+      "source_split_ratio": "50:50 per user specification image; not measured",
+      "BOM_raw_band": "400-700mm",
+      "band_unit_conflict": "BOM says mm; user image and manufacturer optical-band specification say nm",
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM"
+    },
+    {
+      "id": "relay_L1_L2",
+      "model": "GCL-010605A",
+      "nominal_focal_length_mm": 150,
+      "nominal_diameter_mm": 25.4,
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM"
+    },
+    {
+      "id": "output_relay_lens",
+      "model": "GCL-010650A",
+      "nominal_focal_length_mm": 30,
+      "nominal_diameter_mm": 25,
+      "installed_status": "UNKNOWN",
+      "status": "SOURCE_RAW_BOM"
+    },
+    {
+      "id": "DMD_F9000",
+      "chipset": "DLPC900 + DLP9000 per user image",
+      "array": "2560x1600",
+      "pitch_um": 7.56,
+      "diagonal_inch": 0.9,
+      "band_nm": [
+        400,
+        700
+      ],
+      "mount_angle_candidates_deg": [
+        0,
+        45
+      ],
+      "micromirror_hinge_axis_deg_relative_to_array": 45,
+      "micromirror_state_tilt_deg": [
+        -12,
+        12
+      ],
+      "pattern_rate_1bit_hz": 9523,
+      "pattern_rate_8bit_hz": 1031,
+      "installed_status": "UNKNOWN",
+      "controller_firmware_mode_timing_and_ON_OFF_collection": "UNKNOWN",
+      "status": "USER_SPEC_IMAGE_AND_TI_DATASHEET",
+      "user_spec_image_fields": {
+        "source": "DMD_F9000_用户规格.jpg",
+        "product_model": "F9000",
+        "chipset": "DLPC900 + DLP9000",
+        "array_diagonal_inch": 0.9,
+        "micromirror_pitch_um": 7.56,
+        "resolution_pixels": [
+          2560,
+          1600
+        ],
+        "wavelength_text": "VIS:400-700nm",
+        "pc_interface": "USB",
+        "synchronous_trigger_interface": "supported",
+        "flex_cable_length_cm": 31,
+        "mount_orientation_candidates_deg": [
+          0,
+          45
+        ],
+        "gray_level_options_bits": [
+          1,
+          8
+        ],
+        "pattern_rate_max_hz": {
+          "1_bit": 9523,
+          "8_bit": 1031
+        },
+        "memory_text": "512Mb*2",
+        "micromirror_tilt_text": "±12°",
+        "fill_factor_percent": 92,
+        "damage_threshold_text": ">20 W/cm²; dependent on heat dissipation and wavelength range",
+        "control_software": "TI GUI",
+        "evidence_status": "USER_SPEC_IMAGE_NOT_INSTALLED_DEVICE_VERIFICATION"
+      },
+      "ti_dlp9000_datasheet_values": {
+        "source_url": "https://www.ti.com/lit/ds/symlink/dlp9000.pdf",
+        "document_revision": "DLPS036B Rev. B, revised October 2016",
+        "accessed": "2026-11-03",
+        "window_transmission_percent": 95,
+        "window_transmission_condition": "single pass through two window surfaces",
+        "micromirror_reflectivity_percent": 88,
+        "array_diffraction_efficiency_percent": 86,
+        "array_fill_factor_percent": 92,
+        "efficiency_conditions": "24 degree illumination; F/2.4 illumination and collection; uniform source spectrum and pupil illumination; 100% electronic mirror duty; excludes optical overfill loss",
+        "pattern_rate_conditions": {
+          "1_bit": "up to 9523 Hz for DLP9000 with dual DLPC900 controllers",
+          "8_bit": "up to 1031 Hz for pre-loaded gray patterns with illumination modulation; external input up to 360 Hz",
+          "not_equivalent_to": "host computer streaming rate or CMOS acquisition rate"
+        },
+        "micromirror_hinge_direction_deg_relative_to_array": [
+          44,
+          46
+        ],
+        "micromirror_hinge_direction_nominal_deg": 45,
+        "micromirror_landed_tilt_deg": 12,
+        "separation_note": "DLP9000X / DLPC910 has separate higher rates; do not apply them to stated DLPC900 + DLP9000 chipset."
+      }
+    },
+    {
+      "id": "CMOS_sensor",
+      "sensor_candidate": "Gpixel GSENSE2020",
+      "camera_model_candidate": "Dhyana 401D, not confirmed by installed camera label",
+      "array": "2048x2048",
+      "pixel_um": 6.5,
+      "QE_percent_at_595nm": 72,
+      "QE_at_532nm": null,
+      "read_noise_e_typical": 2.1,
+      "full_well_user_image_ke": 43,
+      "full_well_conflicting_prior_note_ke": 13.8,
+      "full_well_actual_ke": null,
+      "installed_status": "UNKNOWN",
+      "readout_exposure_gain_rolling_shutter_timing": "UNKNOWN",
+      "status": "USER_SPEC_IMAGE_WITH_CONFLICT",
+      "user_spec_image_fields": {
+        "source": "CMOS_GSENSE2020_用户规格.png",
+        "sensor_type": "FSI sCMOS",
+        "sensor_model": "Gpixel GSENSE2020",
+        "color": "monochrome",
+        "diagonal_mm": 18.8,
+        "active_area_mm": [
+          13.3,
+          13.3
+        ],
+        "resolution_pixels": [
+          2048,
+          2048
+        ],
+        "pixel_size_um": [
+          6.5,
+          6.5
+        ],
+        "peak_qe_percent": 72,
+        "peak_qe_wavelength_nm": 595,
+        "full_well_typical_ke": 43,
+        "frame_rate_fps": {
+          "16_bit": 40,
+          "8_bit": 45
+        },
+        "read_noise_e_typical": 2.1,
+        "read_noise_statistic": "Median",
+        "shutter": "rolling",
+        "exposure_range": {
+          "min_us": 10,
+          "max_s": 10
+        },
+        "binning_modes": [
+          "2x2",
+          "4x4"
+        ],
+        "roi_supported": true,
+        "trigger_modes": [
+          "hardware",
+          "software"
+        ],
+        "trigger_outputs": [
+          "exposure start",
+          "readout end",
+          "trigger ready"
+        ],
+        "trigger_connector": "Hirose",
+        "data_interface": "USB 3.0",
+        "bit_depths": [
+          8,
+          12,
+          16
+        ],
+        "optical_interface": "C-mount",
+        "power_source": "USB 3.0",
+        "power_w_max_text": "<4 W",
+        "camera_dimensions_mm": [
+          56,
+          56,
+          61.7
+        ],
+        "mass_g": 305,
+        "evidence_status": "USER_SPEC_IMAGE_NOT_INSTALLED_CAMERA_VERIFICATION"
+      }
+    },
+    {
+      "id": "LightGen_chip",
+      "target_array": "100x100",
+      "target_pitch_um": 2,
+      "target_active_width_um": 200,
+      "physical_chip_structure_phase_profile_and_installed_status": "UNKNOWN",
+      "installed_status": "UNKNOWN",
+      "status": "HW207_TARGET_ONLY"
+    }
+  ],
+  "coordinate_candidates": {
+    "local_origin": "center of DMD array, at pixel-center coordinate (1279.5,799.5)",
+    "local_axes": "u increases with column, v increases with row; axis signs relative to package and table UNKNOWN",
+    "pitch_um": 7.56,
+    "mount_angle_candidates_deg": [
+      0,
+      45
+    ],
+    "rotation_matrix": "R(alpha)=[[cos(alpha),-sin(alpha)],[sin(alpha),cos(alpha)]]",
+    "unknowns": [
+      "actual angle and sign",
+      "handedness",
+      "table reference and origin",
+      "package orientation",
+      "image row/column flips",
+      "translation",
+      "illumination vector",
+      "ON/OFF output vectors",
+      "collection ports",
+      "PBS/BS port transforms",
+      "fold mirror transforms"
+    ],
+    "status": "CANDIDATE_COORDINATE_MODEL_ONLY"
+  },
+  "relay_theory_candidates": [
+    {
+      "id": "nominal_150_150_input_30_30_output",
+      "status": "THEORY_4F",
+      "input_segments_object_H1_H2_image_mm": [
+        150,
+        300,
+        150
+      ],
+      "input_magnification": -1,
+      "output_segments_object_H1_H2_image_mm": [
+        30,
+        60,
+        30
+      ],
+      "output_magnification": -1,
+      "combined_length_mm": 720,
+      "lens_requirement": "2x150mm and 2x30mm lenses; inventory and installation UNKNOWN",
+      "assumptions": [
+        "ideal thin lenses",
+        "distances measured between principal planes",
+        "exact 4f conjugates"
+      ],
+      "reference_planes": {
+        "input_relay": [
+          "object plane",
+          "first-lens principal plane H1",
+          "second-lens principal plane H2",
+          "LightGen chip image plane"
+        ],
+        "output_relay": [
+          "LightGen chip object plane",
+          "first-lens principal plane H1",
+          "second-lens principal plane H2",
+          "CMOS image plane"
+        ]
+      },
+      "measured_or_installed": false
+    },
+    {
+      "id": "cross_A_150_30_input_30_150_output",
+      "status": "THEORY_4F",
+      "input_segments_object_H1_H2_image_mm": [
+        150,
+        180,
+        30
+      ],
+      "input_magnification": -0.2,
+      "output_segments_object_H1_H2_image_mm": [
+        30,
+        180,
+        150
+      ],
+      "output_magnification": -5,
+      "combined_length_mm": 720,
+      "lens_requirement": "1x150mm and 1x30mm in each relay; inventory UNKNOWN; reallocating 30mm lenses changes output path",
+      "assumptions": [
+        "ideal thin lenses",
+        "distances measured between principal planes",
+        "exact 4f conjugates"
+      ],
+      "reference_planes": {
+        "input_relay": [
+          "object plane",
+          "first-lens principal plane H1",
+          "second-lens principal plane H2",
+          "LightGen chip image plane"
+        ],
+        "output_relay": [
+          "LightGen chip object plane",
+          "first-lens principal plane H1",
+          "second-lens principal plane H2",
+          "CMOS image plane"
+        ]
+      },
+      "measured_or_installed": false
+    },
+    {
+      "id": "cross_B_30_150_input_150_30_output",
+      "status": "THEORY_4F",
+      "input_segments_object_H1_H2_image_mm": [
+        30,
+        180,
+        150
+      ],
+      "input_magnification": -5,
+      "output_segments_object_H1_H2_image_mm": [
+        150,
+        180,
+        30
+      ],
+      "output_magnification": -0.2,
+      "combined_length_mm": 720,
+      "lens_requirement": "1x30mm and 1x150mm in each relay; inventory UNKNOWN; reallocating lenses changes output path",
+      "assumptions": [
+        "ideal thin lenses",
+        "distances measured between principal planes",
+        "exact 4f conjugates"
+      ],
+      "reference_planes": {
+        "input_relay": [
+          "object plane",
+          "first-lens principal plane H1",
+          "second-lens principal plane H2",
+          "LightGen chip image plane"
+        ],
+        "output_relay": [
+          "LightGen chip object plane",
+          "first-lens principal plane H1",
+          "second-lens principal plane H2",
+          "CMOS image plane"
+        ]
+      },
+      "measured_or_installed": false
+    }
+  ],
+  "derived_route_comparisons": [
+    {
+      "quantity": "source L2-L1 estimate versus ideal 150/150 4f spacing",
+      "source_mm": 350,
+      "theory_mm": 300,
+      "status": "different reference planes; cannot infer calibrated defocus"
+    },
+    {
+      "quantity": "source output chain",
+      "source_segments_mm": [
+        80,
+        100
+      ],
+      "status": "not the ideal 30/60/30mm 30/30 4f relay"
+    },
+    {
+      "quantity": "legacy theoretical total",
+      "value_mm": 720,
+      "status": "relay theory only, not source-estimated geometry"
+    },
+    {
+      "quantity": "source sum, 13 rows once",
+      "value_mm": 1330,
+      "status": "arithmetic only, not one continuous ray or OPL"
+    },
+    {
+      "quantity": "conditional round-trip path",
+      "value_mm": 1400,
+      "equation": "420+2*70+840",
+      "status": "assumed branch route only, not verified DMD path or OPL"
+    },
+    {
+      "quantity": "BOM counts",
+      "status": "Sheet1 and Sheet2 differ; procurement quantity is not inventory or installed quantity"
+    }
+  ],
+  "unknowns": [
+    {
+      "field": "mechanical_reference_surfaces",
+      "value": null,
+      "unknown_reason": "photos provide no reproducible mechanical datum"
+    },
+    {
+      "field": "lens_principal_plane_positions",
+      "value": null,
+      "unknown_reason": "no measured lens principal planes or verified orientation"
+    },
+    {
+      "field": "actual_folded_optical_axes_and_angles",
+      "value": null,
+      "unknown_reason": "photos and tape estimates do not calibrate angles or reflection transforms"
+    },
+    {
+      "field": "optical_path_length_opl",
+      "value": null,
+      "unknown_reason": "medium indices and in-element path lengths unavailable"
+    },
+    {
+      "field": "DMD_actual_orientation_controller_firmware_mode_timing_ON_OFF_collection",
+      "value": null,
+      "unknown_reason": "only a separate user specification image; installed identity and setup not closed"
+    },
+    {
+      "field": "CMOS_camera_identity_532nm_QE_actual_full_well_gain_noise_exposure_mapping",
+      "value": null,
+      "unknown_reason": "user image is sensor-like specification; camera label, operating mode and conflicts unresolved"
+    },
+    {
+      "field": "LightGen_physical_stack_phase_and_installed_state",
+      "value": null,
+      "unknown_reason": "reserved position only; 100x100 by 2um is target specification"
+    },
+    {
+      "field": "inventory_and_installed_BOM_counts",
+      "value": null,
+      "unknown_reason": "workbooks are procurement lists with differing quantities"
+    }
+  ],
+  "status_boundary": "Descriptive non-runtime input only. PHOTO_ESTIMATE_NOT_CALIBRATED and THEORY_4F are not MEASURED. No runtime import, training, simulation, hardware test, or calibration implied.",
+  "bom_source_schema": {
+    "source_workbook": "LightGen光路-1014-v5.xlsx",
+    "header_row": 2,
+    "data_rows": "3-27",
+    "columns": {
+      "A": "文献名称",
+      "B": "品牌",
+      "C": "类型",
+      "D": "型号",
+      "E": "参数",
+      "F": "数量",
+      "G": "单价",
+      "H": "总价"
+    },
+    "quantity_unit": null,
+    "quantity_unit_status": "NOT_SPECIFIED_IN_SOURCE",
+    "remarks_column": null,
+    "remarks_status": "NO_SEPARATE_REMARKS_COLUMN_IN_SOURCE",
+    "price_currency": null,
+    "price_currency_status": "NOT_SPECIFIED_IN_SOURCE",
+    "raw_cell_values_preserved_as_strings": true
+  },
+  "distance_source_comparison": {
+    "row_count": 13,
+    "excel_data_rows": "5-17",
+    "tsv_data_lines": "2-14",
+    "segment_numbers_and_values_match": true,
+    "remarks_match_exactly": false,
+    "remark_differences": [
+      {
+        "segment": "01",
+        "excel_row": 5,
+        "tsv_line": 2,
+        "excel_remark": "出光口—入光口中心投影估读",
+        "tsv_remark": "卷尺照片估读；出光口至入光口中心投影"
+      },
+      {
+        "segment": "02",
+        "excel_row": 6,
+        "tsv_line": 3,
+        "excel_remark": "卷尺刻度投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "03",
+        "excel_row": 7,
+        "tsv_line": 4,
+        "excel_remark": "卷尺端点中心投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "04",
+        "excel_row": 8,
+        "tsv_line": 5,
+        "excel_remark": "卷尺端点中心投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "05",
+        "excel_row": 9,
+        "tsv_line": 6,
+        "excel_remark": "卷尺端点中心投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "06",
+        "excel_row": 10,
+        "tsv_line": 7,
+        "excel_remark": "临时反射镜代位；实际SLM安装后复测",
+        "tsv_remark": "单程距离；SLM反射后沿同一路径返回"
+      },
+      {
+        "segment": "07",
+        "excel_row": 11,
+        "tsv_line": 8,
+        "excel_remark": "垂直尺读数按光轴中心投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "08",
+        "excel_row": 12,
+        "tsv_line": 9,
+        "excel_remark": "全景尺带投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "09",
+        "excel_row": 13,
+        "tsv_line": 10,
+        "excel_remark": "全景尺带刻度估读",
+        "tsv_remark": "卷尺照片估读；两片中继透镜间距"
+      },
+      {
+        "segment": "10",
+        "excel_row": 14,
+        "tsv_line": 11,
+        "excel_remark": "全景尺带投影估读",
+        "tsv_remark": "卷尺照片估读"
+      },
+      {
+        "segment": "11",
+        "excel_row": 15,
+        "tsv_line": 12,
+        "excel_remark": "LightGen预留位；芯片安装后复测",
+        "tsv_remark": "位置估读；芯片安装后复测"
+      },
+      {
+        "segment": "12",
+        "excel_row": 16,
+        "tsv_line": 13,
+        "excel_remark": "LightGen预留位；芯片安装后复测",
+        "tsv_remark": "位置估读；芯片安装后复测"
+      },
+      {
+        "segment": "13",
+        "excel_row": 17,
+        "tsv_line": 14,
+        "excel_remark": "CMOS预留位；相机安装后复测",
+        "tsv_remark": "位置估读；相机安装后复测"
+      }
+    ],
+    "source_scope_notes": {
+      "excel_rows_20_22": "measurement and branch/reserved-position notes",
+      "excel_rows_24_28": "M1-M4 photo key"
+    },
+    "branch_labels_match_exactly": true,
+    "photo_labels_match_exactly": true,
+    "numeric_cm_to_mm_values_match": true,
+    "endpoint_text_differences": [
+      {
+        "segment": "01",
+        "excel_endpoint": "Laser → Beam expander",
+        "tsv_endpoint": "Laser→Beam expander"
+      },
+      {
+        "segment": "02",
+        "excel_endpoint": "Beam expander → Mirror-1",
+        "tsv_endpoint": "Beam expander→Mirror-1"
+      },
+      {
+        "segment": "03",
+        "excel_endpoint": "Mirror-1 → PF-1",
+        "tsv_endpoint": "Mirror-1→PF-1"
+      },
+      {
+        "segment": "04",
+        "excel_endpoint": "PF-1 → PBS",
+        "tsv_endpoint": "PF-1→PBS"
+      },
+      {
+        "segment": "05",
+        "excel_endpoint": "PBS → BS",
+        "tsv_endpoint": "PBS→BS"
+      },
+      {
+        "segment": "06",
+        "excel_endpoint": "BS → SLM位（临时反射镜）",
+        "tsv_endpoint": "BS→SLM位置（临时反射镜）"
+      },
+      {
+        "segment": "07",
+        "excel_endpoint": "BS → 折转镜（Mirror-2）",
+        "tsv_endpoint": "BS→Mirror-2（折转镜）"
+      },
+      {
+        "segment": "08",
+        "excel_endpoint": "折转镜（Mirror-2） → Relay L2",
+        "tsv_endpoint": "Mirror-2（折转镜）→Relay L2"
+      },
+      {
+        "segment": "09",
+        "excel_endpoint": "Relay L2 → Relay L1",
+        "tsv_endpoint": "Relay L2→Relay L1"
+      },
+      {
+        "segment": "10",
+        "excel_endpoint": "Relay L1 → PF-2",
+        "tsv_endpoint": "Relay L1→PF-2"
+      },
+      {
+        "segment": "11",
+        "excel_endpoint": "PF-2 → LightGen芯片位",
+        "tsv_endpoint": "PF-2→LightGen芯片预留位置"
+      },
+      {
+        "segment": "12",
+        "excel_endpoint": "LightGen芯片位 → Relay lens",
+        "tsv_endpoint": "LightGen芯片预留位置→Relay lens"
+      },
+      {
+        "segment": "13",
+        "excel_endpoint": "Relay lens → CMOS位",
+        "tsv_endpoint": "Relay lens→CMOS预留位置"
+      }
+    ]
+  }
+}

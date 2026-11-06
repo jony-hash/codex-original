@@ -1,0 +1,77 @@
+schema: ols_phase_dimension_power.v6
+status: fixed_budget_synthetic_phase_optimization_diagnostic_only
+source_evidence:
+  v5_run_dir: outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01
+  v5_report: outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/report.json
+  v5_dimension_metrics: outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/dimension_power_metrics.json
+  v5_fixed_phase_screens: outputs/20261014_ols_window_dimension_power_v5/runs/attempt_01/fixed_phase_screens.pt
+optics:
+  wavelength_m: 5.32e-7
+  pixel_pitch_m: 2.0e-6
+  encoder_shape: [100, 100]
+  encoder_aperture_m: 2.0e-4
+  propagation_grid_sizes: [3072, 4096, 6144]
+  common_fiber_readout_roi_mm: 4.096
+  common_fiber_readout_roi_pixels: 2048
+  inter_encoder_spacing_m: 1.5e-3
+  last_encoder_to_fiber_m: 1.5e-3
+  phase_screen_count: 2
+  layer_power_transmission: 0.889
+  input_power_w: 2.493e-4
+  illumination: uniform_coherent_top_hat
+fiber:
+  reference_pitch_m: 1.25e-4
+  cladding_diameter_m: 1.25e-4
+  mode_field_diameter_m: 1.4222e-5
+  gaussian_1e_amplitude_radius_m: 7.111e-6
+  lp01_v_number: 2.2
+  transport: ideal_identity
+  geometry_status: PROJECT_GEOMETRY_UNMEASURED
+arrays:
+  square_array_sizes: [1, 2, 3, 4, 5, 6, 7, 8, 10]
+  fiber_pitch_is_fixed_to_v5: true
+  coordinate_source: v5_saved_zero_phase_array_coordinates
+optimizer:
+  updates_per_trajectory: 256
+  initialization_names: [v5_zero, uniform_seed_2026101401, uniform_seed_2026101402]
+  random_phase_seeds: [2026101401, 2026101402]
+  random_phase_distribution: independent_uniform[-pi,pi] per layer and pixel
+  name: Adam
+  learning_rate: 0.04
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  scheduler: none
+  early_stopping: false
+objectives:
+  A_max_throughput: maximize sum(P_i)/P_input
+  B_max_neff_fraction: maximize N_eff/N; N_eff=(sum(P_i))^2/sum(P_i^2)
+  C_absolute_uniform_delivery: minimize mean(((P_i-P_A_star/N)/(P_A_star/N))^2)
+  lp01_optimization: forbidden; read the same Gaussian-optimized phase screens only
+gates:
+  window_g3_complex_relative_error_after_common_global_phase_max: 1.0e-4
+  accelerated_value_gradient_and_direction_max_relative_error: 1.0e-4
+  complex128_gradient_finite_difference_relative_tolerance: 1.0e-4
+  complex128_gradient_finite_difference_absolute_tolerance: 1.0e-8
+  gaussian_and_lp01_projection_passivity_relative_tolerance: 1.0e-5
+  main_phase_diagnostic_updates: 19968
+evidence:
+  keep_all_trajectory_initial_best_terminal_phases: true
+  keep_optimizer_checkpoints_at_updates: [0, 64, 128, 192, 256]
+  keep_every_update_target_history: true
+  keep_endpoint_channel_metrics_and_window_comparisons: true
+  keep_all_six_window_precision_roi_fields_for_representatives: true
+  return_compact_3072_complex64_roi_fields_only: true
+  retain_nonrepresentative_raw_roi_fields: false
+scope:
+  formal_training_updates: 0
+  dataset_reads: 0
+  task_evaluator_calls: 0
+  fid_calls: 0
+  loss_changes: 0
+  material_forward_calls: 0
+  relay_or_decoder_camera_changes: 0
+  production_default_migration: forbidden
+  optical_geometry_change: forbidden
+  propagation_solver_replacement: forbidden
+  lp01_independent_optimization: forbidden

@@ -1,0 +1,32 @@
+{
+  "split_seed": 207,
+  "seeds": [
+    11,
+    23,
+    37
+  ],
+  "decays": [
+    0,
+    0.0001,
+    0.001
+  ],
+  "lr": 0.15,
+  "epochs": 30,
+  "batch": 256,
+  "threads": 2,
+  "roi": {
+    "layout_type": "grid_2x2",
+    "class_to_roi": [
+      "top_left",
+      "top_right",
+      "bottom_left",
+      "bottom_right"
+    ],
+    "normalized_centers": null,
+    "width": null,
+    "height": null,
+    "coordinate_frame": "CMOS row/column, half-open bounds",
+    "calibration_status": "PENDING_CALIBRATION",
+    "source_of_geometry": "caller-provided diagnostic or calibrated rectangles"
+  }
+}

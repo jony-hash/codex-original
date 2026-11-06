@@ -1,0 +1,172 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_PHYSICAL_FROZEN_PHASE_MNIST4",
+  "status": "DIAGNOSTIC_ONLY_ASSUMED_GEOMETRY",
+  "authorization": {
+    "purpose": "P0-P7 physical digital-twin diagnostics and frozen four-ROI inference",
+    "phase_updates": 0,
+    "hardware_operation": false,
+    "fabrication_or_stl": false,
+    "official_test_reopened": false,
+    "historical_runs_mutable": false,
+    "stop": "WAITING_FOR_USER_REVIEW; no P8"
+  },
+  "source_configs": {
+    "hardware_geometry": "configs/research/lightgen/hw207_optical_geometry_v1.json",
+    "cmos_roi_contract": "configs/research/lightgen/hw207_physical_cmos_v1.json",
+    "candidate_inventory": "configs/research/lightgen/hw207_physical_cmos_v1.json",
+    "c0_preprocessing": "scripts/research/lightgen/hw207_mnist4_c0_v1.py",
+    "c0_index_manifest": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/indices.json"
+  },
+  "data": {
+    "images_train_idx": "data/MNIST/raw/train-images-idx3-ubyte",
+    "labels_train_idx": "data/MNIST/raw/train-labels-idx1-ubyte",
+    "images_test_idx": "data/MNIST/raw/t10k-images-idx3-ubyte",
+    "labels_test_idx": "data/MNIST/raw/t10k-labels-idx1-ubyte",
+    "evaluation_role": "validation",
+    "allowed_classes": [0, 1, 2, 3],
+    "official_test_status": "HISTORICALLY_USED; NOT_USED_IN_THIS_TASK",
+    "population_note": "C0 validation population has been reused by C3.4-C3.8 and is not independent"
+  },
+  "dmd": {
+    "family": "F9000 / DLPC900 + DLP9000",
+    "family_source": "USER_SPEC_IMAGE_AND_PROJECT_HARDWARE_BASELINE",
+    "unit_serial_and_installation": "UNKNOWN",
+    "native_shape_rows_columns": [1600, 2560],
+    "micromirror_pitch_um": 7.56,
+    "fill_factor": 0.92,
+    "micromirror_tilt_deg": 12.0,
+    "array_orientation": "ASSUMED_DIAGNOSTIC_ZERO_DEGREE; physical installation UNKNOWN",
+    "mnist_patch": "centered 28x28 micromirrors in native array; surrounding mirrors OFF",
+    "primary_control": "static_binary",
+    "binary_threshold": 128,
+    "gray_mode": "effective_scalar_amplitude sqrt(gray/255); diagnostic representation, not measured bit-plane timing",
+    "on_state": "unit-amplitude specular ON port assumed coupled to relay",
+    "off_state": "zero field in collected port assumed",
+    "on_off_collection_direction": "UNKNOWN; idealized for scalar model",
+    "polarization_and_illumination_angle": "UNKNOWN",
+    "tilt_treatment": "nominal 12 degree tilt recorded; actual facet azimuth, illumination and selected diffraction order are unknown, so no fabricated blaze efficiency or orientation phase ramp is applied",
+    "model_levels": {
+      "level_0": "binary scalar pixel amplitude; no micromirror gaps resolved",
+      "level_1": "coherent sampled square-micromirror apertures using native pitch and fill factor; ON specular axis aligned to relay by assumption; 3D blaze/order coupling remains unmodeled and UNKNOWN"
+    },
+    "subpixels_per_micromirror_axis": 16
+  },
+  "input_relay": {
+    "reference_surfaces": ["DMD_active_mirror_plane", "L2_principal_plane", "L1_principal_plane", "phase_layer_input_plane"],
+    "distances_mm": {
+      "DMD_to_L2": 230.0,
+      "L2_to_L1": 350.0,
+      "L1_to_phase_layer": 150.0
+    },
+    "distance_status": "PHOTO_ESTIMATED_AND_COMPOSED_DIAGNOSTIC; NOT_CALIBRATED",
+    "composition": {
+      "DMD_to_L2": "70 mm DMD/temporary-mirror branch + 100 mm BS-to-fold-mirror + 60 mm fold-mirror-to-L2",
+      "L2_to_L1": "distance table segment 09",
+      "L1_to_phase_layer": "90 mm L1-to-PF2 + 60 mm PF2-to-LightGen position"
+    },
+    "lens_focal_lengths_mm": [150.0, 150.0],
+    "lens_clear_aperture_mm": 25.4,
+    "lens_specs_status": "BOM_NOMINAL; INSTALLED_SERIAL_AND_PRINCIPAL_PLANES_UNKNOWN",
+    "dmd_insertion_and_folded_on_axis": "ASSUMED_DIAGNOSTIC; ACTUAL DMD PORT GEOMETRY UNKNOWN"
+  },
+  "phase_layer": {
+    "grid_rows_columns": [100, 100],
+    "pitch_um": 2.0,
+    "active_width_um": 200.0,
+    "transmission_model": "unit-amplitude exp(i*wrapped_phase); physical complex transmission UNKNOWN",
+    "candidate_arrays": "use original saved phase maps without edits or reorientation"
+  },
+  "output_relay": {
+    "lens_count": 1,
+    "focal_length_mm": 30.0,
+    "clear_aperture_mm": 25.0,
+    "lens_spec_status": "BOM_NOMINAL; installed count, serial, principal planes and clear aperture UNKNOWN",
+    "scenarios": {
+      "PHOTO_ESTIMATE_AND_C37_C38_REFERENCE": {
+        "phase_to_lens_mm": 80.0,
+        "lens_to_cmos_mm": 100.0,
+        "status": "PHOTO_ESTIMATED_NOT_CALIBRATED",
+        "magnification": "not a conjugate image under the thin-lens model; B nonzero"
+      },
+      "IDEAL_1X_CONJUGATE": {
+        "phase_to_lens_mm": 60.0,
+        "lens_to_cmos_mm": 60.0,
+        "status": "THEORETICAL_DIAGNOSTIC_ONLY",
+        "magnification": -1.0
+      },
+      "PHOTO_OBJECT_DISTANCE_THEORETICAL_CONJUGATE": {
+        "phase_to_lens_mm": 80.0,
+        "lens_to_cmos_mm": 48.0,
+        "status": "THEORETICAL_DIAGNOSTIC_ONLY_NOT_CURRENT_CMOS_PLANE",
+        "magnification": -0.6
+      }
+    },
+    "aperture_sensitivity_mm": [2.0, 10.0, 25.0],
+    "distance_sensitivity_offsets_mm": [-10.0, 0.0, 10.0],
+    "sensitivity_status": "EXPLICIT_DIAGNOSTIC_SCENARIOS_NOT_MEASUREMENT_UNCERTAINTY"
+  },
+  "cmos": {
+    "sensor_shape_rows_columns": [2048, 2048],
+    "pixel_pitch_um": 6.5,
+    "sensor_source": "USER_SPEC_IMAGE_GSENSE2020; model family matches Dhyana 401D specification but camera-unit identity UNKNOWN",
+    "readout_mode_exposure_gain_dark_flat_qe532": "UNKNOWN; ideal linear detector model only",
+    "pixel_response_model": "subpixel irradiance samples are area-averaged to integrate each physical pixel; exact area-overlap allocation for fixed ROIs; dark, noise, gain, QE and saturation are not modeled",
+    "registration": "ASSUMED_DIAGNOSTIC; physical ROI window centered on sensor",
+    "pixel_to_window_affine": {
+      "matrix_um_per_pixel": [[6.5, 0.0], [0.0, 6.5]],
+      "offset_um": [-6556.0, -6556.0],
+      "status": "ASSUMED_DIAGNOSTIC; replace with measured CMOS origin, rotation, x/y flips, scale and subpixel offset",
+      "coordinate_order": "pixel edge [column, row] to physical window [x, y], y down"
+    },
+    "calibration_interface": {
+      "dark_frame": "UNKNOWN_NOT_SUPPLIED",
+      "flat_field": "UNKNOWN_NOT_SUPPLIED",
+      "gain_map_or_e_per_adu": "UNKNOWN_NOT_SUPPLIED",
+      "exposure_s": "UNKNOWN_NOT_SUPPLIED",
+      "calibration_applied_in_this_simulation": false
+    }
+  },
+  "fixed_roi_geometry": {
+    "physical_window_um": [200.0, 200.0],
+    "coordinate_origin": "top-left of centered CMOS physical window",
+    "x_axis": "right",
+    "y_axis": "down",
+    "class_to_roi": {
+      "0": {"name": "top_left", "x_um": [35.0, 85.0], "y_um": [35.0, 85.0]},
+      "1": {"name": "top_right", "x_um": [115.0, 165.0], "y_um": [35.0, 85.0]},
+      "2": {"name": "bottom_left", "x_um": [35.0, 85.0], "y_um": [115.0, 165.0]},
+      "3": {"name": "bottom_right", "x_um": [115.0, 165.0], "y_um": [115.0, 165.0]}
+    },
+    "decision": "fixed four physical ROI energy integrals followed by argmax; zero-energy and tied maxima abstain",
+    "posthoc_rotation_or_class_relabeling": false
+  },
+  "numerics": {
+    "wavelength_nm": 532.0,
+    "propagation_model": "paraxial scalar Fresnel using separable Bluestein-CZT on the named planes",
+    "lens_plane_grid": [1024, 1024],
+    "input_lens_plane_pitch_um": 24.8046875,
+    "output_lens_plane_grid": [2048, 2048],
+    "output_lens_plane_pitch_um": 12.20703125,
+    "cmos_oversample_factors_for_convergence": [1, 2, 4],
+    "cmos_oversample_default": 1,
+    "phase_grid_dtype": "float32",
+    "field_dtype": "complex64",
+    "cmos_intensity_dtype": "float32",
+    "preflight_reference_dtype": "complex128",
+    "candidate_inference_batch_size": 1,
+    "sensitivity_rows_per_class": 4,
+    "preflight_rows_per_class": 2,
+    "input_lens_grids_for_convergence": [512, 1024, 2048, 4096, 8192],
+    "output_lens_grids_for_convergence": [1024, 2048, 4096, 8192],
+    "sampling_relative_tolerance": 0.001,
+    "centering": "sample-centered grids; even sensor uses edge coordinate at index 1024 as optical center"
+  },
+  "candidate_inventory_source": "configs/research/lightgen/hw207_physical_cmos_v1.json::phase_candidates_to_audit_when_model_is_calibrated",
+  "output": {
+    "version_directory": "outputs/20261106_hw207_physical_frozen_phase_v1",
+    "attempt": "attempt_05",
+    "session_source_id": "01a18b9f-206d-7c61-96a3-0da3a49efb8c",
+    "run_directory": "outputs/20261106_hw207_physical_frozen_phase_v1/runs/attempt_05"
+  }
+}

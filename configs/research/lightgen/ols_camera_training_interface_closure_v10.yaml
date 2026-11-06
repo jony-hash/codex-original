@@ -1,0 +1,19 @@
+{
+  "schema": "ols_camera_training_interface_closure.v10",
+  "source_run_dir": "outputs/20261016_ols_decoder_camera_interface_v9/runs/attempt_02",
+  "camera": {
+    "quantum_efficiency": 0.5,
+    "read_noise_e_rms": 1.0,
+    "dark_current_e_per_pixel_s": 0.0,
+    "full_well_e": 30000.0,
+    "exposure_sweep_s": [0.00001, 0.0001, 0.001, 0.01]
+  },
+  "relative_svd_thresholds": [0.1, 0.01, 0.001, 0.0001],
+  "formal_training_updates": 0,
+  "phase_optimization_updates": 0,
+  "dataset_reads": 0,
+  "task_evaluator_calls": 0,
+  "fid_calls": 0,
+  "loss_changes": 0,
+  "material_forward_calls": 0
+}

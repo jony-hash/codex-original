@@ -1,0 +1,54 @@
+schema: lightgen_g1_fixed_frame_transfer_diagnosis.v1
+task_id: LIGHTGEN_G1_FIXED_FRAME_TRANSFER_DIAGNOSIS_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_FIXED_FRAME_TRANSFER_DIAGNOSIS_20261030
+evidence_tier: diagnostic_only
+source:
+  fixed_frame_config: configs/research/lightgen/g1_fixed_frame_semantic_v1.yaml
+  v2_terminal_checkpoint: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  response_projector: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+  source_task_id: LIGHTGEN_G1_FIXED_FRAME_SEMANTIC_V1
+population:
+  role: consumed_development_phase20
+  development_source_role: fixed_development200
+  index_rule: "20*class + {0,1}"
+  sample_count: 20
+  class_count: 10
+  class_order: interleaved_two_per_class
+diagnostic:
+  conditions:
+    - frozen_v2_single_forward
+    - fixed_frame_terminal
+    - terminal_phi_zero_ablation
+    - fista_fixed_physical_phase_zero
+    - fista_fixed_terminal_phase
+    - bounded_free_public_phase_eight_start
+  fixed_phase_iterations_per_target: 5000
+  free_phase_starts: 8
+  free_phase_iterations_per_start: 5000
+  fista_relative_stop: 1.0e-6
+  fista_dual_gap_stop: 1.0e-8
+  full_optics_grids: [2048, 4096]
+  relative_error_max: 1.0e-4
+  iterations_per_checkpoint: 500
+  spectral_constant_reuse: true
+  scientific_updates: 0
+  mapper_updates: 0
+  optical_updates: 0
+  evaluator_updates: 0
+  rng_use: none
+  fixed_phase_prescribed_complex_error_max: 1.0e-4
+  camera_pixel_area_m2: 6.25e-12
+  camera_gain: frozen_source
+output:
+  runs_root: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs
+  source_review_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/source_review_01
+  semantic_attribution_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/semantic_attribution_01
+  preflight_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/preflight_03
+  attempt_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/attempt_02
+  windows_source_review_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/autodl_backup_source_review_01
+  source_review_verification_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/source_review_windows_verify_01
+  source_review_cloud_verification_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/source_review_cloud_verify_01
+  windows_backup_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/autodl_backup_attempt_02
+  windows_preflight_backup_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/autodl_backup_preflight_03
+  windows_source_review_cloud_backup_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/autodl_backup_source_review_cloud_verify_01
+  windows_verification_dir: outputs/20261030_lightgen_g1_fixed_frame_transfer_diagnosis_v1/runs/windows_verify_02

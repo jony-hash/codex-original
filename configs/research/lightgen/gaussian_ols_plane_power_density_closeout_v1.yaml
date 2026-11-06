@@ -1,0 +1,63 @@
+schema: gaussian_ols_plane_power_density_closeout.v1
+task_id: GAUSSIAN_OLS_PLANE_POWER_DENSITY_CLOSEOUT_V1
+semantic_authority_id: USER_APPROVED_GAUSSIAN_OLS_PLANE_POWER_DENSITY_CLOSEOUT_20261022
+run_dir: outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/closeout_01
+inputs:
+  small_power_config: configs/research/lightgen/gaussian_real_input_power_attribution_v1.yaml
+  small_power_run: outputs/20261021_gaussian_ols_real_input_power_attribution_v1/runs/attempt_01
+  dual_grid_run: outputs/20261022_gaussian_ols_effective_channel_dual_grid_v1/runs/attempt_01
+  large:
+    checkpoint: outputs/20261014_chen_lightgen_400_mnist_baseline_v1/runs/autodl_backup_attempt09_final_20261015_01/checkpoint_step_030000.pt
+    source_report: outputs/20261015_chen_lightgen_400_quickcheck_4096_v2/runs/autodl_backup_attempt_01/report.json
+    source_config: configs/research/lightgen/chen_lightgen_400_mnist_baseline_v1.yaml
+    fixed_population: outputs/20261015_chen_lightgen_400_quickcheck_4096_v2/runs/autodl_backup_attempt_01/fixed_population.pt
+measurements:
+  small_states:
+    - step_000000
+    - step_005000
+    - step_010000
+    - step_020000
+    - step_030000
+    - control_step_032500
+    - control_step_035000
+    - treatment_step_032500
+    - treatment_step_035000
+  reference_states:
+    - step_030000
+    - control_step_035000
+    - treatment_step_035000
+  small_production_grid: 2048
+  small_reference_grid: 4096
+  large_decoder_grids: [4096, 6144]
+  source_power_w: 2.493e-4
+  small_layer_power_transmission: 0.889
+  large_saved_encoder_grid: 2048
+  large_fixed_population_rows: 300
+  large_decoder_input: saved_encoder_coefficients
+  large_encoder_forward: false
+state_to_checkpoint:
+  step_000000: step_000000
+  step_005000: step_005000
+  step_010000: step_010000
+  step_020000: step_020000
+  step_030000: step_030000
+  control_step_032500: control_step_032500
+  control_step_035000: control_step_035000
+  treatment_step_032500: treatment_step_032500
+  treatment_step_035000: treatment_step_035000
+execution:
+  required_host: autodl-monthly
+  batch_rows: 1
+  chunk_rows: 100
+  no_training_updates: true
+  no_optimizer_creation: true
+  no_prior_sampling: true
+  official_test_reads: 0
+  hardware_operations: 0
+outputs:
+  scope: task_specific_derived_closeout
+  preserve_original_attempt_01: true
+  plane_area_outputs: [geometric_area_mean_intensity, intensity_derived_effective_area_density]
+  retain_full_population_fields: false
+  representative_rows_per_class_per_endpoint: 2
+  report_only_update: docs/CURRENT_STATUS.md

@@ -1,0 +1,62 @@
+schema: lightgen_g1_semantic_exposure200.v1
+task_id: LIGHTGEN_G1_SEMANTIC_EXPOSURE200_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_SEMANTIC_EXPOSURE200_20261029
+evidence_tier: diagnostic_only
+source:
+  projected_mapping_config: configs/research/lightgen/g1_slm_projected_mapping_v2.yaml
+  source_population: outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_attempt_01/fixed_population_and_schedule.pt
+  v2_terminal_checkpoint: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  v2_fixed_response_projector_evidence: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+  fullpop_evidence_dir: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01
+  positive_control_witnesses: outputs/20261027_lightgen_g1_projected_box_fullpop_v1/runs/autodl_backup_attempt_01/preflight_evidence/known_reachable_witness_replay.pt
+  prior_training_witnesses: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/autodl_backup_preflight_repair_02/training_witnesses.pt
+population:
+  train_role: fixed_train200
+  train_per_class: 20
+  train_source_offset_per_class: 0
+  dev_role: historical_development200
+  dev_per_class: 20
+  dev_source_offset_per_class: 4
+  classes: 10
+  exposures_per_target: 750
+training:
+  new_updates: 15000
+  logical_batch_size: 10
+  samples_per_class_per_batch: 1
+  epochs: 750
+  optimizer: Adam
+  learning_rate: 0.0001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  box_lambda: 5.0
+  rng_seed: 2026102970
+  schedule_seed: 2026102971
+  checkpoint_interval_steps: 500
+  progress_interval_steps: 100
+  observation_steps: [0, 5000, 10000, 15000]
+  select_best_checkpoint: false
+  amp: false
+  tf32: false
+measurement:
+  grids: [2048, 4096]
+  relative_error_max: 1.0e-4
+  coefficient_alignment: one_global_phase_per_sample
+  native_cmos_unit: raw_w_per_m2
+  cmos_normalization: false
+  cmos_power_matching: false
+  cmos_gain_adjustment: false
+  semantic_metrics: frozen_ED_EC_auxiliary_only
+output:
+  experiment_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs
+  audit_dir: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_01
+  preflight_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/preflight_repair_03
+  reference_qualification_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/reference_qualification_01
+  reference_continuous_phase_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/reference_continuous_phase_01
+  preflight_repair_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/preflight_repair_03
+  qualification_verification_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_extension_02/qualification_verification_01
+  engine_qualification_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/engine_qualification_01
+  audit_extension_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/audit_extension_01
+  attempt_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/attempt_01
+  windows_backup_root: outputs/20261029_lightgen_g1_semantic_exposure200_v1/runs/autodl_backup_attempt_01
+  final_consumer: recompute_all_six_metrics_from_full_optics_raw_cmos_and_bound_commands

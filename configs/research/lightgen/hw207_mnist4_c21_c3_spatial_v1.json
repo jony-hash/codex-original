@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C21_C3_SPATIAL_V1",
+  "non_runtime": true,
+  "purpose": "C2.1 physical spatial-granularity alignment and C3 diagnostic interfaces",
+  "status": {
+    "c2_original": "C2_PARTIAL_PASS",
+    "c2_hardware_calibration": "BLOCKED",
+    "c2_coherent_dmd_model": "BLOCKED",
+    "hw207_current_mapping": "BLOCKED",
+    "c3_initial": "C3_PARTIAL_PASS"
+  },
+  "source_files": {
+    "parameter_baseline": "research_assets/lightgen/HW207_实物与距离基线_20261103/实物信息与闭环状态.md",
+    "physical_geometry": "configs/research/lightgen/hw207_optical_geometry_v1.json",
+    "original_bom": "research_assets/lightgen/HW207_实物与距离基线_20261103/05_器件参考/LightGen光路-1014-v5.xlsx",
+    "c0_indices": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/indices.json",
+    "c0_data_roles": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/data.json",
+    "c1_frozen_readouts": "outputs/20261103_hw207_mnist4_c1_v1/runs/autodl_backup_readouts_01"
+  },
+  "dmd": {
+    "system_model": "F9000",
+    "controller_and_chip": "DLPC900 + DLP9000",
+    "columns": 2560,
+    "rows": 1600,
+    "pitch_um": 7.56,
+    "fill_factor": 0.92,
+    "micromirror_tilt_deg": 12,
+    "installation_angle_candidates_deg": [0, 45],
+    "wavelength_range_nm": [400, 700],
+    "binary_rate_max_hz": 9523,
+    "eight_bit_rate_max_hz": 1031,
+    "eight_bit_external_input_max_hz": 360,
+    "preloaded_pattern_capacity_vendor_claim": {
+      "binary": 400,
+      "eight_bit": 40,
+      "source_status": "F9000 vendor listing; direct page request returned HTTP 403"
+    },
+    "pc_interfaces_vendor_claim": ["USB 1.1", "HDMI", "DisplayPort"],
+    "installation_status": "UNKNOWN",
+    "actual_installation_angle_deg": null,
+    "incidence_vector": null,
+    "on_off_collection_vectors": null,
+    "collection_na": null,
+    "binary_model": "SCALAR_BINARY_APPROXIMATION",
+    "active_mirror_shape_assumption": "square with side pitch*sqrt(fill_factor); fill factor alone does not specify exact mirror geometry",
+    "off_state_assumption": "zero in the scalar surrogate only; not an asserted DLP9000 or HW207 response"
+  },
+  "lightgen_target": {
+    "wavelength_nm": 532,
+    "rows": 100,
+    "columns": 100,
+    "neuron_pitch_um": 2,
+    "active_width_um": 200,
+    "evidence_status": "HW207_TARGET_NOT_VERIFIED_AS_FABRICATED_OR_INSTALLED",
+    "fixed_layer_transmission_map": null,
+    "printed_geometry": null,
+    "phase_or_complex_transmission": null,
+    "layer_count_current": null,
+    "status": "C3_LIGHTGEN_FIXED_STACK_BLOCKED"
+  },
+  "mnist": {
+    "labels": [0, 1, 2, 3],
+    "input_encoding": "static binary threshold x>=128, matching C0 binary path",
+    "population": "existing C0 split and original order",
+    "pilot_per_class": 64,
+    "pilot_total": 256,
+    "full_validation_total": 2475,
+    "test_used_for_selection": false,
+    "test_history_note": "official test was previously used in C0, C1, and C2"
+  },
+  "relay_candidates": [
+    {
+      "id": "C3-A",
+      "input_focal_lengths_mm": [150, 150],
+      "output_focal_lengths_mm": [30, 30],
+      "intended_abs_magnifications": [1.0, 1.0],
+      "status": "THEORY_4F_NOT_INSTALLED_OR_CALIBRATED"
+    },
+    {
+      "id": "C3-B",
+      "input_focal_lengths_mm": [150, 30],
+      "output_focal_lengths_mm": [30, 150],
+      "intended_abs_magnifications": [0.2, 5.0],
+      "status": "THEORY_4F_NOT_INSTALLED; 30-MM LENS REALLOCATION CHANGES CURRENT PATH"
+    },
+    {
+      "id": "C3-C",
+      "input_focal_lengths_mm": [150, 40],
+      "output_focal_lengths_mm": [30, 200],
+      "intended_abs_magnifications": [0.26666666666666666, 6.666666666666667],
+      "status": "THEORY_4F_CANDIDATE; 40-MM AND 200-MM LENSES NOT CONFIRMED INSTALLED"
+    }
+  ],
+  "coordinate_model": {
+    "dmd_to_lightgen": "r_chip = A_in*r_DMD + t_in",
+    "candidate_affine": "A_in = signed ideal-4f magnification * R(theta); theta in {0,45} deg",
+    "default_offset_um": [0, 0],
+    "offset_status": "CENTERED_DIAGNOSTIC_ASSUMPTION; actual translation UNKNOWN",
+    "general_affine_support": "2x2 invertible matrix includes scale, rotation, shear, and axis sign; offset is explicit",
+    "output_to_cmos": "r_cmos = A_out*r_chip + t_out",
+    "cmos_coordinate_origin": "sensor center; row increases downward, physical y increases upward"
+  },
+  "relay_diagnostic_scenarios": {
+    "pupil_cutoff_cycles_per_um": [0.05, 0.1, 0.2],
+    "defocus_um": [0, 50],
+    "source": "previous C2 numerical sensitivity values, not HW207 measured NA or defocus",
+    "model": "ideal coherent circular pupil using the existing C2 coherent_pupil implementation",
+    "dmd_grating_periods_in_mirrors": [1, 2, 4],
+    "status": "UNPHYSICAL_DIAGNOSTIC_ONLY"
+  },
+  "cmos": {
+    "sensor_candidate": "Gpixel GSENSE2020",
+    "rows": 2048,
+    "columns": 2048,
+    "pixel_um": 6.5,
+    "qe_peak_595nm_user_image": 0.72,
+    "qe_532nm": null,
+    "full_well_e": null,
+    "full_well_conflict_user_image_vs_older_note_e": [43000, 13800],
+    "read_noise_e": null,
+    "exposure_s": null,
+    "gain_e_per_dn": null,
+    "adc_bits_current": null,
+    "readout_mode": "UNKNOWN",
+    "installation_status": "UNKNOWN",
+    "roi_layout": "four equal, nonoverlapping 2x2 virtual regions after coordinate calibration",
+    "roi_calibration_status": "PENDING",
+    "ideal_model": "exact sensor-pixel area integration with no QE/noise/gain",
+    "noise_model": "parameterized only; cannot run as HW207 prediction while parameters are null"
+  },
+  "energy_ledger": {
+    "absolute_power_w": "UNKNOWN: no input/output power meter values",
+    "geometric_DMD_target_capture": "computed under uniform illumination, binary ON=1/OFF=0 scalar surrogate and square active-mirror assumption",
+    "DMD_reflection_and_collected_power": "UNKNOWN",
+    "input_relay_loss": "UNKNOWN",
+    "LightGen_transmission": "UNKNOWN",
+    "output_relay_loss": "UNKNOWN",
+    "CMOS_photons_or_electrons": "UNKNOWN"
+  },
+  "official_sources": [
+    {
+      "url": "https://www.fldiscovery.com/product/f9000/",
+      "accessed": "2026-11-04",
+      "status": "SEARCH_RESULT_RETRIEVED; DIRECT_OPEN_HTTP_403",
+      "use": "vendor system model, controller/chip pairing and device-level claims; not proof of installation"
+    },
+    {
+      "url": "https://www.ti.com/lit/ds/symlink/dlp9000.pdf",
+      "document": "DLPS036B Rev. B, revised October 2016",
+      "accessed": "2026-11-04",
+      "use": "DLP9000 array, pitch, tilt, fill factor, spectral range and pattern-rate mode distinctions"
+    },
+    {
+      "url": "https://www.ti.com/product/DLP9000",
+      "accessed": "2026-11-04",
+      "use": "TI product data sheet summary"
+    }
+  ]
+}

@@ -1,0 +1,285 @@
+{
+  "status": "READY",
+  "purpose": "C0 fixed train/validation split and validation-only selection",
+  "expected_negative_control": "shuffled training labels, validation accuracy < 0.40",
+  "negative_seed": 20701,
+  "training": "D:\\codex-original\\data\\MNIST\\processed\\training.pt",
+  "test": "D:\\codex-original\\data\\MNIST\\processed\\test.pt",
+  "config": "D:\\codex-original\\configs\\research\\lightgen\\hw207_mnist4_c0_v1.json",
+  "output": "D:\\codex-original\\artifacts\\research\\lightgen\\hw207_mnist4_feasibility_v1\\c0_preflight_repair_20261103",
+  "python": "3.11.16 | packaged by conda-forge | (main, Aug 21 2026, 22:37:11) [MSC v.1944 64 bit (AMD64)]",
+  "torch": "2.5.1",
+  "device": "cpu",
+  "config_values": {
+    "split_seed": 207,
+    "seeds": [
+      11,
+      23,
+      37
+    ],
+    "decays": [
+      0,
+      0.0001,
+      0.001
+    ],
+    "lr": 0.15,
+    "epochs": 30,
+    "batch": 256,
+    "threads": 2,
+    "roi": {
+      "layout_type": "grid_2x2",
+      "class_to_roi": [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right"
+      ],
+      "normalized_centers": null,
+      "width": null,
+      "height": null,
+      "coordinate_frame": "CMOS row/column, half-open bounds",
+      "calibration_status": "PENDING_CALIBRATION",
+      "source_of_geometry": "caller-provided diagnostic or calibrated rectangles"
+    }
+  },
+  "counts": {
+    "train": [
+      5331,
+      6068,
+      5362,
+      5518
+    ],
+    "validation": [
+      592,
+      674,
+      596,
+      613
+    ],
+    "test": [
+      980,
+      1135,
+      1032,
+      1010
+    ]
+  },
+  "trainable_groups": [
+    "weight",
+    "bias"
+  ],
+  "evaluator": "metrics only; no parameters",
+  "test_role": "evaluation only after both selections",
+  "resumability": "not claimed",
+  "checks": {
+    "gray": {
+      "three_real_updates": "PASS",
+      "finite_input_loss_gradients_parameters": "PASS",
+      "weight_and_bias_updated": "PASS",
+      "validation_after_three_steps": {
+        "accuracy": 0.8787878787878788,
+        "balanced_accuracy": 0.877469003200531,
+        "macro_f1": 0.8756781220436096,
+        "precision": [
+          0.8259629011154175,
+          0.9004207849502563,
+          0.8432708978652954,
+          0.9683544039726257
+        ],
+        "recall": [
+          0.9780405163764954,
+          0.9525222778320312,
+          0.8305369019508362,
+          0.7487764954566956
+        ],
+        "confusion": [
+          [
+            579,
+            1,
+            8,
+            4
+          ],
+          [
+            0,
+            642,
+            30,
+            2
+          ],
+          [
+            52,
+            40,
+            495,
+            9
+          ],
+          [
+            70,
+            30,
+            54,
+            459
+          ]
+        ],
+        "support": [
+          592,
+          674,
+          596,
+          613
+        ]
+      },
+      "negative_control_validation": {
+        "accuracy": 0.2408080808080808,
+        "balanced_accuracy": 0.25,
+        "macro_f1": 0.0970684066414833,
+        "precision": [
+          0.0,
+          0.0,
+          0.24090541899204254,
+          0.0
+        ],
+        "recall": [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "confusion": [
+          [
+            0,
+            0,
+            592,
+            0
+          ],
+          [
+            0,
+            0,
+            673,
+            1
+          ],
+          [
+            0,
+            0,
+            596,
+            0
+          ],
+          [
+            0,
+            0,
+            613,
+            0
+          ]
+        ],
+        "support": [
+          592,
+          674,
+          596,
+          613
+        ]
+      },
+      "negative_control": "PASS",
+      "mapping_batch": "PASS"
+    },
+    "binary": {
+      "three_real_updates": "PASS",
+      "finite_input_loss_gradients_parameters": "PASS",
+      "weight_and_bias_updated": "PASS",
+      "validation_after_three_steps": {
+        "accuracy": 0.8731313131313131,
+        "balanced_accuracy": 0.8716478943824768,
+        "macro_f1": 0.8695197701454163,
+        "precision": [
+          0.8106591701507568,
+          0.8994413614273071,
+          0.8384353518486023,
+          0.9737991094589233
+        ],
+        "recall": [
+          0.9763513803482056,
+          0.9554896354675293,
+          0.8271812200546265,
+          0.7275693416595459
+        ],
+        "confusion": [
+          [
+            578,
+            1,
+            9,
+            4
+          ],
+          [
+            0,
+            644,
+            29,
+            1
+          ],
+          [
+            55,
+            41,
+            493,
+            7
+          ],
+          [
+            80,
+            30,
+            57,
+            446
+          ]
+        ],
+        "support": [
+          592,
+          674,
+          596,
+          613
+        ]
+      },
+      "negative_control_validation": {
+        "accuracy": 0.2412121212121212,
+        "balanced_accuracy": 0.2504078447818756,
+        "macro_f1": 0.09791436791419983,
+        "precision": [
+          0.0,
+          0.0,
+          0.24100282788276672,
+          1.0
+        ],
+        "recall": [
+          0.0,
+          0.0,
+          1.0,
+          0.0016313213855028152
+        ],
+        "confusion": [
+          [
+            0,
+            0,
+            592,
+            0
+          ],
+          [
+            1,
+            0,
+            673,
+            0
+          ],
+          [
+            0,
+            0,
+            596,
+            0
+          ],
+          [
+            0,
+            0,
+            612,
+            1
+          ]
+        ],
+        "support": [
+          592,
+          674,
+          596,
+          613
+        ]
+      },
+      "negative_control": "PASS",
+      "mapping_batch": "PASS"
+    }
+  },
+  "elapsed_seconds": 15.868176499992842
+}

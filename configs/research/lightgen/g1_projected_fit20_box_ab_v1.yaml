@@ -1,0 +1,66 @@
+schema: lightgen_g1_projected_fit20_box_ab.v1
+task_id: LIGHTGEN_G1_PROJECTED_FIT20_BOX_AB_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_PROJECTED_FIT20_BOX_AB_20261027
+evidence_tier: diagnostic_only
+source:
+  projected_mapping_config: configs/research/lightgen/g1_slm_projected_mapping_v2.yaml
+  fixed_population_and_schedule: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/fixed_population_and_schedule.pt
+  terminal_mapper_checkpoint: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  terminal_training_history: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/training_history.json
+  terminal_final_decision: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/final_decision.json
+  terminal_task_state: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/task_state.json
+  validation_reachability_witnesses: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/validation_reachability_witnesses.pt
+  response_projector_evidence: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+population:
+  role: known_reachable_fit20
+  source_role: projected_mapping_validation
+  source_rows_per_class: 200
+  selected_slots_per_class: [0, 1]
+  selected_row_rule: 200*y + slot
+  count: 20
+  classes: 10
+  schedule_seed: 2026102781
+  rng_seed: 2026102780
+  cycles: 250
+  visits_per_class_per_cycle: 2
+training:
+  updates_per_arm: 500
+  logical_batch_size: 10
+  samples_per_class_per_batch: 1
+  arms: [A, B]
+  arm_a_objective: full_optics_phase_invariant_coefficient_loss
+  arm_b_objective: full_optics_phase_invariant_coefficient_loss_plus_5x_preclip_box_loss
+  box_lambda: 5.0
+  optimizer: Adam
+  learning_rate: 0.0001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  mapper_precision: float32
+  fixed_projection_precision: float64
+  optical_precision: float64_complex128
+  amp: false
+  tf32: false
+  progress_interval_steps: 25
+  checkpoint_steps: [0, 250, 500]
+  observation_steps: [0, 250, 500]
+  selected_terminal_step: 500
+measurement:
+  grids: [2048, 4096]
+  relative_error_max: 0.0001
+  coefficient_phase_alignment: one_global_phase
+  native_cmos: raw_w_per_m2_no_normalization
+  cmos_power_matching: false
+  cmos_gain_adjustment: false
+  six_metrics:
+    - coefficient_2048
+    - coefficient_4096
+    - native_cmos_2048
+    - native_cmos_4096
+    - cross_grid_coefficient
+    - cross_grid_native_cmos
+output:
+  experiment_root: outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/attempt_01
+  preflight_root: outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/preflight_01
+  windows_backup_root: outputs/20261027_lightgen_g1_projected_fit20_box_ab_v1/runs/autodl_backup_attempt_01
+  final_consumer: recompute_fit20_targets_commands_full_optics_and_native_cmos

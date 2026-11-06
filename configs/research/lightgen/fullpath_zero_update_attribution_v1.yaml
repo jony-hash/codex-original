@@ -1,0 +1,34 @@
+schema: lightgen_fullpath_zero_update_attribution.v1
+task_id: LIGHTGEN_FULLPATH_ZERO_UPDATE_ATTRIBUTION_V1
+evidence_tier: diagnostic_only
+
+sources:
+  source_config: configs/research/lightgen/recent_optical_fullpath_semantic_v1.yaml
+  source_run: outputs/20261030_lightgen_recent_optical_fullpath_semantic_v1/runs/attempt_01
+  verified_backup: outputs/20261030_lightgen_recent_optical_fullpath_semantic_v1/runs/autodl_backup_attempt_01
+  expected_training_run_id: d88d5bfc2b29488884a88512152815d6
+  expected_population_seed_base: 202610300930
+
+population:
+  use_saved_final_population_only: true
+  rows: 2000
+  rows_per_class: 200
+  official_test_reads: 0
+
+diagnostics:
+  crossed_conditions: [E0G1, E1G0]
+  production_grid: 2048
+  reference_grid: 4096
+  positive_controls_per_class: 2
+  existing_cross_grid_tolerance: 0.0001
+  fixed_train_batches: 10
+  batch_size: 10
+  finite_difference_steps_rad: [0.01, 0.005]
+  bootstrap_resamples: 2000
+  bootstrap_seed: 202610310970
+  minimum_diversity_retention: 0.8
+
+output:
+  run_dir: outputs/20261031_lightgen_fullpath_zero_update_attribution_v1/runs/attempt_05
+  authorized_optimizer_updates: 0
+  preserve_all_source_artifacts: true

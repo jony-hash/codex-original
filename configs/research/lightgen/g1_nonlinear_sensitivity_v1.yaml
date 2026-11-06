@@ -1,0 +1,50 @@
+schema: lightgen_g1_nonlinear_sensitivity.v1
+task_id: LIGHTGEN_G1_NONLINEAR_SENSITIVITY_V1
+evidence_tier: diagnostic_only
+base_config: configs/research/lightgen/g1_te_inserted_path_v1.yaml
+source:
+  attempt04_fields: outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04/complex_fields.npz
+  attempt04_metadata: outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04/complex_field_metadata.json
+response:
+  baseline_state: solid_25C
+  baseline_thickness_nm: 10.0
+  reference_scale_definition: median_direct_effective_mean_irradiance_2048
+  saturating_shape: u_over_one_plus_u
+  amplitude_fraction: 0.5
+  amplitude_scales: [0.1, 1.0, 10.0]
+  amplitude_signs: [-1, 1]
+  phase_amplitude_scale: 1.0
+  phase_values_rad: [-0.7853981633974483, 0.7853981633974483]
+  phase_amplitude_signs: [-1, 1]
+  phase_only_amplitude_fraction: 0.0
+  phase_only_scale: 1.0
+  phase_only_values_rad: [-0.7853981633974483, 0.7853981633974483]
+  updates: 0
+population:
+  primary_rows: 100
+  reference_rows: 10
+  reference_positions: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+  arms: [direct, mapped]
+model:
+  primary_grid: 2048
+  reference_grid: 4096
+  dtype: complex128
+  frozen_optical_branch: C
+  frozen_optical_step: 45000
+  frozen_mapper_step: 5000
+  frozen_cohort: C_seed_2026101501/G1_stream_0.pt
+controls:
+  bare_reference: true
+  constant_q0_linear_reference: true
+  identity: true
+  global_phase_only: true
+  equal_power_uniform_complex_control: true
+  wrong_power_as_field_amplitude_negative_control: true
+tolerances:
+  transfer_and_control_relative: 1.0e-6
+  field_and_intensity_finite: true
+  cross_grid_raw_intensity_relative: 1.0e-3
+  passivity_absolute: 1.0e-12
+output:
+  run_dir: outputs/20261030_lightgen_g1_nonlinear_sensitivity_v1/runs/diagnostic-only_attempt_01
+  report_consumer: saved_fields_power_equal_power_controls_cmos_readout_and_frozen_evaluators

@@ -28,15 +28,24 @@ def _transfer_function(
     # The propagation phase can be thousands of radians. Build the sampled
     # frequencies and phase in float64 even for complex64 fields, then cast the
     # completed transfer function once to the field's complex precision.
+    complex_dtype = torch.complex64 if real_dtype == torch.float32 else torch.complex128
     fy = torch.fft.fftfreq(shape[0], d=pixel_pitch_m[0], device=device, dtype=torch.float64)
     fx = torch.fft.fftfreq(shape[1], d=pixel_pitch_m[1], device=device, dtype=torch.float64)
-    grid_y, grid_x = torch.meshgrid(fy, fx, indexing="ij")
-    argument = 1.0 - (wavelength_m * grid_x).square() - (wavelength_m * grid_y).square()
-    phase = (2.0 * math.pi * distance_m / wavelength_m) * torch.sqrt(argument.clamp_min(0.0))
-    transfer = torch.polar(torch.ones_like(phase), phase)
-    transfer = torch.where(argument >= 0.0, transfer, torch.zeros_like(transfer))
-    complex_dtype = torch.complex64 if real_dtype == torch.float32 else torch.complex128
-    return transfer.to(dtype=complex_dtype)
+    scaled_fx_squared = (wavelength_m * fx).square()
+    transfer = torch.empty(shape, device=device, dtype=complex_dtype)
+    phase_scale = 2.0 * math.pi * distance_m / wavelength_m
+    # Build wide kernels in row chunks. The previous meshgrid path materialized
+    # several full float64 planes at once and exceeded device memory at 16k grids.
+    rows_per_chunk = max(1, min(256, 16_777_216 // shape[1]))
+    for start in range(0, shape[0], rows_per_chunk):
+        stop = min(start + rows_per_chunk, shape[0])
+        y_argument = (wavelength_m * fy[start:stop]).square()
+        argument = 1.0 - y_argument[:, None] - scaled_fx_squared[None, :]
+        phase = phase_scale * torch.sqrt(argument.clamp_min(0.0))
+        chunk = torch.polar(torch.ones_like(phase), phase)
+        chunk *= argument >= 0.0
+        transfer[start:stop] = chunk.to(dtype=complex_dtype)
+    return transfer
 
 
 def angular_spectrum_propagate(field: ComplexField, distance_m: float, plane_id: str) -> ComplexField:

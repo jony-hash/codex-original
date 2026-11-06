@@ -1,0 +1,67 @@
+schema: lightgen_g1_fixed_frame_semantic.v1
+task_id: LIGHTGEN_G1_FIXED_FRAME_SEMANTIC_V1
+semantic_authority_id: USER_AUTHORIZED_LIGHTGEN_G1_FIXED_FRAME_SEMANTIC_20261029
+evidence_tier: diagnostic_only
+source:
+  g1_source_config: configs/research/lightgen/g1_semantic_exposure200_v1.yaml
+  train_coefficient_cache: outputs/20261021_lightgen_small_conditional_mixture_prior_ab_v1/runs/autodl_backup_attempt_01/train_coefficient_cache.pt
+  mnist_training_file: data/MNIST/processed/training.pt
+  v2_terminal_checkpoint: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  fixed_response_projector: outputs/20261027_lightgen_g1_slm_projected_mapping_v2/runs/autodl_backup_attempt_01/preflight_evidence/fixed_response_and_projector.pt
+population:
+  classes: 10
+  train_per_class: 20
+  development_per_class: 20
+  holdout_per_class: 200
+  train_seed_base: 202610290010
+  development_seed_base: 202610290030
+  holdout_seed_base: 202610290050
+  max_proposals_per_class: 1000000
+  proposal_batch_size: 256
+  rejection: original_total_modal_power_only
+prior:
+  alphas: [1.0, 0.875, 0.75, 0.625, 0.5]
+  representation: raw_physical_phase_normalized_by_frozen_modal_scale_interleaved_real_imag
+  covariance: sample
+  ridge: 1.0e-6_mean_covariance_diagonal
+  per_sample_gauge_rotation: false
+training:
+  new_updates: 15000
+  logical_batch_size: 10
+  samples_per_class_per_batch: 1
+  exposures_per_target: 750
+  optimizer: Adam
+  learning_rate: 0.0001
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  box_lambda: 5.0
+  rng_seed: 202610290070
+  schedule_seed: 202610290071
+  mapper_precision: float32
+  fixed_projection_precision: float64
+  optical_precision: float64_complex128
+  amp: false
+  tf32: false
+  engine: response_matrix
+  checkpoint_interval_steps: 500
+  progress_interval_steps: 100
+  observation_steps: [0, 5000, 10000, 15000]
+measurement:
+  grids: [2048, 4096]
+  relative_error_max: 0.0001
+  coefficient_alignment: one_global_phase_per_sample
+  native_cmos_unit: raw_w_per_m2
+  cmos_normalization: false
+  cmos_power_matching: false
+  cmos_gain_adjustment: false
+  semantic_readout: fixed_gain_clamp_adaptive_average_pool_28
+  semantic_accuracy_drop_max_absolute: 0.02
+  class_diversity_retention_min: 0.8
+output:
+  experiment_root: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs
+  prior_root: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/prior_reconstruction_repair_01
+  qualification_root: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/qualification_repair_01
+  preflight_root: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/preflight_01
+  attempt_root: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/attempt_01
+  windows_backup_root: outputs/20261029_lightgen_g1_fixed_frame_semantic_v1/runs/autodl_backup_attempt_01

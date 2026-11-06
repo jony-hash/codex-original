@@ -1,0 +1,31 @@
+schema: lightgen_c45k_phase_chart_readability_spec.v1
+task_id: LIGHTGEN_C45K_PHASE_CHART_READABILITY_SPEC_V1
+source:
+  phase_evidence_dir: outputs/20261023_lightgen_c45k_phase_chart_ab_v1/runs/attempt_01
+  baseline_dir: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01
+  replication_dir: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01
+  runtime_config: configs/research/lightgen/small_gaussian_system_baseline_v1.yaml
+  prior_readability_key: outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01/blind_review_key.json
+  decoder_readability_key: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01/blind_review_key.json
+review:
+  unique_per_method: 600
+  per_stream_per_class: 20
+  hidden_duplicates: 20
+  real_target_anchors: 20
+  selection_seed: 2026102311
+  shuffle_seed: 2026102312
+  bootstrap_seed: 2026102313
+  bootstrap_resamples: 10000
+  minimum_duplicate_consistency: 18
+  minimum_anchor_correct: 18
+  minimum_duplicate_card_distance: 40
+  segment_size: 20
+  reviewers: 1
+execution:
+  device: cuda
+  batch_size: 10
+  preflight_rows_per_method_stream_class: 2
+  replay_rtol: 2.0e-6
+  replay_atol: 5.0e-8
+output:
+  directory: outputs/20261023_lightgen_c45k_phase_chart_readability_spec_v1/runs/attempt_01

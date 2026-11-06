@@ -1,0 +1,48 @@
+schema: gaussian_j_frozen_attribution_phase_density.v1
+task_id: GAUSSIAN_J_FROZEN_ATTRIBUTION_PHASE_DENSITY_V1
+semantic_authority_id: USER_APPROVED_GAUSSIAN_J_FROZEN_ATTRIBUTION_PHASE_DENSITY_20261023
+run_dir: outputs/20261023_gaussian_j_frozen_attribution_phase_density_v1/runs/attempt_01
+inputs:
+  joint_task_config: configs/research/lightgen/small_joint_update_readability_pilot_v1.yaml
+  joint_optical_dir: outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/autodl_backup_attempt_01/optical
+  joint_checkpoint_names:
+    - checkpoint_step_000000.pt
+    - checkpoint_step_002500.pt
+    - checkpoint_step_005000.pt
+  control_evidence_dir: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/autodl_backup_attempt_01
+  g4_coefficients: outputs/20261022_lightgen_small_joint_update_readability_pilot_v1/runs/autodl_backup_attempt_01/optical/g4_fixed_inputs.pt
+  readability_reference_dir: outputs/20261022_lightgen_small_g1_g4_native_readability_v1/runs/autodl_backup_attempt_01
+  data_file: data/MNIST/processed/training.pt
+  reusable_density_run: outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output
+  reusable_d0_bases: outputs/20261022_gaussian_ols_training_plane_density_audit_v1/runs/autodl_backup_recent_plane_density_20261023/run_output/bases
+grids:
+  production: 2048
+  reference: 4096
+population:
+  split_seed: 1234
+  dev_count: 5000
+  dev_per_class: 500
+  g4_count: 10000
+  g4_per_class: 1000
+  official_test_reads: 0
+statistics:
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102301
+phase:
+  relative_rms_rad: [0.01, 0.03, 0.1, 0.3]
+  families: [independent_port, linear_ramp]
+  repeats_per_class: 8
+  seed: 2026102303
+  representative_per_class: 20
+execution:
+  frozen_only: true
+  scientific_updates: 0
+  optimizer_creation: 0
+  prior_fitting: 0
+  prior_sampling: 0
+  official_test_reads: 0
+  material_deployment: 0
+  batch_rows: 10
+  chunk_rows: 200
+  direct_synthesis_mse_tolerance: 1.0e-6
+  same_grid_complex_relative_tolerance: 1.0e-4

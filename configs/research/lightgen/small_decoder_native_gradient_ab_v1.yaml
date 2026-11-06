@@ -1,0 +1,118 @@
+schema: lightgen_small_decoder_native_gradient_ab.v1
+task_id: LIGHTGEN_SMALL_DECODER_NATIVE_GRADIENT_AB_V1
+semantic_authority_id: USER_APPROVED_SMALL_DECODER_NATIVE_GRADIENT_AB_20261022
+execution_source_semantics_id: small_decoder_native_gradient_ab_v1
+source:
+  task_id: LIGHTGEN_SMALL_GAUSSIAN_FOREGROUND_BALANCE_AB_V1
+  baseline_config: configs/research/lightgen/small_gaussian_foreground_balance_ab_v1.yaml
+  branch: C
+  checkpoint_step: 45000
+  model_identity:
+    encoder: [2, 100, 100]
+    ols: gaussian_s12_v1
+    ols_geometry:
+      port_pitch_m: 2.0e-5
+      field_1e_radius_m: 3.5e-6
+      transport: identity
+    decoder: [2, 100, 100]
+  structural_weight: 0.3148024967699311
+generation:
+  task_id: LIGHTGEN_SMALL_GAUSSIAN_REPLICATION_PRIOR_CONFIRMATION_V1
+  model: C_seed_2026101501
+  method: G4
+  stream: 0
+  global_step: 45000
+  population: 10000
+  samples_per_class: 1000
+  classifier_based_sample_selection: false
+  per_image_normalization: false
+data:
+  training_file: data/MNIST/processed/training.pt
+  split_seed: 1234
+  train_count: 55000
+  dev_count: 5000
+  dev_per_class: 500
+  official_test_reads: 0
+training:
+  seed: 2026101501
+  source_completed_updates: 45000
+  continuation_updates: 5000
+  endpoint_global_step: 50000
+  batch_size: 10
+  samples_per_class_per_batch: 1
+  optimizer: Adam
+  learning_rate: 1.0e-3
+  betas: [0.9, 0.999]
+  epsilon: 1.0e-8
+  weight_decay: 0.0
+  branch_order: [D0, Dgrad]
+  trainable_group: decoder_phase_only
+  encoder_adam_step_frozen: 45000
+  checkpoint_interval: 500
+  progress_interval: 100
+  checkpoints_at: [0, 2500, 5000]
+loss:
+  control: source_C_bogt_plus_frozen_ssim
+  treatment: source_C_bogt_plus_frozen_ssim_plus_native_200_gradient_mse
+  structural_definition: mean_1_minus_ssim_after_global_gain_clamp_0_1_then_adaptive_pool_28
+  structural_weight: 0.3148024967699311
+  native_gradient_definition: half_sum_of_mean_squared_horizontal_and_vertical_forward_difference_residuals
+  native_gradient_boundary: no_padding_adjacent_pixels_only
+  native_gradient_input: fixed_global_gain_times_unclipped_physical_w_per_pixel
+  native_gradient_target: bilinear_resize_original_train_to_200x200_align_corners_false
+  gradient_weight_calibration: decoder_gradient_norm_weighted_rec_over_unweighted_native_gradient_once
+  freeze_gradient_weight_after_calibration: true
+  freeze_source_camera_gain_and_bogt_weights: true
+  adam_state_preserved: true
+optics:
+  wavelength_m: 5.32e-7
+  input_power_w: 2.493e-4
+  layer_power_transmission: 0.889
+  small:
+    encoder_layers: 2
+    encoder_shape: [100, 100]
+    generator_layers: 2
+    generator_shape: [100, 100]
+    phase_parameters: 40000
+    slm_shape: [200, 200]
+    phase_pixel_pitch_m: 2.0e-6
+    layer_spacing_m: 1.5e-3
+    ols_basis: gaussian_s12_v1
+    ols_ports: 100
+    ols_transport: identity
+    port_pitch_m: 2.0e-5
+    field_1e_radius_m: 3.5e-6
+    geometry_status: PROJECT_GEOMETRY_UNMEASURED
+    relay: existing_4f_input_and_b0_output
+    propagation_grid_candidates: [2048, 4096]
+    production_propagation_grid: 2048
+    common_complex_roi_m: 1.6e-4
+  window_complex_relative_error_max: 1.0e-4
+evaluation:
+  evaluator_checkpoint: outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt
+  ec_checkpoint: outputs/20260919_third_confirmation_evaluator_v1/runs/attempt_03/evaluator_checkpoint.pt
+  evaluator_role: frozen_confirmation_only
+  common_view: fixed_gain_then_clamp_0_1_then_adaptive_average_pool_28
+  common_target: original_mnist_28x28
+  paired_bootstrap_resamples: 2000
+  reconstruction_bootstrap_seed: 2026102291
+  generation_shape_pairs_per_class: 10000
+  generation_shape_seed_base: 2026101603
+human_review:
+  generated_samples_per_class: 10
+  unique_generated_per_branch: 100
+  sample_selection_seed: 2026102292
+  hidden_duplicates: 20
+  real_anchors: 20
+  shuffle_seed: 2026102293
+  bootstrap_resamples: 2000
+  bootstrap_seed: 2026102294
+  duplicate_consistency_min: 18
+  anchor_label_match_min: 18
+  display_native_pixels: 200
+  display_css_pixels: 400
+  rating_segments: 12
+output:
+  experiment_root: outputs/20261022_lightgen_small_decoder_native_gradient_ab_v1/runs/attempt_01
+  evidence_tier: diagnostic_only
+  formal_result_budget_bytes: 536870912

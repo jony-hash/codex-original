@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "identity": "HW207_MNIST4_C31_C32_CMOS_V1",
+  "source_session_id": "01a18b9f-206d-7c61-96a3-0da3a49efb8c",
+  "purpose": "Diagnostic numerical MNIST4 forward chain from scalar-binary DMD geometry through an ideal single phase screen and finite-pupil 4f imaging to CMOS pixel-area integration and fixed 2x2 ROI classification.",
+  "source_files": {
+    "c21_geometry_config": "configs/research/lightgen/hw207_mnist4_c21_c3_spatial_v1.json",
+    "c21_aligned_cmos_config": "configs/research/lightgen/hw207_mnist4_c21_c3_aligned_geometry_v2.json",
+    "physical_geometry": "configs/research/lightgen/hw207_optical_geometry_v1.json",
+    "parameter_baseline": "research_assets/lightgen/HW207_实物与距离基线_20261103/实物信息与闭环状态.md",
+    "c0_indices": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/indices.json",
+    "c0_data_roles": "outputs/20261103_hw207_mnist4_c2_v1/runs/autodl_backup_c0_inputs_01/data.json",
+    "mnist_train_images_idx": "data/MNIST/raw/train-images-idx3-ubyte",
+    "mnist_train_labels_idx": "data/MNIST/raw/train-labels-idx1-ubyte"
+  },
+  "population": {
+    "labels": [0, 1, 2, 3],
+    "source_role": "existing C0 validation indices in original order",
+    "expected_validation_rows": 2475,
+    "pilot_per_class": 64,
+    "pilot_seed": 207031,
+    "examples_per_class": 5,
+    "official_test_must_not_be_loaded": true
+  },
+  "dmd": {
+    "model": "F9000 / DLPC900 + DLP9000",
+    "columns": 2560,
+    "rows": 1600,
+    "pitch_um": 7.56,
+    "fill_factor": 0.92,
+    "active_mirror_shape": "square, side pitch*sqrt(fill_factor)",
+    "installation_angle_deg": 0.0,
+    "mapping_method": "nearest",
+    "binary_threshold": 128,
+    "command_model": "SCALAR_BINARY_APPROXIMATION; ON=1 and OFF=0 are numerical labels only",
+    "on_off_collection_direction": "UNKNOWN_NOT_MODELED",
+    "micromirror_tilt_and_coherent_reflection": "UNKNOWN_NOT_MODELED"
+  },
+  "input_relay": {
+    "geometry": "C3-A/B/C ideal 4f candidates from C2.1; not installed or calibrated",
+    "map_method": "C2.1 polygon-area projection of square active mirror regions onto the 100x100 target input grid",
+    "field_assumption": "uniform coherent phase; complex amplitude is sqrt(mapped irradiance)",
+    "pupil_model": "reuse C2 coherent circular-pupil transfer",
+    "pupil_cutoff_cycles_per_um": 0.1,
+    "defocus_um": 0.0,
+    "pupil_padding_grid": 512,
+    "status": "IDEAL_4F_GEOMETRY_PLUS_DIAGNOSTIC_IMAGE_PLANE_PUPIL; actual input relay UNKNOWN"
+  },
+  "lightgen_target_model": {
+    "identity": "IDEAL_SINGLE_PHASE_ONLY_SURFACE_ZERO_PHASE",
+    "wavelength_nm": 532,
+    "rows": 100,
+    "columns": 100,
+    "pixel_um": 2.0,
+    "layers": 1,
+    "amplitude_transmission": 1.0,
+    "phase_rad": 0.0,
+    "phase_trainable": false,
+    "layer_to_output_distance_um": 0.0,
+    "implementation": "v2 FiniteCropPhaseStack with one frozen zero-phase layer, finite-crop boundary and zero numerical propagation distance",
+    "status": "IDEAL_TARGET_DIAGNOSTIC_ONLY; not a fabricated LightGen model or measured complex transmission"
+  },
+  "output_relay": {
+    "geometry": "C3-A/B/C ideal 4f candidates from C2.1",
+    "clear_aperture_mm": 6.384,
+    "clear_aperture_status": "DIAGNOSTIC_ASSUMPTION derived from 0.2 cycles/um source-side cutoff at f1=30 mm; lens clear aperture is UNKNOWN",
+    "defocus_um_candidates": [0.0, 50.0],
+    "computation_grid": 512,
+    "camera_plane_crop_pixels": 256,
+    "status": "IDEAL_4F_WITH_CIRCULAR_PUPIL; 50 um defocus is a sensitivity case, not measured"
+  },
+  "cmos": {
+    "candidate_model": "Gpixel GSENSE2020 screenshot specification; actual installed identity UNKNOWN",
+    "rows": 2048,
+    "columns": 2048,
+    "pixel_um": 6.5,
+    "sensor_crop_pixels": 768,
+    "response": "IDEAL_LINEAR_PIXEL_AREA_INTEGRAL; arbitrary relative energy, no QE/noise/gain/exposure/ADC/saturation",
+    "roi_geometry": "fixed sensor-pixel envelope of the projected 200 um LightGen image region, split into equal 2x2 half-open rectangles; centered zero-offset diagnostic mapping",
+    "roi_order": ["top_left", "top_right", "bottom_left", "bottom_right"],
+    "roi_to_label": {"top_left": 0, "top_right": 1, "bottom_left": 2, "bottom_right": 3},
+    "sensor_crop_centered_on_sensor": true,
+    "saturation_status": "NOT_MODELED_WITHOUT_PHOTOMETRY_OR_READOUT_PARAMETERS",
+    "low_signal_status": "only numerical-zero and tie abstention are defined; physical threshold UNKNOWN"
+  },
+  "execution": {
+    "batch_size": 8,
+    "dtype": "complex64/float32 production; float64 reference checks",
+    "torch_num_threads": 2,
+    "save_all_validation_lightgen_fields": true,
+    "save_full_cmos_images_for_all_rows": false,
+    "save_cmos_tile_for_validation_examples_only": true,
+    "validation_selection_or_roi_tuning_on_official_test": false
+  },
+  "tolerances": {
+    "analytic_plane_wave_relative_energy": 1e-5,
+    "pixel_area_energy_closure_relative": 1e-8,
+    "batch_size_score_absolute": 1e-6,
+    "fp32_fp64_field_relative_l2": 1e-4,
+    "repeat_forward_max_abs": 1e-6
+  }
+}

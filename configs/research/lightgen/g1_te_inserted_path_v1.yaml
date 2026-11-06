@@ -1,0 +1,60 @@
+schema: lightgen_g1_te_inserted_path.v1
+task_id: LIGHTGEN_G1_TE_INSERTED_PATH_V1
+evidence_tier: diagnostic_only
+scientific_question: >-
+  In the frozen G1 optical path, what field, CMOS-power, fixed-exposure-image,
+  and auxiliary semantic-readout changes follow from inserting the saved
+  2025 Advanced Materials Te film proxy after OLS and before the generator?
+source:
+  optical_checkpoint: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/checkpoint_step_010000.pt
+  fitted_gaussian_prior: outputs/20261021_lightgen_small_gaussian_foreground_balance_ab_v1/runs/autodl_backup_attempt_01/C/fitted_gaussian_prior.pt
+  mapper_config: configs/research/lightgen/g1_slm_input_mapping_pilot_v1.yaml
+  mapper_checkpoint: outputs/20261026_lightgen_g1_slm_input_mapping_pilot_v1/runs/autodl_backup_attempt_01/terminal_checkpoint.pt
+  g1_cohort: outputs/20261021_lightgen_small_gaussian_replication_prior_confirmation_v1/runs/autodl_backup_attempt_01/generation/C_seed_2026101501/G1_stream_0.pt
+  te_measurement: outputs/20261029_lightgen_te_literature_proxy_v1/runs/diagnostic-only_attempt_01/measurement.json
+  te_thickness_sweep: outputs/20261029_lightgen_te_literature_proxy_v1/runs/diagnostic-only_attempt_01/thickness_sweep.csv
+  te_preflight: outputs/20261029_lightgen_te_literature_proxy_v1/runs/diagnostic-only_attempt_01/preflight.json
+population:
+  selection: saved_native_capture_indices
+  rows: 100
+  per_class: 10
+  classes: 10
+  sample_order: saved_index_order
+model:
+  checkpoint_branch: C
+  checkpoint_seed: 2026101501
+  cumulative_step: 45000
+  mapper_checkpoint_step: 5000
+  mapper_dtype: float32
+  optical_dtype: float64_complex128
+  primary_grid: 2048
+  reference_grid: 4096
+  reference_rows: first_saved_native_capture_per_class
+  fiber_transport: identity_numerical_reference
+  training_updates: 0
+material:
+  sample_identity: LIT-TE-ADMA2025-THERMOCHROMIC-FIGURE-PROXY
+  paper_doi: 10.1002/adma.202511261
+  source_reference_plane_nm: 50.0
+  insertion_plane: OLS_output_generator_entrance
+  nominal_thickness_nm: 10.0
+  control_thickness_nm: 50.0
+  states: [solid_25C, quasi_liquid_80C]
+  response_model: uniform_linear_complex_field_multiplier
+  relative_transfer: tE_film_at_z50 / tE_bare_at_z50
+  feedback_reflection: excluded_from_upstream_path
+controls:
+  no_film: true
+  identity_transfer: true
+  global_phase_only: true
+  equal_loss_amplitude_only: true
+  wrong_power_as_field_amplitude_negative_control: true
+tolerances:
+  thin_film_power_ratio_absolute: 1.0e-9
+  field_and_raw_intensity_scaling_relative: 1.0e-6
+  normalized_shape_relative: 1.0e-6
+  grid_2048_vs_4096_raw_intensity_relative: 1.0e-3
+output:
+  run_dir: outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/diagnostic-only_attempt_04
+  research_package: research_assets/lightgen/hardware_g1_te_inserted_path_20261029_v1
+  final_consumer: saved_per_sample_cmos_fields_power_metrics_and_frozen_ED_EC_readouts

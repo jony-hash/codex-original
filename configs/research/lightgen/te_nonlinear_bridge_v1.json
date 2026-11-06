@@ -1,0 +1,124 @@
+{
+  "schema": "lightgen_te_nonlinear_bridge.v1",
+  "paper": {
+    "doi": "10.1002/adma.202522820",
+    "title": "A Phase-Transition-Driven All-Optical Neuron with Sub-Nanosecond Nonlinear Activation",
+    "venue": "Advanced Materials",
+    "year": 2026,
+    "si_figure_media_members": {
+      "s9": "word/media/image9.png",
+      "s11": "word/media/image11.png"
+    },
+    "sample_identities": {
+      "waveguide_device": "Si3N4 waveguide / approximately 15 nm elemental trigonal Te / approximately 14 nm ITO; magnetron sputtered, Te RF 15 W; S9 device active length not directly stated in the reviewed source locations and remains unknown",
+      "s11_planar_film": "fused silica / 50 nm Te / 20 nm SiO2 cap",
+      "s2_ellipsometry_coupon": "Fig. S2 ellipsometry curve proxy; test-coupon substrate and thickness are not equated to the waveguide or S11 specimen"
+    }
+  },
+  "sources": {
+    "article_pdf": "research_assets/lightgen/literature_library/papers/adma_te_all_optical_neuron_2026/original/adma202522820.pdf",
+    "si_docx": "research_assets/lightgen/literature_library/papers/adma_te_all_optical_neuron_2026/original/adma72809-sup-0001-SuppMat.docx",
+    "g1_fields": "outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04/complex_fields.npz",
+    "g1_metadata": "outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04/complex_field_metadata.json",
+    "g1_sample_metrics": "outputs/20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04/sample_metrics.csv",
+    "g1_prior_budget_measurement": "outputs/20261029_lightgen_te_nonlinear_bridge_v1/runs/diagnostic-only_attempt_01/measurement.json",
+    "g1_prior_budget_metrics": "outputs/20261029_lightgen_te_nonlinear_bridge_v1/runs/diagnostic-only_attempt_01/g1_membrane_plane_sample_metrics.csv",
+    "g1_prior_budget_independent_review": "research_assets/lightgen/hardware_g1_te_nonlinear_bridge_20261029_v1/independent_review.json"
+  },
+  "digitization": {
+    "method": "S9 trace-center digitization with independent A/B axis calibrations; S11 exclusive nearest-palette pixels and connected trace segments, independently checked by core-color tracing from manually selected visible anchors. Pixel columns are digitization coordinates, not independent experimental observations.",
+    "color_tolerance": 65.0,
+    "marker_color_tolerance": 75.0,
+    "s11_color_tolerance": 55.0,
+    "s11_color_confidence_margin_rgb": 6.0,
+    "s11_core_color_tolerance_rgb": 12.0,
+    "s11_legend_exclusion_box_pixels": [560, 250, 758, 540],
+    "s11_max_method_center_difference_px": 3.0,
+    "s11_max_calibrated_delay_difference_ps": 0.12,
+    "s11_max_calibrated_transmission_difference": 0.001,
+    "calibration_pair_max_disagreement_equivalent_pixels": 2.5,
+    "s9e_local_window_columns": 6,
+    "s9e_local_outlier_threshold_px": 8.0,
+    "s11_legend_starts_x": 570,
+    "s11_legend_y_cut": 180,
+    "uncertainty_scope": "pixel thickness, two trace-center methods and least-squares tick-calibration residual; excludes paper measurement uncertainty"
+  },
+  "s9": {
+    "pump_wavelength_nm": 1530,
+    "pump_temporal_condition": "2 ns pulses",
+    "probe_wavelength_nm": 1520,
+    "probe_temporal_condition": "CW probe",
+    "ordinate": "normalized probe transmission",
+    "output_phase": "not reported",
+    "reported_dTr_dk": -0.371,
+    "panel_c": {
+      "plot_bounds_pixels": [164, 758, 786, 1254],
+      "trace_color_rgb": [191, 129, 253],
+      "annotation_occlusion_energy_windows_pJ": [[5.35, 5.75]],
+      "x_axis": {"pixels": [163.5, 266.5, 370.5, 474.5, 578.5, 682.5, 786.5], "values": [0, 2, 4, 6, 8, 10, 12]},
+      "y_axis": {"pixels": [798.5, 881.5, 965.5, 1048.5, 1131.5, 1215.5], "values": [1.0, 0.95, 0.9, 0.85, 0.8, 0.75]},
+      "x_axis_method_b": {"pixels": [163.5, 474.5, 786.5], "values": [0, 6, 12]},
+      "y_axis_method_b": {"pixels": [798.5, 1048.5, 1215.5], "values": [1.0, 0.85, 0.75]}
+    },
+    "panel_d": {
+      "plot_bounds_pixels": [1018, 800, 1636, 1253],
+      "marker_color_rgb": [252, 152, 152],
+      "x_axis": {"pixels": [1018.0, 1141.8, 1265.5, 1389.3, 1513.0, 1636.5], "values": [0.51, 0.54, 0.57, 0.6, 0.63, 0.66]},
+      "y_axis": {"pixels": [799.5, 923.5, 1047.5, 1171.5], "values": [0.165, 0.15, 0.135, 0.12]},
+      "x_axis_method_b": {"pixels": [1018.0, 1265.5, 1513.0, 1636.5], "values": [0.51, 0.57, 0.63, 0.66]},
+      "y_axis_method_b": {"pixels": [799.5, 1047.5, 1171.5], "values": [0.165, 0.135, 0.12]}
+    },
+    "panel_e": {
+      "plot_bounds_pixels": [1844, 759, 2465, 1256],
+      "trace_color_rgb": [255, 125, 197],
+      "x_axis": {"pixels": [1844.0, 1947.7, 2051.3, 2155.0, 2258.7, 2362.3, 2466.0], "values": [0, 2, 4, 6, 8, 10, 12]},
+      "y_axis": {"pixels": [796.5, 911.5, 1026.5, 1141.5, 1257.5], "values": [0.63, 0.6, 0.57, 0.54, 0.51]},
+      "x_axis_method_b": {"pixels": [1844.0, 2155.0, 2466.0], "values": [0, 6, 12]},
+      "y_axis_method_b": {"pixels": [796.5, 1026.5, 1257.5], "values": [0.63, 0.57, 0.51]}
+    }
+  },
+  "s11": {
+    "pump_wavelength_nm": 800,
+    "pulse_width_fs": 100,
+    "repetition_rate_hz": 1000,
+    "ordinate": "normalized transmission (a.u.)",
+    "probe_fluence_pJ_um2": 1.28,
+    "polarization": "pump and probe orthogonal",
+    "sample_stack": "fused silica / 50 nm Te / 20 nm SiO2 cap",
+    "pump_fluences": [
+      {"pJ_per_um2": 2.55, "color_rgb": [251, 111, 111]},
+      {"pJ_per_um2": 2.23, "color_rgb": [244, 166, 102]},
+      {"pJ_per_um2": 1.91, "color_rgb": [237, 198, 105]},
+      {"pJ_per_um2": 1.59, "color_rgb": [237, 231, 109]},
+      {"pJ_per_um2": 1.27, "color_rgb": [186, 237, 109]},
+      {"pJ_per_um2": 0.64, "color_rgb": [60, 255, 60]},
+      {"pJ_per_um2": 0.32, "color_rgb": [53, 255, 189]},
+      {"pJ_per_um2": 0.13, "color_rgb": [79, 189, 255]},
+      {"pJ_per_um2": 0.01, "color_rgb": [94, 114, 255]}
+    ],
+    "panel_a": {
+      "plot_bounds_pixels": [158, 80, 759, 562],
+      "method_b_anchor_note": "Visible S11a trace identity anchors selected directly from the source raster at x=258 px (delay approximately 0 ps), before inspecting method A output; these are pixel coordinates, not measurements.",
+      "method_b_anchor_x_pixel": 258.0,
+      "method_b_anchor_y_pixels_by_fluence": [509.0, 488.0, 398.0, 349.0, 284.0, 178.0, 143.0, 129.0, 122.0],
+      "x_axis": {"pixels": [258.5, 401.5, 544.5, 687.5], "values": [0, 10, 20, 30]},
+      "y_axis": {"pixels": [280.5, 441.5, 522.5], "values": [0.96, 0.92, 0.9]},
+      "x_axis_method_b": {"pixels": [258.5, 473.5, 687.5], "values": [0, 15, 30]},
+      "y_axis_method_b": {"pixels": [116.5, 280.5, 522.5], "values": [1.0, 0.96, 0.9]}
+    },
+    "red_fit_note": "Fig. S11b red line to 50% near 120 ps is an extrapolation beyond measured data and must not be used as an observed recovery time"
+  },
+  "g1": {
+    "attempt": "20261029_lightgen_g1_te_inserted_path_v1/runs/autodl_backup_attempt_04",
+    "expected_plane_pitch_m": [2e-6, 2e-6],
+    "wavelength_m": 5.32e-7,
+    "expected_field_dtype": "complex128",
+    "sample_population": {"2048": 100, "4096": 10},
+    "power_reference_relative_tolerance": 1e-8,
+    "thin_film_transfer_not_run_without": [
+      "532 nm external intensity to complex transmission relation",
+      "sample-matched layer stack and material state",
+      "target temporal condition and absolute power basis"
+    ]
+  }
+}
