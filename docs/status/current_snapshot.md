@@ -13,7 +13,7 @@
 
 ## 2. 当前停止点（2026-11-06）
 
-- HW207 **C3.8**：`C3.8_PARTIAL_PASS`。单一共享相位屏在开发验证集上 Accuracy 91.05%，但类别峰值路由未达 90%，种子间能量保持不稳定；正式五项训练未启用 `spread`。
+- HW207 **C3.8**：`C3.8_PARTIAL_PASS`。单一共享相位屏在开发验证集上 Accuracy 91.05%，但类别峰值路由未达 90%，种子间能量保持不稳定；正式训练未启用 `spread`，五项联合目标只经过 P2 预检和 T4 pilot。
 - HW207 **C3.7**：`C3.7_PARTIAL_PASS`。现有候选未同时满足分类、能量和核心聚焦目标；E4/E5 的阶段绑定问题已定位。
 - **G1**：`LIGHTGEN_G1_FIXED_PHASE_TEACHER_DISTILLATION_V1` 保持 `diagnostic-only`，教师资格为 `TRAINING_REFERENCE_INSUFFICIENT`；未启动学生训练，科学更新为 0。
 - 三个阻断状态维持：`HW207_CURRENT_MAPPING=BLOCKED`、`INDEPENDENT_EVAL=BLOCKED`、`FABRICATION_READY=BLOCKED`。
